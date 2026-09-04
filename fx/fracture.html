@@ -5,145 +5,198 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FRACTURE — multi-FX distortion</title>
 <style>
+/* ---------------------------------------------------------------------------
+   Béton clair: Corbusier primaries on concrete. Flat colour, zero radius, no
+   shadows and no gradients except the dials' own arcs — the concrete greys are
+   the only texture. Colour is functional, never decorative:
+
+     yellow  adds harmonics   drive, stage B, auto gain
+     red     destroys/limits  crush, feedback, safety clip, envelope, mute
+     blue    shapes           filter, tone, LFOs, modulation, solo
+     ink     structure        type, rules, section bars, unity controls
+
+   Each panel sets --fill for its section, and every dial inside it inherits
+   that colour, so a knob's arc says what kind of thing it does. The one place
+   identity colour is used instead is the spectrum, whose three regions follow
+   the live crossover points.
+
+   Type is a heavy grotesque from the system stack, not a webfont: the page
+   makes no requests, and that promise outranks the typeface.
+   --------------------------------------------------------------------------- */
 :root{
-  --bg:#0b0c10; --panel:#15171f; --panel2:#1b1e28; --line:#272b38;
-  --txt:#e7e9f0; --dim:#8b90a3; --dim2:#5f647a;
-  --a1:#ff6a2b; --a2:#ff2d78; --a3:#7c5cff; --ok:#3ddc97; --warn:#ffcc55;
-  --track:#242835;
+  --ground:#d6d1c6; --panel:#e9e5dc; --face:#f4f1ea;
+  --track:#bdb7aa; --dim2:#8d877c; --dim:#5f5a51; --ink:#17150f;
+  --yellow:#e9b21f; --red:#c0392f; --blue:#1e4b8f;
+  --grot:"Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+  --black:"Arial Black","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;   /* the page is concrete in either OS theme */
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
-body{
-  background:
-    radial-gradient(1200px 700px at 12% -10%, #2a1409 0%, #0b0c10 60%),
-    radial-gradient(900px 600px at 95% 110%, #1a0f2e 0%, #0b0c10 55%),
-    var(--bg);
-  color:var(--txt);
-  font:13px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  -webkit-font-smoothing:antialiased;
-}
-.app{max-width:1240px;margin:0 auto;padding:14px 14px 40px}
+body{background:var(--ground);color:var(--ink);font:13px/1.4 var(--grot);
+  -webkit-font-smoothing:antialiased}
+.app{max-width:1280px;margin:0 auto;padding:20px 20px 40px}
+.cap,.klab,.field label,.sub-h,.meter .cap{font-weight:600;text-transform:uppercase}
 
 /* ---------- header ---------- */
-header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}
-.brand{display:flex;align-items:baseline;gap:10px}
-.mark{width:26px;height:26px;border-radius:7px;align-self:center;
-  background:conic-gradient(from 200deg,var(--a1),var(--a2),var(--a3),var(--a1));
-  box-shadow:0 0 18px rgba(255,90,40,.45), inset 0 0 0 1px rgba(255,255,255,.15)}
-h1{font-size:19px;letter-spacing:.22em;margin:0;font-weight:700}
-.sub{color:var(--dim);letter-spacing:.16em;text-transform:uppercase;font-size:10px}
+header{display:flex;align-items:flex-end;gap:22px;flex-wrap:wrap;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:14px}
+.mark{display:flex;gap:8px}
+.mark i{width:28px;height:28px;display:block}
+.mark i:nth-child(1){background:var(--ink)}
+.mark i:nth-child(2){background:var(--red);border-radius:50%}
+.mark i:nth-child(3){background:var(--blue);border-radius:28px 0 0 0}
+.brand .names{display:flex;flex-direction:column;gap:4px}
+h1{font:900 30px/.9 var(--black);letter-spacing:-.01em;margin:0}
+.sub{color:var(--dim);letter-spacing:.3em;text-transform:uppercase;font-size:9px;font-weight:600}
 .hdr-ctl{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ribbon{display:flex;height:8px;margin-bottom:16px}
+.ribbon i{display:block}
+.ribbon i:nth-child(1){flex:1;background:var(--yellow)}
+.ribbon i:nth-child(2){width:180px;background:var(--red)}
+.ribbon i:nth-child(3){width:120px;background:var(--blue)}
+.ribbon i:nth-child(4){width:60px;background:var(--ink)}
 
 /* ---------- generic controls ---------- */
-button,select{
-  font:inherit;color:var(--txt);background:var(--panel2);
-  border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer
-}
-button:hover,select:hover{border-color:#3a4055}
+button{font:600 10px/1.2 var(--grot);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink);background:var(--face);border:1.5px solid var(--ink);border-radius:0;
+  padding:8px 11px;cursor:pointer}
+button:hover{background:var(--ground)}
 button:active{transform:translateY(1px)}
-button.tgl.on{background:linear-gradient(180deg,var(--a1),#d8471c);border-color:#ff8a55;color:#1b0d05;font-weight:600}
-button.sm{padding:4px 8px;font-size:11px}
+button.sm{padding:6px 9px;font-size:9.5px}
 button:disabled{opacity:.4;cursor:not-allowed}
-select{padding:5px 8px}
+button.tgl.on{background:var(--yellow);color:var(--ink)}
+[data-p=safety].on,[data-p^=mu].on{background:var(--red);color:var(--face)}
+[data-p^=so].on{background:var(--blue);color:var(--face)}
+#btnBypass.on{background:var(--ink);color:var(--face)}
+select{font:500 12px/1.2 var(--grot);color:var(--ink);background-color:var(--face);
+  border:1.5px solid var(--ink);border-radius:0;padding:7px 24px 7px 9px;cursor:pointer;
+  appearance:none;-webkit-appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink) 50%),
+                   linear-gradient(135deg,var(--ink) 50%,transparent 50%);
+  background-position:calc(100% - 14px) 55%,calc(100% - 9px) 55%;
+  background-size:5px 5px;background-repeat:no-repeat}
+select:hover{background-color:var(--ground)}
 
 /* ---------- panels ---------- */
-.grid{display:grid;gap:12px;grid-template-columns:repeat(12,1fr)}
-.panel{background:linear-gradient(180deg,var(--panel),#12141b);
-  border:1px solid var(--line);border-radius:12px;padding:12px;
-  box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.03)}
-.panel > h2{
-  margin:0 0 10px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);
-  display:flex;align-items:center;gap:8px}
-.panel > h2:after{content:"";flex:1;height:1px;background:var(--line)}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(12,1fr)}
+.panel{background:var(--panel);border:1.5px solid var(--ink);border-radius:0;
+  padding:0 14px 14px;--fill:var(--ink)}
+.panel[data-hue=drive]{--fill:var(--yellow)}
+.panel[data-hue=crush]{--fill:var(--red)}
+.panel[data-hue=shape]{--fill:var(--blue)}
+.panel > h2{margin:0 -14px 14px;padding:7px 10px;background:var(--fill);color:var(--face);
+  font:700 10px/1.2 var(--grot);letter-spacing:.22em;text-transform:uppercase;
+  display:flex;align-items:center;gap:9px}
+.panel[data-hue=drive] > h2{color:var(--ink)}
+.panel > h2:before{content:attr(data-no);font-size:9px;opacity:.65}
 .col-3{grid-column:span 3} .col-4{grid-column:span 4} .col-5{grid-column:span 5}
 .col-6{grid-column:span 6} .col-7{grid-column:span 7} .col-8{grid-column:span 8}
 .col-9{grid-column:span 9} .col-12{grid-column:span 12}
 @media (max-width:900px){ .grid > *{grid-column:span 12 !important} }
 
 /* ---------- knobs ---------- */
-.row{display:flex;flex-wrap:wrap;gap:10px 6px;align-items:flex-start}
-.knob{width:64px;display:flex;flex-direction:column;align-items:center;gap:3px;
+.row{display:flex;flex-wrap:wrap;gap:16px 12px;align-items:flex-start}
+.knob{width:62px;display:flex;flex-direction:column;align-items:center;gap:5px;
   user-select:none;-webkit-user-select:none;touch-action:none}
 .dial{position:relative;width:46px;height:46px;border-radius:50%;cursor:ns-resize;
   background:
     conic-gradient(from 215deg,
       var(--track) 0 calc(var(--s,0) * 280deg),
-      var(--fill,var(--a1)) calc(var(--s,0) * 280deg) calc(var(--e,0) * 280deg),
+      var(--fill) calc(var(--s,0) * 280deg) calc(var(--e,0) * 280deg),
       var(--track) calc(var(--e,0) * 280deg) 280deg,
-      #0000 280deg);
-  filter:drop-shadow(0 0 6px rgba(255,106,43,.16))}
-.dial:after{content:"";position:absolute;inset:6px;border-radius:50%;
-  background:radial-gradient(120% 120% at 30% 20%,#2c3140,#15171f 70%);
-  border:1px solid #333949}
-.dial .ind{position:absolute;left:50%;top:50%;width:2px;height:17px;margin-left:-1px;
-  background:linear-gradient(180deg,#fff,var(--a1));border-radius:2px;z-index:2;
-  transform-origin:50% 100%;
+      #0000 280deg)}
+.dial:after{content:"";position:absolute;inset:7px;border-radius:50%;
+  background:var(--face);border:1.5px solid var(--ink)}
+.dial .ind{position:absolute;left:50%;top:50%;width:2.5px;height:15px;margin-left:-1.25px;
+  background:var(--ink);z-index:2;transform-origin:50% 100%;
   transform:translateY(-100%) rotate(calc(-145deg + var(--f,0) * 280deg))}
-.knob.mod .dial{filter:drop-shadow(0 0 8px rgba(124,92,255,.5))}
-.klab{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);
-  text-align:center;min-height:11px;line-height:1.15}
-.kval{font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--txt)}
-.knob.sml{width:52px}
+/* modulation reads as a tick outside the dial marking where the knob is set,
+   while the arc follows the value modulation has pushed it to */
+.dial .mod{position:absolute;left:50%;top:-6px;width:4px;height:8px;margin-left:-2px;
+  background:var(--blue);z-index:3;display:none;transform-origin:50% 29px;
+  transform:rotate(calc(-145deg + var(--m,0) * 280deg))}
+.knob.mod .dial .mod{display:block}
+.klab{font-size:9px;letter-spacing:.13em;color:var(--ink);text-align:center;
+  min-height:11px;line-height:1.15;overflow-wrap:anywhere}
+.kval{font:11px/1 var(--mono);color:var(--dim)}
+.knob.sml{width:54px}
 .knob.sml .dial{width:34px;height:34px}
-.knob.sml .dial .ind{height:12px}
-.knob.dis{opacity:.35;pointer-events:none}
+.knob.sml .dial:after{inset:5px}
+.knob.sml .dial .ind{height:11px}
+.knob.sml .dial .mod{transform-origin:50% 23px}
+.knob.dis{opacity:.38;pointer-events:none}
 
 /* ---------- field (select / toggle) ---------- */
-.field{display:flex;flex-direction:column;gap:3px;min-width:104px}
-.field label{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
-.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
-.tab{padding:5px 11px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);
-  font-size:11px;letter-spacing:.1em;cursor:pointer;position:relative}
-.tab.on{background:linear-gradient(180deg,#2a2030,#221a28);border-color:var(--a2);color:#fff}
-.tab .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--dim2);margin-right:6px}
-.tab.on .dot{background:var(--a2);box-shadow:0 0 8px var(--a2)}
-.tab.muted .dot{background:#4b3038}
+.field{display:flex;flex-direction:column;gap:6px;min-width:104px}
+.field label{font-size:9px;letter-spacing:.16em;color:var(--dim)}
+.tabs{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.tab{padding:8px 13px 8px 10px;border:1.5px solid var(--ink);border-radius:0;background:var(--face);
+  font:600 11px/1.2 var(--grot);letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
+  display:flex;align-items:center;gap:8px}
+.tab .no{font:10px/1 var(--mono);letter-spacing:0}
+.tab .hz{font:9.5px/1 var(--mono);letter-spacing:0;color:var(--dim)}
+.tab.on{background:var(--ink);color:var(--face)}
+.tab.on .hz{color:var(--track)}
+.tab.muted .no{background:var(--red);color:var(--face);padding:1px 3px}
 .bandpane{display:none} .bandpane.on{display:block}
 
 /* ---------- visuals ---------- */
-canvas{display:block;width:100%;border-radius:9px;background:#0d0f15;border:1px solid var(--line)}
-.viz{display:grid;gap:12px;grid-template-columns:1fr 104px}
+canvas{display:block;width:100%;border-radius:0;background:var(--face);
+  border:1.5px solid var(--ink)}
+.viz{display:grid;gap:14px;grid-template-columns:1fr 96px}
 @media (max-width:700px){ .viz{grid-template-columns:1fr} }
-.meters{display:flex;gap:8px;align-items:stretch;height:100%}
-.meter{flex:1;display:flex;flex-direction:column;gap:4px;align-items:center}
-.meter .bar{position:relative;flex:1;width:13px;min-height:70px;border-radius:7px;background:#0d0f15;
-  border:1px solid var(--line);overflow:hidden}
-.meter .fill{position:absolute;left:0;right:0;bottom:0;height:0%;
-  background:linear-gradient(0deg,var(--ok),var(--warn) 72%,#ff3b30 92%)}
-.meter .cap{font-size:9px;letter-spacing:.1em;color:var(--dim)}
-.meter .num{font:10px/1 ui-monospace,Menlo,monospace;color:var(--dim)}
+.meters{display:flex;gap:12px;align-items:stretch;height:100%}
+.meter{flex:1;display:flex;flex-direction:column;gap:6px;align-items:center}
+.meter .bar{position:relative;flex:1;width:20px;min-height:70px;border-radius:0;
+  background:var(--face);border:1.5px solid var(--ink);overflow:hidden}
+.meter .fill{position:absolute;left:0;right:0;bottom:0;height:0%;background:var(--yellow)}
+.meter .over{position:absolute;left:0;right:0;bottom:90%;height:0%;background:var(--red)}
+.meter .cap{font-size:9px;letter-spacing:.18em;color:var(--ink)}
+.meter .num{font:10px/1 var(--mono);color:var(--dim)}
 
 /* ---------- mod matrix ---------- */
-.mx{display:grid;grid-template-columns:1fr 1fr 58px;gap:8px;align-items:end;margin-bottom:2px}
+.mx{display:grid;grid-template-columns:1fr 1fr 54px;gap:8px;align-items:end;margin-bottom:6px}
 .mx.nolab label,.mx.nolab .klab{display:none}
-.grp-row{border-left:2px solid var(--line);padding-left:9px;margin-bottom:9px}
-.sub-h{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim2);margin:0 0 5px}
-.mx select{min-width:0;width:100%;font-size:11px;padding:4px 6px}
-.srcbar{height:5px;border-radius:3px;background:#0d0f15;border:1px solid var(--line);
-  overflow:hidden;position:relative;margin-top:4px}
-.srcbar i{position:absolute;top:0;bottom:0;left:50%;width:2px;background:var(--a3)}
-.modrow{display:flex;gap:10px;align-items:center;margin-bottom:6px}
-.modrow .nm{font-size:10px;letter-spacing:.12em;color:var(--dim);width:44px}
+#secMod{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px}
+.grp-row{border-left:4px solid var(--blue);padding-left:10px}
+.grp-row:nth-child(3){border-left-color:var(--red);grid-column:span 2}
+@media (max-width:700px){ #secMod{grid-template-columns:1fr} .grp-row:nth-child(3){grid-column:span 1} }
+.sub-h{font-size:9px;letter-spacing:.16em;color:var(--dim);margin:0 0 8px}
+.mx select{min-width:0;width:100%;font-size:11px;padding:6px 22px 6px 8px}
+.srcbar{position:relative;height:10px;border:1.5px solid var(--ink);background:var(--face);
+  overflow:hidden;margin-top:4px}
+.srcbar i{position:absolute;top:0;bottom:0;left:50%;width:2px;background:var(--blue)}
+.modrow{display:flex;gap:12px;align-items:center;margin-bottom:7px}
+.modrow .nm{font:600 9px/1 var(--grot);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink);width:46px}
 .modrow .srcbar{flex:1;margin:0}
+.modrow:last-child .srcbar i{background:var(--red)}
 
 /* ---------- source strip ---------- */
-.src{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
-.src .grp{display:flex;gap:6px;align-items:center}
+.src{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;padding:14px}
+.src .grp{display:flex;gap:8px;align-items:flex-end}
 input[type=file]{display:none}
-.filelab{padding:6px 10px;border:1px dashed var(--line);border-radius:8px;color:var(--dim);cursor:pointer}
-.filelab:hover{border-color:var(--a1);color:var(--txt)}
-.note{color:var(--dim);font-size:11px}
-.warnline{color:var(--warn);font-size:11px}
-footer{margin-top:14px;color:var(--dim2);font-size:11px;line-height:1.6}
-kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;
-  padding:0 4px;font:11px/1.5 ui-monospace,Menlo,monospace}
+.filelab{font:600 10px/1.2 var(--grot);letter-spacing:.14em;text-transform:uppercase;
+  padding:8px 11px;border:1.5px solid var(--ink);background:var(--face);cursor:pointer}
+.filelab:hover{background:var(--ground)}
+.note{color:var(--dim);font:11px/1.5 var(--mono);max-width:520px;text-wrap:pretty}
+.warnline{color:var(--red);font:11px/1.5 var(--mono);margin-top:10px}
+footer{margin-top:16px;color:var(--dim);font:11px/1.7 var(--mono)}
+footer .claim{font:600 9px/1.7 var(--grot);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink)}
+kbd{background:var(--face);border:1.5px solid var(--ink);border-radius:0;
+  padding:0 4px;font:11px/1.5 var(--mono)}
 .hidden{display:none}
 </style>
 </head>
 <body>
 <div class="app">
   <header>
-    <div class="brand"><span class="mark"></span><h1>FRACTURE</h1><span class="sub">multi-band multi-fx distortion</span></div>
+    <div class="brand"><span class="mark"><i></i><i></i><i></i></span>
+      <span class="names"><h1>FRACTURE</h1>
+        <span class="sub">multi-band multi-fx distortion</span></span></div>
     <div class="hdr-ctl">
       <select id="presetSel" title="Presets"></select>
       <button class="sm" id="btnRandom" title="Randomise the drive section">Randomise</button>
@@ -152,6 +205,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
       <button class="sm tgl" id="btnBypass" title="True bypass (B)">Bypass</button>
     </div>
   </header>
+  <div class="ribbon"><i></i><i></i><i></i><i></i></div>
 
   <div class="panel src">
     <div class="grp">
@@ -175,21 +229,21 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
   </div>
 
   <main class="grid">
-    <div class="panel col-4"><h2>Input &amp; pre-filter</h2><div class="row" id="secIn"></div></div>
-    <div class="panel col-8"><h2>Split</h2><div class="row" id="secSplit"></div></div>
+    <div class="panel col-4"><h2 data-no="01">Input &amp; pre-filter</h2><div class="row" id="secIn"></div></div>
+    <div class="panel col-8"><h2 data-no="02">Split</h2><div class="row" id="secSplit"></div></div>
 
-    <div class="panel col-12">
-      <h2>Drive</h2>
+    <div class="panel col-12" data-hue="drive">
+      <h2 data-no="03">Drive</h2>
       <div class="tabs" id="bandTabs"></div>
       <div id="bandPanes"></div>
     </div>
 
-    <div class="panel col-5"><h2>Crush &amp; feedback</h2><div class="row" id="secCrush"></div>
+    <div class="panel col-5" data-hue="crush"><h2 data-no="04">Crush &amp; feedback</h2><div class="row" id="secCrush"></div>
       <div class="warnline hidden" id="crushWarn"></div></div>
-    <div class="panel col-4"><h2>Filter</h2><div class="row" id="secFilter"></div></div>
-    <div class="panel col-3"><h2>Output</h2><div class="row" id="secOut"></div></div>
+    <div class="panel col-4" data-hue="shape"><h2 data-no="05">Filter</h2><div class="row" id="secFilter"></div></div>
+    <div class="panel col-3"><h2 data-no="06">Output</h2><div class="row" id="secOut"></div></div>
 
-    <div class="panel col-7"><h2>Modulation</h2>
+    <div class="panel col-7" data-hue="shape"><h2 data-no="07">Modulation</h2>
       <div id="secMod"></div>
       <div style="height:8px"></div>
       <div id="modMeters"></div>
@@ -197,12 +251,12 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
       <div id="matrix"></div>
     </div>
 
-    <div class="panel col-5"><h2>Scope</h2>
+    <div class="panel col-5"><h2 data-no="08">Scope</h2>
       <div class="viz">
         <div>
-          <canvas id="cvSpec" height="190"></canvas>
+          <canvas id="cvSpec" height="230"></canvas>
           <div style="height:8px"></div>
-          <canvas id="cvCurve" height="170"></canvas>
+          <canvas id="cvCurve" height="210"></canvas>
         </div>
         <div class="meters" id="meters"></div>
       </div>
@@ -211,7 +265,8 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
 
   <footer>
     <div><kbd>drag</kbd> a knob to change it · <kbd>shift</kbd>+drag for fine · <kbd>double-click</kbd> to reset · <kbd>space</kbd> play/stop · <kbd>b</kbd> bypass</div>
-    <div>Everything runs in this page with the Web Audio API. No network, no plugins, no upload — the file you load never leaves the machine.</div>
+    <div class="claim">Web audio · no network · no plugin host</div>
+    <div>Everything runs in this page. No requests, no upload — the file you load never leaves the machine.</div>
   </footer>
 </div>
 
@@ -625,7 +680,7 @@ for (let i = 0; i < 3; i++){
 /* crush & feedback */
 p({ id:'bits', label:'Bits', min:2, max:16, def:8, fmt:v => v.toFixed(1), mod:true, needsWorklet:true,
     apply:(e,v) => { const w = e.wp('bits'); if (w) e.set(w, v); } });
-p({ id:'redux', label:'Downsample', min:1, max:32, def:1, taper:'log', fmt:v => '/'+Math.round(v), mod:true, needsWorklet:true,
+p({ id:'redux', label:'Downsample', short:'Downs.', min:1, max:32, def:1, taper:'log', fmt:v => '/'+Math.round(v), mod:true, needsWorklet:true,
     apply:(e,v) => { const w = e.wp('reduce'); if (w) e.set(w, v); } });
 p({ id:'crMix', label:'Crush', min:0, max:100, def:0, fmt:fmtPc, mod:true, needsWorklet:true,
     apply:(e,v) => { const w = e.wp('mix'); if (w) e.set(w, v/100); } });
@@ -782,6 +837,22 @@ function modOffsets(){
   return off;
 }
 
+/* ---- the drawn visuals take their colours from the CSS tokens ---- */
+const C = {};
+function readTokens(){
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of ['ground','panel','face','track','dim2','dim','ink','yellow','red','blue'])
+    C[k] = cs.getPropertyValue('--' + k).trim();
+}
+
+/* a few knobs sit in a panel of one colour but do a job of another */
+const KNOB_HUE = {
+  t0:'blue', t1:'blue', t2:'blue',                       // tone shapes
+  mx0:'ink', mx1:'ink', mx2:'ink', lv0:'ink', lv1:'ink', lv2:'ink',   // structure
+  envAtk:'red', envRel:'red', envSens:'red'
+};
+const SRC_HUE  = { lfo1:'blue', lfo2:'blue', env:'red', 'env-':'red' };
+
 /* --------------------------------------------------------------- UI: knobs */
 function paintKnob(d, el, value, modded){
   const n = norm(d, value);
@@ -791,15 +862,17 @@ function paintKnob(d, el, value, modded){
   dial.style.setProperty('--s', Math.min(c, n).toFixed(4));
   dial.style.setProperty('--e', Math.max(c, n).toFixed(4));
   el.classList.toggle('mod', !!modded);
+  if (modded) dial.style.setProperty('--m', norm(d, state[d.id]).toFixed(4));
   const fmt = d.fmt || (v => v.toFixed(2));
   el.querySelector('.kval').textContent = fmt(value);
 }
 function knobEl(d){
   const el = document.createElement('div');
   el.className = 'knob' + (d.small ? ' sml' : '');
-  el.innerHTML = '<div class="dial"><div class="ind"></div></div>' +
+  el.innerHTML = '<div class="dial"><div class="ind"></div><div class="mod"></div></div>' +
                  '<div class="klab"></div><div class="kval"></div>';
-  el.querySelector('.klab').textContent = d.label;
+  if (KNOB_HUE[d.id]) el.style.setProperty('--fill', 'var(--' + KNOB_HUE[d.id] + ')');
+  el.querySelector('.klab').textContent = d.short || d.label;
   const dial = el.querySelector('.dial');
   let dragging = false, startY = 0, startN = 0;
   dial.addEventListener('pointerdown', ev => {
@@ -840,6 +913,7 @@ function tglEl(d){
   const lab = document.createElement('label'); lab.textContent = ' ';
   const b = document.createElement('button');
   b.className = 'tgl sm' + (d.def ? ' on' : '');
+  b.dataset.p = d.id;
   b.textContent = d.label;
   b.addEventListener('click', () => setParam(d.id, !state[d.id]));
   f.append(lab, b);
@@ -883,6 +957,7 @@ function setParam(id, v, silent){
   }
   paint(id);
   applyParam(id);
+  if (/^mS\d$/.test(id)) paintMatrixHues();
   if (d.type !== 'knob') applyAll();                        // structural: re-assert everything
   if (!silent) refreshBandTabs();
 }
@@ -911,7 +986,8 @@ function buildBands(){
   for (let i = 0; i < 3; i++){
     const t = document.createElement('button');
     t.className = 'tab';
-    t.innerHTML = '<span class="dot"></span>' + BAND_NAMES[i] + ' <span class="hz" style="color:var(--dim2);font-size:10px"></span>';
+    t.innerHTML = '<span class="no">' + (i+1) + '</span><span>' + BAND_NAMES[i] +
+                  '</span><span class="hz"></span>';
     t.addEventListener('click', () => selectBand(i));
     tabs.appendChild(t);
 
@@ -939,6 +1015,7 @@ function buildMatrix(){
     amt.classList.add('sml');
     row.appendChild(amt);
   }
+  paintMatrixHues();
   const meters = document.getElementById('modMeters');
   for (const [id, nm] of [['lfo1','LFO 1'],['lfo2','LFO 2'],['env','ENV']]){
     const r = document.createElement('div');
@@ -949,15 +1026,26 @@ function buildMatrix(){
   }
 }
 
+function paintMatrixHues(){
+  for (let k = 0; k < MSLOTS; k++){
+    const el = els[`mA${k}`];
+    if (!el) continue;
+    const hue = SRC_HUE[state[`mS${k}`]];
+    el.style.setProperty('--fill', hue ? `var(--${hue})` : 'var(--track)');
+  }
+}
+
 /* ------------------------------------------------------------------- meters */
 function buildMeters(){
   const host = document.getElementById('meters');
   for (const [id, cap] of [['in','IN'],['out','OUT']]){
     const m = document.createElement('div');
     m.className = 'meter';
-    m.innerHTML = `<div class="bar"><div class="fill"></div></div><div class="cap">${cap}</div><div class="num">-∞</div>`;
+    m.innerHTML = `<div class="bar"><div class="fill"></div><div class="over"></div></div>` +
+                  `<div class="cap">${cap}</div><div class="num">-∞</div>`;
     host.appendChild(m);
-    els['__m' + id] = { fill:m.querySelector('.fill'), num:m.querySelector('.num') };
+    els['__m' + id] = { fill:m.querySelector('.fill'), over:m.querySelector('.over'),
+                        num:m.querySelector('.num') };
   }
 }
 
@@ -979,32 +1067,36 @@ function fit(cv){
   return { w:W, h:H, dpr };
 }
 function drawSpec(){
-  const { w, h } = fit(cvSpec);
-  gSpec.clearRect(0,0,w,h);
-  gSpec.fillStyle = '#0d0f15'; gSpec.fillRect(0,0,w,h);
-  gSpec.strokeStyle = '#1e2331'; gSpec.lineWidth = 1;
-  for (const f of [100,1000,10000]){
-    const x = w * Math.log(f/20)/Math.log(1000);
-    gSpec.beginPath(); gSpec.moveTo(x,0); gSpec.lineTo(x,h); gSpec.stroke();
+  const { w, h, dpr } = fit(cvSpec);
+  gSpec.clearRect(0, 0, w, h);
+  gSpec.fillStyle = C.face; gSpec.fillRect(0, 0, w, h);
+  gSpec.strokeStyle = C.track; gSpec.lineWidth = 1*dpr;
+  for (const f of [100, 1000, 10000]){
+    const x = Math.round(w * Math.log(f/20)/Math.log(1000)) + 0.5;
+    gSpec.beginPath(); gSpec.moveTo(x, 0); gSpec.lineTo(x, h); gSpec.stroke();
   }
   if (!engine) return;
   if (freqBuf.length !== engine.outAn.frequencyBinCount) freqBuf = new Uint8Array(engine.outAn.frequencyBinCount);
   engine.outAn.getByteFrequencyData(freqBuf);
-  const sr = ctx.sampleRate, bins = freqBuf.length;
-  const grad = gSpec.createLinearGradient(0,h,0,0);
-  grad.addColorStop(0,'rgba(255,106,43,.12)');
-  grad.addColorStop(.6,'rgba(255,45,120,.35)');
-  grad.addColorStop(1,'rgba(124,92,255,.75)');
-  gSpec.beginPath(); gSpec.moveTo(0,h);
-  for (let x = 0; x < w; x++){
-    const f = 20*Math.pow(1000, x/w);
-    const b = clamp(Math.round(f/(sr/2)*bins), 0, bins-1);
-    const y = h - (freqBuf[b]/255)*h*0.98;
-    gSpec.lineTo(x,y);
+  const sr = ctx.sampleRate, bins = freqBuf.length, nyq = sr/2;
+  // the three regions follow the live crossovers: this is the one place colour
+  // marks which band a thing belongs to rather than what it does
+  const nb = +state.bands;
+  const hueAt = f => nb === 1 ? C.ink
+                   : nb === 2 ? (f < state.x1 ? C.red : C.blue)
+                   : f < state.x1 ? C.red : f < state.x2 ? C.yellow : C.blue;
+  const N = 36, slot = w/N, gap = Math.max(1, 2*dpr);
+  for (let i = 0; i < N; i++){
+    const f0 = 20*Math.pow(1000, i/N), f1 = 20*Math.pow(1000, (i+1)/N);
+    const b0 = clamp(Math.floor(f0/nyq*bins), 0, bins-1);
+    const b1 = clamp(Math.ceil(f1/nyq*bins), b0+1, bins);
+    let v = 0;
+    for (let b = b0; b < b1; b++) if (freqBuf[b] > v) v = freqBuf[b];
+    const bh = (v/255)*h*0.97;
+    if (bh < 1) continue;
+    gSpec.fillStyle = hueAt(Math.sqrt(f0*f1));
+    gSpec.fillRect(i*slot + gap/2, h - bh, slot - gap, bh);
   }
-  gSpec.lineTo(w,h); gSpec.closePath();
-  gSpec.fillStyle = grad; gSpec.fill();
-  gSpec.strokeStyle = 'rgba(255,170,120,.8)'; gSpec.lineWidth = 1.2; gSpec.stroke();
 }
 function bandTransfer(x){
   const i = curBand;
@@ -1020,27 +1112,28 @@ function bandTransfer(x){
 }
 function drawCurve(){
   const { w, h, dpr } = fit(cvCurve);
-  gCurve.clearRect(0,0,w,h);
-  gCurve.fillStyle = '#0d0f15'; gCurve.fillRect(0,0,w,h);
-  gCurve.strokeStyle = '#1e2331';
-  gCurve.beginPath(); gCurve.moveTo(0,h/2); gCurve.lineTo(w,h/2);
-  gCurve.moveTo(w/2,0); gCurve.lineTo(w/2,h); gCurve.stroke();
-  gCurve.strokeStyle = '#252b3b'; gCurve.setLineDash([3,4]);
-  gCurve.beginPath(); gCurve.moveTo(0,h); gCurve.lineTo(w,0); gCurve.stroke();
+  gCurve.clearRect(0, 0, w, h);
+  gCurve.fillStyle = C.face; gCurve.fillRect(0, 0, w, h);
+  gCurve.strokeStyle = C.track; gCurve.lineWidth = 1.5*dpr;
+  gCurve.beginPath();
+  gCurve.moveTo(0, h/2); gCurve.lineTo(w, h/2);
+  gCurve.moveTo(w/2, 0); gCurve.lineTo(w/2, h);
+  gCurve.stroke();
+  gCurve.setLineDash([4*dpr, 5*dpr]);
+  gCurve.beginPath(); gCurve.moveTo(0, h); gCurve.lineTo(w, 0); gCurve.stroke();
   gCurve.setLineDash([]);
-  const grad = gCurve.createLinearGradient(0,0,w,0);
-  grad.addColorStop(0,'#7c5cff'); grad.addColorStop(.5,'#ff2d78'); grad.addColorStop(1,'#ff6a2b');
-  gCurve.strokeStyle = grad; gCurve.lineWidth = 2;
+  gCurve.strokeStyle = C.yellow; gCurve.lineWidth = 4*dpr;
+  gCurve.lineJoin = 'round';
   gCurve.beginPath();
   for (let px = 0; px <= w; px++){
     const x = (px/w)*2 - 1;
     const y = h/2 - clamp(bandTransfer(x), -1.4, 1.4)*(h/2)*0.92;
-    px ? gCurve.lineTo(px,y) : gCurve.moveTo(px,y);
+    px ? gCurve.lineTo(px, y) : gCurve.moveTo(px, y);
   }
   gCurve.stroke();
-  gCurve.fillStyle = '#5f647a';
-  gCurve.font = Math.round(11*dpr)+'px ui-monospace,Menlo,monospace';
-  gCurve.fillText(BAND_NAMES[curBand] + ' transfer curve', 9*dpr, 18*dpr);
+  gCurve.fillStyle = C.dim;
+  gCurve.font = Math.round(10*dpr)+'px ui-monospace,Menlo,monospace';
+  gCurve.fillText(BAND_NAMES[curBand].toLowerCase() + ' band · transfer curve', 9*dpr, 18*dpr);
 }
 function peakDb(an, buf){
   an.getFloatTimeDomainData(buf);
@@ -1053,7 +1146,9 @@ function drawMeters(){
   const vals = { in:peakDb(engine.inAn, tdIn), out:peakDb(engine.outAn, tdOut) };
   for (const k of ['in','out']){
     const m = els['__m'+k], d = vals[k];
-    m.fill.style.height = clamp((d+60)/60*100, 0, 100).toFixed(1)+'%';
+    const h = clamp((d+60)/60*100, 0, 100);
+    m.fill.style.height = h.toFixed(1)+'%';
+    m.over.style.height = Math.max(0, h - 90).toFixed(1)+'%';   // last 6 dB in red
     m.num.textContent = d === -Infinity ? '-∞' : d.toFixed(1);
   }
   for (const s of ['lfo1','lfo2','env']){
@@ -1307,6 +1402,7 @@ window.addEventListener('keydown', ev => {
   else if (ev.key >= '1' && ev.key <= '3') selectBand(+ev.key - 1);
 });
 
+readTokens();
 refreshBandTabs();
 requestAnimationFrame(frame);
 

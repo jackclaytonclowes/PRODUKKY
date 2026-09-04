@@ -44,6 +44,31 @@ Every mode has unity slope at the origin and saturates towards ±1, so changing 
 given drive setting does not jump in level. **Harmonics** is the one deliberate exception
 — Chebyshev mixing gives it a shallow origin slope, and that is the character.
 
+## The look
+
+Béton clair: Corbusier primaries on concrete, ported from the design canvas in `design/`.
+Flat colour, zero radius, no shadows and no gradients except the dials' own arcs — the
+concrete greys are the only texture, and the section bars are numbered 01–08.
+
+Colour is functional, never decorative, and each panel sets a `--fill` its dials inherit:
+
+| | |
+|---|---|
+| **yellow** `#e9b21f` | adds harmonics — drive, stage B, auto gain |
+| **red** `#c0392f` | destroys or limits — crush, feedback, safety clip, envelope, mute |
+| **blue** `#1e4b8f` | shapes — filter, tone, LFOs, modulation, solo |
+| **ink** `#17150f` | structure — type, rules, section bars, unity controls |
+
+So a knob's arc says what kind of thing it does, and a few knobs override their panel: tone
+is blue inside the yellow drive panel, mix and level are ink. The one place colour marks
+identity instead of function is the spectrum, whose three regions follow the live crossover
+points. Modulation shows as a blue tick outside the dial marking where the knob is set,
+while the arc follows the value modulation has pushed it to — it reads in a screenshot and
+in grayscale, which a glow does not.
+
+Type is a heavy grotesque from the system stack (`Arial Black` / Helvetica / Arial), not the
+Archivo the mockups use: the page makes no requests, and that promise outranks the typeface.
+
 ## Modulation
 
 Two LFOs (sine, triangle, saw up/down, square, random sample-and-hold, random smooth) and
