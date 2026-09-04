@@ -1,0 +1,654 @@
+#include "PluginEditor.h"
+#include "Presets.h"
+
+using namespace bauhaus;
+using namespace fracture;
+
+// value readouts formatted the way the browser version formats them
+static juce::String fmtValue(const ParamInfo& p, double v){
+    if (p.id == "l1Rate" || p.id == "l2Rate") return juce::String(v, v < 1.0 ? 2 : 1);
+    if (p.id == "redux") return "/" + juce::String(juce::roundToInt(v));
+    if (p.id == "bits")  return juce::String(v, 1);
+    if (p.id == "fltQ")  return juce::String(v, 2);
+    if (p.unit == "x")   return juce::String(20.0 * std::log10(std::max(1.0e-6, v)), 1);  // drive in dB
+    if (p.unit == "Hz")  return v >= 1000.0 ? juce::String(v / 1000.0, v < 10000.0 ? 2 : 1) + "k"
+                                            : juce::String(juce::roundToInt(v));
+    if (p.unit == "dB")  return (v > 0 ? "+" : "") + juce::String(v, 1);
+    if (p.unit == "%")   return juce::String(juce::roundToInt(v)) + "%";
+    if (p.unit == "ms")  return v < 10.0 ? juce::String(v, 1) + "m" : juce::String(juce::roundToInt(v)) + "m";
+    return juce::String(v, 2);
+}
+
+// ---------------------------------------------------------------- primitives
+KnobBox::KnobBox(FractureProcessor& p, const juce::String& paramId, juce::Colour hue,
+                 bool small, bool withCaption)
+    : proc(p), info(Params::get()[Params::get().index(paramId.toStdString())]),
+      isSmall(small), showCaption(withCaption)
+{
+    caption = info.id == "redux" ? "Downs." : juce::String(info.name);
+    for (const char* prefix : { "B1 ", "B2 ", "B3 ", "LFO 1 ", "LFO 2 ", "Env " })
+        if (caption.startsWith(prefix)) caption = caption.substring(static_cast<int>(std::strlen(prefix)));
+    slider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
+    slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    slider.setRotaryParameters(juce::degreesToRadians(-145.0f), juce::degreesToRadians(135.0f), true);
+    slider.setColour(juce::Slider::rotarySliderFillColourId, hue);
+    slider.setDoubleClickReturnValue(true, info.def);
+    slider.onValueChange = [this]{ valueText = fmtValue(info, slider.getValue()); repaint(); };
+    addAndMakeVisible(slider);
+    attach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        proc.apvts, info.id, slider);
+    valueText = fmtValue(info, slider.getValue());
+    setSize(small ? wSmall : w, small ? hSmall : h);
+}
+void KnobBox::resized(){
+    const int d = isSmall ? 34 : 46;
+    slider.setBounds((getWidth() - d) / 2, 0, d, d);
+}
+void KnobBox::paint(juce::Graphics& g){
+    const int d = isSmall ? 34 : 46;
+    if (showCaption)
+        drawTracked(g, caption, { 0, d + 3, getWidth(), 11 }, isSmall ? 8.5f : 9.0f, 1.1f,
+                    juce::Justification::horizontallyCentred, ink);
+    g.setColour(dim);
+    g.setFont(mono(isSmall ? 10.0f : 11.0f));
+    g.drawText(valueText, 0, d + (showCaption ? 15 : 2), getWidth(), 12,
+               juce::Justification::centred);
+}
+void KnobBox::refresh(){
+    const float base = proc.apvts.getRawParameterValue(info.id)->load();
+    const juce::String t = fmtValue(info, base);
+    if (t != valueText){ valueText = t; repaint(); }
+}
+
+ChoiceBox::ChoiceBox(FractureProcessor& p, const juce::String& paramId,
+                     const juce::String& label, int width)
+    : caption(label)
+{
+    box.setJustificationType(juce::Justification::centredLeft);
+    if (auto* param = dynamic_cast<juce::AudioParameterChoice*>(p.apvts.getParameter(paramId)))
+        box.addItemList(param->choices, 1);
+    addAndMakeVisible(box);
+    attach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        p.apvts, paramId, box);
+    setSize(width, 44);
+}
+void ChoiceBox::resized(){ box.setBounds(0, 14, getWidth(), 30); }
+void ChoiceBox::paint(juce::Graphics& g){
+    drawTracked(g, caption, { 0, 0, getWidth(), 11 }, 9.0f, 1.6f, juce::Justification::left, dim);
+}
+
+ToggleBox::ToggleBox(FractureProcessor& p, const juce::String& paramId,
+                     juce::Colour onColour, int width){
+    const auto& info = Params::get()[Params::get().index(paramId.toStdString())];
+    juce::String label = juce::String(info.name);
+    if (label.startsWith("B")) label = label.substring(3);
+    button.setButtonText(label);
+    button.setClickingTogglesState(true);
+    button.setColour(juce::TextButton::buttonOnColourId, onColour);
+    addAndMakeVisible(button);
+    attach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        p.apvts, paramId, button);
+    setSize(width, 44);
+}
+void ToggleBox::resized(){ button.setBounds(0, 14, getWidth(), 30); }
+
+Panel::Panel(int number, juce::String t, juce::Colour h) : no(number), title(std::move(t)), hue(h) {}
+juce::Rectangle<int> Panel::content() const {
+    return getLocalBounds().withTrimmedTop(barHeight).reduced(14, 0).withTrimmedBottom(12);
+}
+void Panel::paint(juce::Graphics& g){
+    g.setColour(panelBg);
+    g.fillRect(getLocalBounds());
+    g.setColour(hue);
+    g.fillRect(getLocalBounds().removeFromTop(barHeight));
+    const bool light = hue.getPerceivedBrightness() < 0.6f;
+    auto bar = getLocalBounds().removeFromTop(barHeight).reduced(10, 0);
+    drawTracked(g, juce::String(no).paddedLeft('0', 2), bar.removeFromLeft(20), 9.0f, 1.0f,
+                juce::Justification::left, (light ? face : ink).withAlpha(0.65f));
+    drawTracked(g, title, bar, 10.0f, 2.2f, juce::Justification::left, light ? face : ink);
+    g.setColour(ink);
+    g.drawRect(getLocalBounds(), 2);
+}
+
+// ------------------------------------------------------------------- visuals
+Scope::Scope(FractureProcessor& p) : proc(p){ startTimerHz(30); }
+void Scope::timerCallback(){
+    if (proc.copyScopeSpectrum(spectrum)){
+        const double sr = proc.getSampleRate() > 0 ? proc.getSampleRate() : 48000.0;
+        const int bins = static_cast<int>(spectrum.size());
+        for (size_t i = 0; i < bars.size(); ++i){
+            const double f0 = 20.0 * std::pow(1000.0, static_cast<double>(i) / bars.size());
+            const double f1 = 20.0 * std::pow(1000.0, static_cast<double>(i + 1) / bars.size());
+            const int b0 = juce::jlimit(0, bins - 1, static_cast<int>(f0 / (sr * 0.5) * bins));
+            const int b1 = juce::jlimit(b0 + 1, bins, static_cast<int>(f1 / (sr * 0.5) * bins) + 1);
+            float m = 0.0f;
+            for (int b = b0; b < b1; ++b) m = std::max(m, spectrum[static_cast<size_t>(b)]);
+            const float db = juce::Decibels::gainToDecibels(m / 64.0f, -70.0f);
+            const float norm = juce::jlimit(0.0f, 1.0f, (db + 70.0f) / 70.0f);
+            bars[i] = std::max(norm, bars[i] * 0.82f);           // slow fall
+        }
+    } else {
+        for (auto& b : bars) b *= 0.9f;
+    }
+    repaint();
+}
+void Scope::paint(juce::Graphics& g){
+    auto area = getLocalBounds();
+    auto specArea = area.removeFromTop(area.getHeight() * 55 / 100);
+    area.removeFromTop(12);
+    auto curveArea = area;
+
+    // ---- spectrum: flat bars, three regions following the live crossovers
+    g.setColour(face); g.fillRect(specArea);
+    g.setColour(ink);  g.drawRect(specArea, 2);
+    const int nb = static_cast<int>(proc.apvts.getRawParameterValue("bands")->load()) + 1;
+    const float x1 = proc.apvts.getRawParameterValue("x1")->load();
+    const float x2 = proc.apvts.getRawParameterValue("x2")->load();
+    const auto inner = specArea.reduced(3);
+    for (const float f : { 100.0f, 1000.0f, 10000.0f }){
+        const int x = inner.getX() + juce::roundToInt(inner.getWidth() * std::log(f / 20.0f) / std::log(1000.0f));
+        g.setColour(track);
+        g.drawVerticalLine(x, static_cast<float>(specArea.getY() + 2), static_cast<float>(specArea.getBottom() - 2));
+    }
+    const float slot = inner.getWidth() / static_cast<float>(bars.size());
+    for (size_t i = 0; i < bars.size(); ++i){
+        const double f0 = 20.0 * std::pow(1000.0, static_cast<double>(i) / bars.size());
+        const double f1 = 20.0 * std::pow(1000.0, static_cast<double>(i + 1) / bars.size());
+        const double fc = std::sqrt(f0 * f1);
+        const juce::Colour c = nb == 1 ? ink
+                             : nb == 2 ? (fc < x1 ? red : blue)
+                             : (fc < x1 ? red : (fc < x2 ? yellow : blue));
+        const float bh = bars[i] * inner.getHeight();
+        if (bh < 1.0f) continue;
+        g.setColour(c);
+        g.fillRect(inner.getX() + slot * i + 1.0f, inner.getBottom() - bh, slot - 2.0f, bh);
+    }
+
+    // ---- transfer curve of the selected band, computed from the parameters
+    g.setColour(face); g.fillRect(curveArea);
+    g.setColour(ink);  g.drawRect(curveArea, 2);
+    const auto ci = curveArea.reduced(3).toFloat();
+    g.setColour(track);
+    g.drawHorizontalLine(juce::roundToInt(ci.getCentreY()), ci.getX(), ci.getRight());
+    g.drawVerticalLine(juce::roundToInt(ci.getCentreX()), ci.getY(), ci.getBottom());
+    {
+        juce::Path diag;
+        diag.startNewSubPath(ci.getX(), ci.getBottom());
+        diag.lineTo(ci.getRight(), ci.getY());
+        const float dashes[] = { 4.0f, 5.0f };
+        juce::Path dashed;
+        juce::PathStrokeType(1.0f).createDashedStroke(dashed, diag, dashes, 2);
+        g.fillPath(dashed);
+    }
+    const int band = juce::jlimit(0, 2, static_cast<int>(getProperties().getWithDefault("band", 0)));
+    const juce::String s = juce::String(band);
+    const float dA = proc.apvts.getRawParameterValue("d" + s + "a")->load();
+    const float dB = proc.apvts.getRawParameterValue("d" + s + "b")->load();
+    const int   mA = static_cast<int>(proc.apvts.getRawParameterValue("m" + s + "a")->load());
+    const int   mB = static_cast<int>(proc.apvts.getRawParameterValue("m" + s + "b")->load());
+    const bool  sB = proc.apvts.getRawParameterValue("sb" + s)->load() > 0.5f;
+    const bool  ag = proc.apvts.getRawParameterValue("autoGain")->load() > 0.5f;
+    const float mix = proc.apvts.getRawParameterValue("mx" + s)->load() / 100.0f;
+    const float lvl = juce::Decibels::decibelsToGain(proc.apvts.getRawParameterValue("lv" + s)->load());
+    juce::Path curve;
+    for (int px = 0; px <= juce::roundToInt(ci.getWidth()); ++px){
+        const double x = (px / static_cast<double>(ci.getWidth())) * 2.0 - 1.0;
+        double v = clampT(shape(mA, x * dA), -1.0, 1.0) * (ag ? autoGainFor(dA) : 1.0);
+        if (sB) v = clampT(shape(mB, v * dB), -1.0, 1.0) * (ag ? autoGainFor(dB) : 1.0);
+        v = (x + (v - x) * mix) * lvl;
+        const float y = ci.getCentreY() - static_cast<float>(juce::jlimit(-1.4, 1.4, v)) * ci.getHeight() * 0.46f;
+        if (px == 0) curve.startNewSubPath(ci.getX(), y);
+        else curve.lineTo(ci.getX() + px, y);
+    }
+    g.setColour(yellow);
+    g.strokePath(curve, juce::PathStrokeType(4.0f, juce::PathStrokeType::curved));
+    g.setColour(dim);
+    g.setFont(mono(10.0f));
+    static const char* names[] = { "low", "mid", "high" };
+    g.drawText(juce::String(names[band]) + " band · transfer curve",
+               curveArea.reduced(9, 6), juce::Justification::topLeft);
+}
+
+Meters::Meters(FractureProcessor& p) : proc(p){ startTimerHz(30); }
+void Meters::timerCallback(){
+    const auto fall = [](float cur, float target){ return target > cur ? target : cur - 1.5f; };
+    inDb  = fall(inDb,  juce::Decibels::gainToDecibels(proc.inPeak.load(), -60.0f));
+    outDb = fall(outDb, juce::Decibels::gainToDecibels(proc.outPeak.load(), -60.0f));
+    repaint();
+}
+void Meters::paint(juce::Graphics& g){
+    const char* caps[] = { "IN", "OUT" };
+    const float vals[] = { inDb, outDb };
+    auto area = getLocalBounds();
+    const int each = area.getWidth() / 2;
+    for (int i = 0; i < 2; ++i){
+        auto col = area.removeFromLeft(each).reduced(6, 0);
+        auto num = col.removeFromBottom(14);
+        auto cap = col.removeFromBottom(14);
+        auto bar = col.withSizeKeepingCentre(20, col.getHeight());
+        g.setColour(face); g.fillRect(bar);
+        const float norm = juce::jlimit(0.0f, 1.0f, (vals[i] + 60.0f) / 60.0f);
+        auto fill = bar.reduced(2).withTrimmedTop(juce::roundToInt((1.0f - norm) * (bar.getHeight() - 4)));
+        g.setColour(yellow); g.fillRect(fill);
+        if (norm > 0.9f){                                  // last 6 dB in red
+            auto over = fill.withTrimmedBottom(juce::roundToInt(fill.getHeight() * (0.9f / norm)));
+            g.setColour(red); g.fillRect(over);
+        }
+        g.setColour(ink); g.drawRect(bar, 2);
+        drawTracked(g, caps[i], cap, 9.0f, 1.8f, juce::Justification::horizontallyCentred, ink);
+        g.setColour(dim); g.setFont(mono(10.0f));
+        g.drawText(vals[i] <= -59.5f ? juce::String("-inf") : juce::String(vals[i], 1),
+                   num, juce::Justification::centred);
+    }
+}
+
+ModSources::ModSources(FractureProcessor& p) : proc(p){ startTimerHz(30); }
+void ModSources::paint(juce::Graphics& g){
+    const char* names[] = { "LFO 1", "LFO 2", "ENV" };
+    const float vals[] = { proc.lfo1.load(), proc.lfo2.load(), proc.envOut.load() };
+    const juce::Colour hues[] = { blue, blue, red };
+    auto area = getLocalBounds();
+    const int rowH = area.getHeight() / 3;
+    for (int i = 0; i < 3; ++i){
+        auto row = area.removeFromTop(rowH);
+        drawTracked(g, names[i], row.removeFromLeft(46), 9.0f, 1.8f, juce::Justification::left, ink);
+        auto bar = row.reduced(0, rowH / 2 - 5);
+        g.setColour(face); g.fillRect(bar);
+        g.setColour(ink); g.drawRect(bar, 2);
+        const float v = juce::jlimit(-1.0f, 1.0f, vals[i]);
+        const float centre = bar.getCentreX();
+        const float half = (bar.getWidth() - 4) * 0.5f;
+        g.setColour(hues[i]);
+        if (v >= 0) g.fillRect(centre, static_cast<float>(bar.getY() + 2), std::max(1.5f, v * half), static_cast<float>(bar.getHeight() - 4));
+        else        g.fillRect(centre + v * half, static_cast<float>(bar.getY() + 2), std::max(1.5f, -v * half), static_cast<float>(bar.getHeight() - 4));
+    }
+}
+
+// -------------------------------------------------------------------- editor
+static void layoutRow(juce::Rectangle<int> area, const std::vector<juce::Component*>& items, int gap = 12){
+    int x = area.getX();
+    for (auto* c : items){
+        if (c == nullptr) continue;
+        if (c->getWidth() == 2){                             // divider marker
+            c->setBounds(x, area.getY(), 2, area.getHeight() - 12);
+            x += 2 + gap;
+            continue;
+        }
+        c->setBounds(x, area.getY(), c->getWidth(), c->getHeight());
+        x += c->getWidth() + gap;
+    }
+}
+
+class Caption : public juce::Component {
+public:
+    Caption(juce::String t, juce::Colour accent) : text(std::move(t)), hue(accent){ setSize(200, 14); }
+    void paint(juce::Graphics& g) override {
+        auto area = getLocalBounds();
+        if (!hue.isTransparent()){
+            g.setColour(hue);
+            g.fillRect(area.removeFromLeft(4));
+            area.removeFromLeft(6);
+        }
+        drawTracked(g, text, area, 9.0f, 1.8f, juce::Justification::left, dim);
+    }
+private:
+    juce::String text;
+    juce::Colour hue;
+};
+
+class Divider : public juce::Component {
+public:
+    Divider(){ setSize(2, 60); }
+    void paint(juce::Graphics& g) override { g.setColour(ink); g.fillRect(getLocalBounds()); }
+};
+
+FractureEditor::FractureEditor(FractureProcessor& p)
+    : juce::AudioProcessorEditor(&p), proc(p)
+{
+    setLookAndFeel(&look);
+
+    // ---- header
+    for (const auto& preset : presets()) presetBox.addItem(preset.name, presetBox.getNumItems() + 1);
+    presetBox.setSelectedItemIndex(proc.getCurrentProgram(), juce::dontSendNotification);
+    presetBox.onChange = [this]{ proc.setCurrentProgram(presetBox.getSelectedItemIndex()); };
+    addAndMakeVisible(presetBox);
+
+    copyButton.onClick = [this]{
+        juce::SystemClipboard::copyTextToClipboard(proc.saveBrowserPatch());
+    };
+    pasteButton.onClick = [this]{
+        const auto text = juce::SystemClipboard::getTextFromClipboard();
+        if (!proc.loadBrowserPatch(text))
+            juce::NativeMessageBox::showAsync(
+                juce::MessageBoxOptions().withIconType(juce::MessageBoxIconType::WarningIcon)
+                    .withTitle("FRACTURE").withMessage("That clipboard text is not a FRACTURE patch."),
+                nullptr);
+    };
+    addAndMakeVisible(copyButton);
+    addAndMakeVisible(pasteButton);
+
+    // ---- panels
+    pIn     = make<Panel>(1, "Input & pre-filter", ink);
+    pSplit  = make<Panel>(2, "Split", ink);
+    pDrive  = make<Panel>(3, "Drive", yellow);
+    pCrush  = make<Panel>(4, "Crush & feedback", red);
+    pFilter = make<Panel>(5, "Filter", blue);
+    pOut    = make<Panel>(6, "Output", ink);
+    pMod    = make<Panel>(7, "Modulation", blue);
+    pScope  = make<Panel>(8, "Scope", ink);
+    panels = { pIn, pSplit, pDrive, pCrush, pFilter, pOut, pMod, pScope };
+
+    auto knob = [&](juce::Component* parent, const char* id, juce::Colour hue, bool small = false){
+        auto* k = new KnobBox(proc, id, hue, small);
+        owned.emplace_back(k);
+        parent->addAndMakeVisible(k);
+        knobs.push_back(k);
+        return static_cast<juce::Component*>(k);
+    };
+    auto choice = [&](juce::Component* parent, const char* id, const char* label, int width = 116){
+        auto* c = new ChoiceBox(proc, id, label, width);
+        owned.emplace_back(c);
+        parent->addAndMakeVisible(c);
+        return static_cast<juce::Component*>(c);
+    };
+    auto toggle = [&](juce::Component* parent, const char* id, juce::Colour hue, int width = 96){
+        auto* t = new ToggleBox(proc, id, hue, width);
+        owned.emplace_back(t);
+        parent->addAndMakeVisible(t);
+        return static_cast<juce::Component*>(t);
+    };
+    auto divider = [&](juce::Component* parent){
+        auto* d = new Divider();
+        owned.emplace_back(d);
+        parent->addAndMakeVisible(d);
+        return static_cast<juce::Component*>(d);
+    };
+
+    inRow    = { knob(pIn, "inGain", ink), knob(pIn, "preHP", ink), knob(pIn, "preLP", ink) };
+    splitRow = { choice(pSplit, "bands", "Bands", 108), knob(pSplit, "x1", ink), knob(pSplit, "x2", ink),
+                 divider(pSplit), choice(pSplit, "osFactor", "Oversampling", 108) };
+    crushRow = { knob(pCrush, "bits", red), knob(pCrush, "redux", red), knob(pCrush, "crMix", red),
+                 divider(pCrush),
+                 knob(pCrush, "fbAmt", red), knob(pCrush, "fbTime", red), knob(pCrush, "fbTone", red) };
+    filterRow = { choice(pFilter, "fltType", "Type", 116), knob(pFilter, "fltFreq", blue),
+                  knob(pFilter, "fltQ", blue) };
+    outRow   = { knob(pOut, "mix", ink), knob(pOut, "width", ink), knob(pOut, "outGain", ink) };
+    outRow.push_back(toggle(pOut, "autoGain", yellow, 92));
+    outRow.push_back(toggle(pOut, "safety", red, 92));
+
+    // ---- band tabs and panes
+    for (int b = 0; b < 3; ++b){
+        bandTab[b].setClickingTogglesState(false);
+        bandTab[b].setColour(juce::TextButton::buttonOnColourId, ink);
+        bandTab[b].onClick = [this, b]{ selectBand(b); };
+        pDrive->addAndMakeVisible(bandTab[b]);
+        auto* pane = new juce::Component();
+        owned.emplace_back(pane);
+        pDrive->addAndMakeVisible(pane);
+        bandPane[b] = pane;
+        buildBand(b);
+    }
+    updateTabs();
+    selectBand(0);
+
+    // ---- modulation
+    for (int i = 0; i < 2; ++i){
+        const juce::String n = juce::String(i + 1);
+        lfoRow[i] = { knob(pMod, ("l" + n + "Rate").toRawUTF8(), blue, true),
+                      choice(pMod, ("l" + n + "Shape").toRawUTF8(), "Shape", 120),
+                      knob(pMod, ("l" + n + "Depth").toRawUTF8(), blue, true) };
+    }
+    envRow = { knob(pMod, "envAtk", red, true), knob(pMod, "envRel", red, true),
+               knob(pMod, "envSens", red, true) };
+    lfoCaption[0] = new Caption("LFO 1", blue);
+    lfoCaption[1] = new Caption("LFO 2", blue);
+    envCaption = new Caption("Envelope follower", red);
+    matrixCaption = new Caption("Matrix", ink);
+    for (auto* c : { lfoCaption[0], lfoCaption[1], envCaption, matrixCaption }){
+        owned.emplace_back(c);
+        pMod->addAndMakeVisible(c);
+    }
+    modSources = make<ModSources>(proc);
+    pMod->addAndMakeVisible(modSources);
+    for (int k = 0; k < 6; ++k){
+        const juce::String s = juce::String(k);
+        auto* amt = new KnobBox(proc, "mA" + s, blue, true, false);
+        owned.emplace_back(amt);
+        pMod->addAndMakeVisible(amt);
+        knobs.push_back(amt);
+        matrixRow[k] = { choice(pMod, ("mS" + s).toRawUTF8(), k == 0 ? "Source" : "", 186),
+                         choice(pMod, ("mD" + s).toRawUTF8(), k == 0 ? "Target" : "", 206),
+                         amt };
+    }
+
+    // ---- scope
+    scope = make<Scope>(proc);
+    pScope->addAndMakeVisible(scope);
+    meters = make<Meters>(proc);
+    pScope->addAndMakeVisible(meters);
+
+    setResizable(true, true);
+    setResizeLimits(designW / 2, designH / 2, designW * 2, designH * 2);
+    getConstrainer()->setFixedAspectRatio(static_cast<double>(designW) / designH);
+    setSize(designW, designH);
+    startTimerHz(24);
+}
+
+FractureEditor::~FractureEditor(){ setLookAndFeel(nullptr); }
+
+void FractureEditor::buildBand(int band){
+    auto* pane = bandPane[band];
+    const juce::String s = juce::String(band);
+    auto knob = [&](const char* id, juce::Colour hue){
+        auto* k = new KnobBox(proc, id, hue, false);
+        owned.emplace_back(k);
+        pane->addAndMakeVisible(k);
+        knobs.push_back(k);
+        return static_cast<juce::Component*>(k);
+    };
+    auto choice = [&](const char* id, const char* label){
+        auto* c = new ChoiceBox(proc, id, label, 116);
+        owned.emplace_back(c);
+        pane->addAndMakeVisible(c);
+        return static_cast<juce::Component*>(c);
+    };
+    auto toggle = [&](const char* id, juce::Colour hue, int width){
+        auto* t = new ToggleBox(proc, id, hue, width);
+        owned.emplace_back(t);
+        pane->addAndMakeVisible(t);
+        return static_cast<juce::Component*>(t);
+    };
+    auto* div1 = new Divider(); owned.emplace_back(div1); pane->addAndMakeVisible(div1);
+    auto* div2 = new Divider(); owned.emplace_back(div2); pane->addAndMakeVisible(div2);
+
+    bandRow[band] = {
+        choice(("m" + s + "a").toRawUTF8(), "Mode A"),
+        knob(("d" + s + "a").toRawUTF8(), yellow),
+        toggle(("sb" + s).toRawUTF8(), yellow, 92),
+        choice(("m" + s + "b").toRawUTF8(), "Mode B"),
+        knob(("d" + s + "b").toRawUTF8(), yellow),
+        div1,
+        knob(("t" + s).toRawUTF8(), blue),
+        knob(("mx" + s).toRawUTF8(), ink),
+        knob(("lv" + s).toRawUTF8(), ink),
+        div2,
+        toggle(("mu" + s).toRawUTF8(), red, 84),
+        toggle(("so" + s).toRawUTF8(), blue, 84)
+    };
+}
+
+void FractureEditor::selectBand(int band){
+    currentBand = band;
+    for (int b = 0; b < 3; ++b){
+        bandTab[b].setToggleState(b == band, juce::dontSendNotification);
+        bandPane[b]->setVisible(b == band);
+    }
+    if (scope) scope->getProperties().set("band", band);
+    resized();
+}
+
+void FractureEditor::timerCallback(){
+    for (auto* k : knobs) k->refresh();
+    updateTabs();
+    if (presetBox.getSelectedItemIndex() != proc.getCurrentProgram())
+        presetBox.setSelectedItemIndex(proc.getCurrentProgram(), juce::dontSendNotification);
+}
+
+void FractureEditor::updateTabs(){
+    // the tabs carry the live crossover points, as in the browser version
+    const int nb = static_cast<int>(proc.apvts.getRawParameterValue("bands")->load()) + 1;
+    const float x1 = proc.apvts.getRawParameterValue("x1")->load();
+    const float x2 = proc.apvts.getRawParameterValue("x2")->load();
+    const auto hz = [](float f){
+        return f >= 1000.0f ? juce::String(f / 1000.0f, f < 10000.0f ? 2 : 1) + "k"
+                            : juce::String(juce::roundToInt(f));
+    };
+    static const char* names[] = { "Low", "Mid", "High" };
+    for (int b = 0; b < 3; ++b){
+        juce::String range;
+        if (nb == 1) range = "full";
+        else if (b == 0) range = "< " + hz(x1);
+        else if (b == 1) range = nb == 2 ? "> " + hz(x1) : hz(x1) + "-" + hz(x2);
+        else range = "> " + hz(x2);
+        const bool muted = proc.apvts.getRawParameterValue("mu" + juce::String(b))->load() > 0.5f;
+        bandTab[b].setButtonText(juce::String(b + 1) + "  " + names[b] + "  " + range + (muted ? "  mute" : ""));
+        bandTab[b].setEnabled(b < nb);
+    }
+}
+
+void FractureEditor::paint(juce::Graphics& g){
+    g.fillAll(ground);
+    auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
+
+    // ---- header: the three marks, the name, the colour ribbon
+    auto header = area.removeFromTop(46);
+    auto marks = header.removeFromLeft(104);
+    g.setColour(ink);    g.fillRect(marks.removeFromLeft(28).withSizeKeepingCentre(28, 28));
+    marks.removeFromLeft(8);
+    g.setColour(red);    g.fillEllipse(marks.removeFromLeft(28).withSizeKeepingCentre(28, 28).toFloat());
+    marks.removeFromLeft(8);
+    {
+        auto q = marks.removeFromLeft(28).withSizeKeepingCentre(28, 28).toFloat();
+        juce::Path corner;
+        corner.startNewSubPath(q.getX(), q.getBottom());
+        corner.lineTo(q.getX(), q.getY() + q.getHeight() * 0.5f);
+        corner.addArc(q.getX(), q.getY(), q.getWidth(), q.getHeight(),
+                      juce::MathConstants<float>::pi * 1.5f, juce::MathConstants<float>::twoPi, false);
+        corner.lineTo(q.getRight(), q.getBottom());
+        corner.closeSubPath();
+        g.setColour(blue);
+        g.fillPath(corner);
+    }
+    header.removeFromLeft(14);
+    g.setColour(ink);
+    g.setFont(grot(32.0f, true));
+    g.drawText("FRACTURE", header.removeFromTop(32), juce::Justification::topLeft);
+    drawTracked(g, "Multi-band multi-fx distortion", header, 9.0f, 2.6f,
+                juce::Justification::left, dim);
+
+    // ---- the colour ribbon under the header
+    area.removeFromTop(10);
+    auto ribbon = area.removeFromTop(8);
+    juce::ignoreUnused(ribbon);
+    g.setColour(ink);    g.fillRect(ribbon.removeFromRight(60));
+    g.setColour(blue);   g.fillRect(ribbon.removeFromRight(120));
+    g.setColour(red);    g.fillRect(ribbon.removeFromRight(180));
+    g.setColour(yellow); g.fillRect(ribbon);
+}
+
+void FractureEditor::resized(){
+    if (getWidth() <= 0 || getHeight() <= 0) return;
+    // one fixed design, scaled to whatever size the host gives us
+    const float scale = juce::jmin(getWidth() / static_cast<float>(designW),
+                                   getHeight() / static_cast<float>(designH));
+    setTransform(juce::AffineTransform::scale(scale));
+
+    auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
+    auto header = area.removeFromTop(46);
+    auto right = header.removeFromRight(520);
+    presetBox.setBounds(right.removeFromLeft(250).withSizeKeepingCentre(250, 30));
+    right.removeFromLeft(8);
+    copyButton.setBounds(right.removeFromLeft(120).withSizeKeepingCentre(120, 30));
+    right.removeFromLeft(8);
+    pasteButton.setBounds(right.removeFromLeft(120).withSizeKeepingCentre(120, 30));
+
+    area.removeFromTop(10);
+    area.removeFromTop(8);                                   // the ribbon, painted below
+    area.removeFromTop(12);
+    const int gap = 14;
+    const int col = (area.getWidth() - 11 * gap) / 12;
+    const auto cols = [&](int n){ return n * col + (n - 1) * gap; };
+
+    auto rowA = area.removeFromTop(132);
+    pIn->setBounds(rowA.removeFromLeft(cols(4)));
+    rowA.removeFromLeft(gap);
+    pSplit->setBounds(rowA.removeFromLeft(cols(8)));
+    layoutRow(pIn->content().withHeight(KnobBox::h), inRow);
+    layoutRow(pSplit->content().withHeight(KnobBox::h), splitRow);
+
+    area.removeFromTop(gap);
+    auto rowB = area.removeFromTop(190);
+    pDrive->setBounds(rowB);
+    {
+        auto inner = pDrive->content();
+        auto tabs = inner.removeFromTop(34);
+        for (int b = 0; b < 3; ++b){
+            bandTab[b].setBounds(tabs.removeFromLeft(210).withTrimmedBottom(4));
+            tabs.removeFromLeft(10);
+        }
+        inner.removeFromTop(12);
+        for (int b = 0; b < 3; ++b){
+            bandPane[b]->setBounds(inner);
+            layoutRow(bandPane[b]->getLocalBounds().withHeight(KnobBox::h), bandRow[b]);
+        }
+    }
+
+    area.removeFromTop(gap);
+    auto rowC = area.removeFromTop(172);
+    pCrush->setBounds(rowC.removeFromLeft(cols(5)));
+    rowC.removeFromLeft(gap);
+    pFilter->setBounds(rowC.removeFromLeft(cols(4)));
+    rowC.removeFromLeft(gap);
+    pOut->setBounds(rowC.removeFromLeft(cols(3)));
+    layoutRow(pCrush->content().withHeight(KnobBox::h), crushRow);
+    layoutRow(pFilter->content().withHeight(KnobBox::h), filterRow);
+    {
+        auto inner = pOut->content();
+        auto knobsRow = inner.removeFromTop(KnobBox::h);
+        layoutRow(knobsRow, { outRow[0], outRow[1], outRow[2] });
+        inner.removeFromTop(6);
+        layoutRow(inner.withHeight(44), { outRow[3], outRow[4] }, 8);
+    }
+
+    area.removeFromTop(gap);
+    auto rowD = area;
+    pMod->setBounds(rowD.removeFromLeft(cols(7)));
+    rowD.removeFromLeft(gap);
+    pScope->setBounds(rowD.removeFromLeft(cols(5)));
+    {
+        auto inner = pMod->content();
+        auto lfos = inner.removeFromTop(14 + KnobBox::hSmall + 6);
+        auto left = lfos.removeFromLeft(lfos.getWidth() / 2 - 8);
+        auto right = lfos.withTrimmedLeft(16);
+        lfoCaption[0]->setBounds(left.removeFromTop(14));
+        lfoCaption[1]->setBounds(right.removeFromTop(14));
+        layoutRow(left.withHeight(KnobBox::hSmall), lfoRow[0], 10);
+        layoutRow(right.withHeight(KnobBox::hSmall), lfoRow[1], 10);
+        envCaption->setBounds(inner.removeFromTop(14));
+        layoutRow(inner.removeFromTop(KnobBox::hSmall), envRow, 10);
+        inner.removeFromTop(8);
+        modSources->setBounds(inner.removeFromTop(40));
+        inner.removeFromTop(8);
+        matrixCaption->setBounds(inner.removeFromTop(14));
+        inner.removeFromTop(2);
+        for (int k = 0; k < 6; ++k)
+            layoutRow(inner.removeFromTop(46), matrixRow[k], 10);
+    }
+    {
+        auto inner = pScope->content();
+        auto metersArea = inner.removeFromRight(96);
+        meters->setBounds(metersArea);
+        inner.removeFromRight(10);
+        scope->setBounds(inner);
+    }
+}

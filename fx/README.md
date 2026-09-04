@@ -113,6 +113,14 @@ also checks every preset only references real parameters with in-range values, a
 screenshot to `tests/screenshots/fx-fracture.png`, because layout regressions do not fail
 assertions.
 
+## The plugin
+
+`../plugin` is a native port of this file: same signal path, same shapers, same parameter
+ids, same presets, built as a VST3 / AU with JUCE. The DSP there has no dependency on JUCE
+and is checked against *this* file's arithmetic — `npm run test:core` compares all fourteen
+shapers against 9,114 points generated from `fracture.html` itself, so the two cannot drift
+apart. `plugin/README.md` lists what the port deliberately changed and why.
+
 ## Not related to the bundle builder
 
 This folder is a separate tool that happens to live in the same repository. It shares no

@@ -1,0 +1,177 @@
+[
+ {
+  "name": "Init",
+  "v": {}
+ },
+ {
+  "name": "Thermal-ish — three bands, gentle",
+  "v": {
+   "bands": "3",
+   "x1": 180,
+   "x2": 2600,
+   "d0a": 6,
+   "m0a": "tube",
+   "d1a": 5,
+   "m1a": "tape",
+   "d2a": 3,
+   "m2a": "soft",
+   "t0": 2,
+   "t2": -3,
+   "mx0": 70,
+   "mx1": 85,
+   "mx2": 55,
+   "lv2": -2,
+   "mix": 100,
+   "autoGain": true
+  }
+ },
+ {
+  "name": "Rift-ish — serial fold into filter",
+  "v": {
+   "bands": "1",
+   "d0a": 9,
+   "m0a": "fold",
+   "sb0": true,
+   "d0b": 5,
+   "m0b": "wrap",
+   "t0": -2,
+   "mx0": 100,
+   "fltType": "lp",
+   "fltFreq": 3000,
+   "fltQ": 4,
+   "mS0": "lfo1",
+   "mD0": "fltFreq",
+   "mA0": 45,
+   "l1Rate": 0.35,
+   "mix": 85,
+   "outGain": -3
+  }
+ },
+ {
+  "name": "Speaker in a bin",
+  "v": {
+   "bands": "2",
+   "x1": 400,
+   "d0a": 14,
+   "m0a": "diode",
+   "d1a": 20,
+   "m1a": "gap",
+   "preHP": 180,
+   "preLP": 4200,
+   "t1": -6,
+   "mx0": 100,
+   "mx1": 100,
+   "lv1": -4,
+   "fltType": "bp",
+   "fltFreq": 1400,
+   "fltQ": 2.2,
+   "outGain": -4
+  }
+ },
+ {
+  "name": "Bit rot",
+  "v": {
+   "bands": "1",
+   "d0a": 3,
+   "m0a": "soft",
+   "bits": 4.5,
+   "redux": 6,
+   "crMix": 85,
+   "fltType": "lp",
+   "fltFreq": 6000,
+   "mS0": "env",
+   "mD0": "redux",
+   "mA0": 55,
+   "mix": 100,
+   "outGain": -3
+  }
+ },
+ {
+  "name": "Screaming lead",
+  "v": {
+   "bands": "1",
+   "d0a": 22,
+   "m0a": "tube",
+   "sb0": true,
+   "d0b": 8,
+   "m0b": "sine",
+   "preHP": 120,
+   "t0": 3,
+   "fltType": "peak",
+   "fltFreq": 2400,
+   "fltQ": 3,
+   "fbAmt": 22,
+   "fbTime": 9,
+   "fbTone": 5200,
+   "outGain": -6
+  }
+ },
+ {
+  "name": "Sub warmer, top untouched",
+  "v": {
+   "bands": "3",
+   "x1": 120,
+   "x2": 1800,
+   "d0a": 12,
+   "m0a": "warm",
+   "mx0": 60,
+   "d1a": 2,
+   "mx1": 20,
+   "d2a": 1,
+   "mx2": 0,
+   "t0": 4,
+   "outGain": -1
+  }
+ },
+ {
+  "name": "Motion — LFO across the mids",
+  "v": {
+   "bands": "3",
+   "x1": 240,
+   "x2": 3200,
+   "d1a": 16,
+   "m1a": "harm",
+   "mx1": 90,
+   "d0a": 4,
+   "d2a": 6,
+   "m2a": "tape",
+   "mS0": "lfo1",
+   "mD0": "d1a",
+   "mA0": 60,
+   "l1Rate": 0.22,
+   "mS1": "lfo2",
+   "mD1": "mx1",
+   "mA1": -30,
+   "l2Rate": 5.5,
+   "mS2": "env",
+   "mD2": "t1",
+   "mA2": 35,
+   "mix": 95,
+   "outGain": -2
+  }
+ },
+ {
+  "name": "Total collapse",
+  "v": {
+   "bands": "2",
+   "x1": 600,
+   "d0a": 30,
+   "m0a": "wrap",
+   "d1a": 26,
+   "m1a": "rect",
+   "sb0": true,
+   "d0b": 12,
+   "m0b": "bits",
+   "bits": 3,
+   "redux": 12,
+   "crMix": 100,
+   "fbAmt": 55,
+   "fbTime": 22,
+   "fltType": "lp",
+   "fltFreq": 5200,
+   "fltQ": 1.4,
+   "width": 140,
+   "outGain": -9
+  }
+ }
+]
