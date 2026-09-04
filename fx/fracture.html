@@ -1,0 +1,1328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FRACTURE — multi-FX distortion</title>
+<style>
+:root{
+  --bg:#0b0c10; --panel:#15171f; --panel2:#1b1e28; --line:#272b38;
+  --txt:#e7e9f0; --dim:#8b90a3; --dim2:#5f647a;
+  --a1:#ff6a2b; --a2:#ff2d78; --a3:#7c5cff; --ok:#3ddc97; --warn:#ffcc55;
+  --track:#242835;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:
+    radial-gradient(1200px 700px at 12% -10%, #2a1409 0%, #0b0c10 60%),
+    radial-gradient(900px 600px at 95% 110%, #1a0f2e 0%, #0b0c10 55%),
+    var(--bg);
+  color:var(--txt);
+  font:13px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.app{max-width:1240px;margin:0 auto;padding:14px 14px 40px}
+
+/* ---------- header ---------- */
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.brand{display:flex;align-items:baseline;gap:10px}
+.mark{width:26px;height:26px;border-radius:7px;align-self:center;
+  background:conic-gradient(from 200deg,var(--a1),var(--a2),var(--a3),var(--a1));
+  box-shadow:0 0 18px rgba(255,90,40,.45), inset 0 0 0 1px rgba(255,255,255,.15)}
+h1{font-size:19px;letter-spacing:.22em;margin:0;font-weight:700}
+.sub{color:var(--dim);letter-spacing:.16em;text-transform:uppercase;font-size:10px}
+.hdr-ctl{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ---------- generic controls ---------- */
+button,select{
+  font:inherit;color:var(--txt);background:var(--panel2);
+  border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer
+}
+button:hover,select:hover{border-color:#3a4055}
+button:active{transform:translateY(1px)}
+button.tgl.on{background:linear-gradient(180deg,var(--a1),#d8471c);border-color:#ff8a55;color:#1b0d05;font-weight:600}
+button.sm{padding:4px 8px;font-size:11px}
+button:disabled{opacity:.4;cursor:not-allowed}
+select{padding:5px 8px}
+
+/* ---------- panels ---------- */
+.grid{display:grid;gap:12px;grid-template-columns:repeat(12,1fr)}
+.panel{background:linear-gradient(180deg,var(--panel),#12141b);
+  border:1px solid var(--line);border-radius:12px;padding:12px;
+  box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.03)}
+.panel > h2{
+  margin:0 0 10px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);
+  display:flex;align-items:center;gap:8px}
+.panel > h2:after{content:"";flex:1;height:1px;background:var(--line)}
+.col-3{grid-column:span 3} .col-4{grid-column:span 4} .col-5{grid-column:span 5}
+.col-6{grid-column:span 6} .col-7{grid-column:span 7} .col-8{grid-column:span 8}
+.col-9{grid-column:span 9} .col-12{grid-column:span 12}
+@media (max-width:900px){ .grid > *{grid-column:span 12 !important} }
+
+/* ---------- knobs ---------- */
+.row{display:flex;flex-wrap:wrap;gap:10px 6px;align-items:flex-start}
+.knob{width:64px;display:flex;flex-direction:column;align-items:center;gap:3px;
+  user-select:none;-webkit-user-select:none;touch-action:none}
+.dial{position:relative;width:46px;height:46px;border-radius:50%;cursor:ns-resize;
+  background:
+    conic-gradient(from 215deg,
+      var(--track) 0 calc(var(--s,0) * 280deg),
+      var(--fill,var(--a1)) calc(var(--s,0) * 280deg) calc(var(--e,0) * 280deg),
+      var(--track) calc(var(--e,0) * 280deg) 280deg,
+      #0000 280deg);
+  filter:drop-shadow(0 0 6px rgba(255,106,43,.16))}
+.dial:after{content:"";position:absolute;inset:6px;border-radius:50%;
+  background:radial-gradient(120% 120% at 30% 20%,#2c3140,#15171f 70%);
+  border:1px solid #333949}
+.dial .ind{position:absolute;left:50%;top:50%;width:2px;height:17px;margin-left:-1px;
+  background:linear-gradient(180deg,#fff,var(--a1));border-radius:2px;z-index:2;
+  transform-origin:50% 100%;
+  transform:translateY(-100%) rotate(calc(-145deg + var(--f,0) * 280deg))}
+.knob.mod .dial{filter:drop-shadow(0 0 8px rgba(124,92,255,.5))}
+.klab{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);
+  text-align:center;min-height:11px;line-height:1.15}
+.kval{font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--txt)}
+.knob.sml{width:52px}
+.knob.sml .dial{width:34px;height:34px}
+.knob.sml .dial .ind{height:12px}
+.knob.dis{opacity:.35;pointer-events:none}
+
+/* ---------- field (select / toggle) ---------- */
+.field{display:flex;flex-direction:column;gap:3px;min-width:104px}
+.field label{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
+.tab{padding:5px 11px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);
+  font-size:11px;letter-spacing:.1em;cursor:pointer;position:relative}
+.tab.on{background:linear-gradient(180deg,#2a2030,#221a28);border-color:var(--a2);color:#fff}
+.tab .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--dim2);margin-right:6px}
+.tab.on .dot{background:var(--a2);box-shadow:0 0 8px var(--a2)}
+.tab.muted .dot{background:#4b3038}
+.bandpane{display:none} .bandpane.on{display:block}
+
+/* ---------- visuals ---------- */
+canvas{display:block;width:100%;border-radius:9px;background:#0d0f15;border:1px solid var(--line)}
+.viz{display:grid;gap:12px;grid-template-columns:1fr 104px}
+@media (max-width:700px){ .viz{grid-template-columns:1fr} }
+.meters{display:flex;gap:8px;align-items:stretch;height:100%}
+.meter{flex:1;display:flex;flex-direction:column;gap:4px;align-items:center}
+.meter .bar{position:relative;flex:1;width:13px;min-height:70px;border-radius:7px;background:#0d0f15;
+  border:1px solid var(--line);overflow:hidden}
+.meter .fill{position:absolute;left:0;right:0;bottom:0;height:0%;
+  background:linear-gradient(0deg,var(--ok),var(--warn) 72%,#ff3b30 92%)}
+.meter .cap{font-size:9px;letter-spacing:.1em;color:var(--dim)}
+.meter .num{font:10px/1 ui-monospace,Menlo,monospace;color:var(--dim)}
+
+/* ---------- mod matrix ---------- */
+.mx{display:grid;grid-template-columns:1fr 1fr 58px;gap:8px;align-items:end;margin-bottom:2px}
+.mx.nolab label,.mx.nolab .klab{display:none}
+.grp-row{border-left:2px solid var(--line);padding-left:9px;margin-bottom:9px}
+.sub-h{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim2);margin:0 0 5px}
+.mx select{min-width:0;width:100%;font-size:11px;padding:4px 6px}
+.srcbar{height:5px;border-radius:3px;background:#0d0f15;border:1px solid var(--line);
+  overflow:hidden;position:relative;margin-top:4px}
+.srcbar i{position:absolute;top:0;bottom:0;left:50%;width:2px;background:var(--a3)}
+.modrow{display:flex;gap:10px;align-items:center;margin-bottom:6px}
+.modrow .nm{font-size:10px;letter-spacing:.12em;color:var(--dim);width:44px}
+.modrow .srcbar{flex:1;margin:0}
+
+/* ---------- source strip ---------- */
+.src{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.src .grp{display:flex;gap:6px;align-items:center}
+input[type=file]{display:none}
+.filelab{padding:6px 10px;border:1px dashed var(--line);border-radius:8px;color:var(--dim);cursor:pointer}
+.filelab:hover{border-color:var(--a1);color:var(--txt)}
+.note{color:var(--dim);font-size:11px}
+.warnline{color:var(--warn);font-size:11px}
+footer{margin-top:14px;color:var(--dim2);font-size:11px;line-height:1.6}
+kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;
+  padding:0 4px;font:11px/1.5 ui-monospace,Menlo,monospace}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><span class="mark"></span><h1>FRACTURE</h1><span class="sub">multi-band multi-fx distortion</span></div>
+    <div class="hdr-ctl">
+      <select id="presetSel" title="Presets"></select>
+      <button class="sm" id="btnRandom" title="Randomise the drive section">Randomise</button>
+      <button class="sm" id="btnCopy" title="Copy the full patch to the clipboard as JSON">Copy patch</button>
+      <button class="sm" id="btnPaste" title="Paste a patch JSON back in">Paste patch</button>
+      <button class="sm tgl" id="btnBypass" title="True bypass (B)">Bypass</button>
+    </div>
+  </header>
+
+  <div class="panel src">
+    <div class="grp">
+      <button id="btnPlay">▶ Play</button>
+      <label class="filelab" for="fAudio">Load audio file…</label>
+      <input type="file" id="fAudio" accept="audio/*">
+    </div>
+    <div class="grp">
+      <div class="field"><label for="srcSel">Source</label>
+        <select id="srcSel">
+          <option value="file">Loaded file</option>
+          <option value="noise">Pink noise</option>
+          <option value="tone">Tone 110 Hz</option>
+          <option value="pluck">Pluck loop</option>
+          <option value="mic">Microphone / line in</option>
+        </select></div>
+      <div class="field"><label for="loopChk">Loop</label>
+        <button class="sm tgl on" id="loopChk">Loop</button></div>
+    </div>
+    <div class="note" id="srcNote">No file loaded — pink noise, tone and pluck loop are generated locally.</div>
+  </div>
+
+  <main class="grid">
+    <div class="panel col-4"><h2>Input &amp; pre-filter</h2><div class="row" id="secIn"></div></div>
+    <div class="panel col-8"><h2>Split</h2><div class="row" id="secSplit"></div></div>
+
+    <div class="panel col-12">
+      <h2>Drive</h2>
+      <div class="tabs" id="bandTabs"></div>
+      <div id="bandPanes"></div>
+    </div>
+
+    <div class="panel col-5"><h2>Crush &amp; feedback</h2><div class="row" id="secCrush"></div>
+      <div class="warnline hidden" id="crushWarn"></div></div>
+    <div class="panel col-4"><h2>Filter</h2><div class="row" id="secFilter"></div></div>
+    <div class="panel col-3"><h2>Output</h2><div class="row" id="secOut"></div></div>
+
+    <div class="panel col-7"><h2>Modulation</h2>
+      <div id="secMod"></div>
+      <div style="height:8px"></div>
+      <div id="modMeters"></div>
+      <div style="height:6px"></div>
+      <div id="matrix"></div>
+    </div>
+
+    <div class="panel col-5"><h2>Scope</h2>
+      <div class="viz">
+        <div>
+          <canvas id="cvSpec" height="190"></canvas>
+          <div style="height:8px"></div>
+          <canvas id="cvCurve" height="170"></canvas>
+        </div>
+        <div class="meters" id="meters"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div><kbd>drag</kbd> a knob to change it · <kbd>shift</kbd>+drag for fine · <kbd>double-click</kbd> to reset · <kbd>space</kbd> play/stop · <kbd>b</kbd> bypass</div>
+    <div>Everything runs in this page with the Web Audio API. No network, no plugins, no upload — the file you load never leaves the machine.</div>
+  </footer>
+</div>
+
+<script>
+/* =====================================================================
+   FRACTURE — a multi-band, multi-stage distortion unit in one HTML file.
+
+   Signal flow
+   -----------
+     in ─ inGain ─┬─ dry ───────────────────────────────────────────────┐
+                  └─ preHP ─ preLP ─ crossover split (1-3 bands)        │
+                        band n:  in ─┬─ dry ─────────────────┐          │
+                                     └─ stage A ─ tone ─ stage B ─ wet ─┤
+                        ... summed ─ postIn ─┬─ crush ─ filter ─ wet ────┤
+                                             └─ feedback (delay/tone/sat)┘
+                  mix bus ─ width ─ outGain ─ safety clip ─ out
+
+   Two things are worth knowing before editing the DSP:
+
+   1. Drive is a gain into a FIXED waveshaper curve, never a rebuilt curve.
+      WaveShaperNode clamps its input to [-1,1], so a curve is built over the
+      domain [-D_MAX, +D_MAX] and the pre-gain is set to drive/D_MAX. Feeding
+      a signal s at that gain evaluates f(s * drive) exactly, which means
+      drive is an ordinary AudioParam: it can be automated and modulated
+      without ever swapping a curve (swapping curves at control rate clicks).
+   2. Every shaper has unity slope at the origin and saturates towards ±1, so
+      a mode change at a given drive does not jump in level. The "Harmonics"
+      mode is the one deliberate exception - Chebyshev mixing gives it a
+      shallow origin slope, which is the character.
+   ===================================================================== */
+(() => {
+'use strict';
+
+const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
+const dB = d => Math.pow(10, d/20);
+const lerp = (a,b,t) => a + (b-a)*t;
+
+/* ------------------------------------------------------------------ shapers */
+const D_MAX = 40;          // curve domain: drive can reach +32 dB
+const CURVE_N = 32769;     // ~820 curve points across ±1 at unity drive
+
+const MODES = [
+  { id:'soft', name:'Soft',      fn: x => Math.tanh(x) },
+  { id:'tube', name:'Tube',      fn: x => {                      // asymmetric tanh
+      const a = Math.exp(x*0.8), b = Math.exp(-x*1.2);
+      return (a-b)/(a+b);
+    } },
+  { id:'warm', name:'Warm',      fn: x => Math.sign(x)*(1-Math.exp(-Math.abs(x))) },
+  { id:'diode',name:'Diode',     fn: x => x > 0 ? 1-Math.exp(-x) : -0.55*(1-Math.exp(x/0.55)) },
+  { id:'hard', name:'Hard',      fn: x => clamp(x,-1,1) },
+  { id:'tape', name:'Tape',      fn: x => { const t = Math.tanh(x); return t - 0.12*t*t*t; } },
+  { id:'fold', name:'Fold',      fn: x => { const y = ((x+1)%4+4)%4; return y < 2 ? y-1 : 3-y; } },
+  { id:'sine', name:'Sine',      fn: x => Math.sin(x) },
+  { id:'warp', name:'Warp',      fn: x => Math.sin(x + 0.35*Math.sin(2*x)) },
+  { id:'wrap', name:'Wrap',      fn: x => ((x+1)%2+2)%2 - 1 },   // discontinuous, brutal
+  { id:'gap',  name:'Gap',       fn: x => {                      // crossover / dead-zone grit
+      const dz = 0.12, a = Math.abs(x);
+      return a < dz ? 0 : Math.tanh(Math.sign(x)*(a-dz)*1.25);
+    } },
+  { id:'rect', name:'Rectify',   fn: x => { const t = Math.tanh(x); return 0.5*t + 0.5*Math.abs(t); } },
+  { id:'bits', name:'Quantize',  fn: x => { const t = clamp(x,-1,1), s = 7; return Math.round(t*s)/s; } },
+  { id:'harm', name:'Harmonics', fn: x => {                      // Chebyshev 1/3/5
+      const t = clamp(x,-1,1), t3 = 4*t*t*t - 3*t, t5 = 16*Math.pow(t,5) - 20*t*t*t + 5*t;
+      return 0.5*t + 0.35*t3 + 0.15*t5;
+    } }
+];
+const MODE_BY_ID = Object.fromEntries(MODES.map(m => [m.id, m]));
+
+const curveCache = new Map();
+function curveFor(id){
+  let c = curveCache.get(id);
+  if (c) return c;
+  const fn = MODE_BY_ID[id].fn;
+  c = new Float32Array(CURVE_N);
+  for (let i = 0; i < CURVE_N; i++){
+    const x = (i/(CURVE_N-1))*2 - 1;
+    c[i] = clamp(fn(x*D_MAX), -1, 1);
+  }
+  curveCache.set(id, c);
+  return c;
+}
+// Gentle limiter, used for the safety clip and inside the feedback loop.
+// `peak` matters: a 4x-oversampled waveshaper overshoots by ~10% on a hard
+// ceiling because of the resampling filters' ringing, so the curve tops out
+// below full scale and the overshoot still lands under 0 dBFS.
+function softCurve(k, peak = 1){
+  const n = 4097, c = new Float32Array(n);
+  for (let i = 0; i < n; i++){
+    const x = (i/(n-1))*2 - 1;
+    c[i] = peak*Math.tanh(x*k)/Math.tanh(k);
+  }
+  return c;
+}
+
+/* --------------------------------------------------- bit crusher / decimator */
+const CRUSH_WORKLET = `
+class Crush extends AudioWorkletProcessor {
+  static get parameterDescriptors(){
+    return [
+      {name:'bits',   defaultValue:16, minValue:2, maxValue:16, automationRate:'k-rate'},
+      {name:'reduce', defaultValue:1,  minValue:1, maxValue:64, automationRate:'k-rate'},
+      {name:'mix',    defaultValue:0,  minValue:0, maxValue:1,  automationRate:'k-rate'}
+    ];
+  }
+  constructor(){ super(); this.hold = []; this.phase = []; }
+  process(inputs, outputs, p){
+    const inp = inputs[0], out = outputs[0];
+    if (!inp || !inp.length){ for (const ch of out) ch.fill(0); return true; }
+    const bits = p.bits[0], red = Math.max(1, Math.round(p.reduce[0])), mix = p.mix[0];
+    const steps = Math.pow(2, bits) / 2;
+    for (let c = 0; c < out.length; c++){
+      const src = inp[Math.min(c, inp.length-1)], dst = out[c];
+      if (this.hold[c] === undefined){ this.hold[c] = 0; this.phase[c] = 0; }
+      let h = this.hold[c], ph = this.phase[c];
+      for (let i = 0; i < dst.length; i++){
+        const x = src ? src[i] : 0;
+        if (ph <= 0){ h = Math.round(x*steps)/steps; ph = red; }
+        ph--;
+        dst[i] = x + (h - x)*mix;
+      }
+      this.hold[c] = h; this.phase[c] = ph;
+    }
+    return true;
+  }
+}
+registerProcessor('crush', Crush);
+`;
+
+/* ------------------------------------------------------------------- engine */
+function createEngine(ctx){
+  const g  = (v=1) => { const n = ctx.createGain(); n.gain.value = v; return n; };
+  const bq = (type, f, q=0.7071) => {
+    const n = ctx.createBiquadFilter();
+    n.type = type; n.frequency.value = f; n.Q.value = q; return n;
+  };
+  const ws = (curve, over='4x') => {
+    const n = ctx.createWaveShaper(); n.curve = curve; n.oversample = over; return n;
+  };
+
+  const e = { ctx, bands:[], worklet:null, crushAvailable:false, autoGain:true, solo:0 };
+
+  e.input   = g(1);
+  e.inGain  = g(1);
+  e.inAn    = ctx.createAnalyser(); e.inAn.fftSize = 2048; e.inAn.smoothingTimeConstant = 0.5;
+  e.dry     = g(0);
+  e.preHP   = bq('highpass', 20);
+  e.preLP   = bq('lowpass', 20000);
+
+  // Linkwitz-Riley 4th order crossovers: two cascaded Butterworth sections each,
+  // so the bands sum without a magnitude notch at the crossover point.
+  const pair = (type, f) => [bq(type, f), bq(type, f)];
+  e.lp1 = pair('lowpass', 220);   e.hp1 = pair('highpass', 220);
+  e.lp2 = pair('lowpass', 2200);  e.hp2 = pair('highpass', 2200);
+  const chain = arr => { for (let i = 0; i < arr.length-1; i++) arr[i].connect(arr[i+1]); return arr; };
+  chain(e.lp1); chain(e.hp1); chain(e.lp2); chain(e.hp2);
+
+  e.sum    = g(1);
+  e.postIn = g(1);
+
+  function makeBand(i){
+    const b = { i, level:0, mute:false, mix:1 };
+    b.in   = g(1);
+    b.dryG = g(0);
+    b.stage = ['a','b'].map(() => ({ pre:g(0.05), shp:ws(curveFor('soft')), post:g(1), dc:bq('highpass',18) }));
+    b.mode = ['soft','soft'];
+    b.tiltLo = bq('lowshelf', 320);   b.tiltLo.gain.value = 0;
+    b.tiltHi = bq('highshelf', 3200); b.tiltHi.gain.value = 0;
+    b.bOn  = g(0);           // stage B engaged
+    b.bOff = g(1);           // stage B bypassed
+    b.wet  = g(1);
+    b.out  = g(1);
+
+    const A = b.stage[0], B = b.stage[1];
+    b.in.connect(b.dryG); b.dryG.connect(b.out);
+    b.in.connect(A.pre); A.pre.connect(A.shp); A.shp.connect(A.post); A.post.connect(A.dc);
+    A.dc.connect(b.tiltLo); b.tiltLo.connect(b.tiltHi);
+    b.tiltHi.connect(b.bOff); b.bOff.connect(b.wet);
+    b.tiltHi.connect(b.bOn);
+    b.bOn.connect(B.pre); B.pre.connect(B.shp); B.shp.connect(B.post); B.post.connect(B.dc);
+    B.dc.connect(b.wet);
+    b.wet.connect(b.out); b.out.connect(e.sum);
+    return b;
+  }
+  e.bands = [makeBand(0), makeBand(1), makeBand(2)];
+
+  // feedback: delay -> damping -> saturator -> amount -> back in (the delay
+  // is what makes the cycle legal, and the saturator is what keeps it finite)
+  e.fbDelay = ctx.createDelay(0.5); e.fbDelay.delayTime.value = 0.06;
+  e.fbTone  = bq('lowpass', 4000);
+  e.fbHP    = bq('highpass', 40);
+  e.fbShape = ws(softCurve(1.6), '2x');
+  e.fbAmt   = g(0);
+  e.postIn.connect(e.fbDelay); e.fbDelay.connect(e.fbTone); e.fbTone.connect(e.fbHP);
+  e.fbHP.connect(e.fbShape); e.fbShape.connect(e.fbAmt); e.fbAmt.connect(e.postIn);
+
+  // crush slot: passthrough until (and unless) the worklet loads
+  e.crushIn  = g(1);
+  e.crushOut = g(1);
+  e.crushIn.connect(e.crushOut);
+
+  e.flt  = bq('lowpass', 18000, 0.7071);
+  e.flt2 = bq('lowpass', 18000, 0.7071);
+  e.fltType = 'off';
+  e.wet  = g(1);
+  e.mixBus = g(1);
+
+  // width: L/R -> M/S -> L/R, with a forced-stereo node so a mono source works
+  e.stereo = g(1);
+  e.stereo.channelCount = 2; e.stereo.channelCountMode = 'explicit';
+  e.stereo.channelInterpretation = 'speakers';
+  const split = ctx.createChannelSplitter(2), merge = ctx.createChannelMerger(2);
+  e.mid = g(0.5); e.side = g(0.5); const rInv = g(-1);
+  e.sideL = g(1); e.sideR = g(-1);
+  e.mixBus.connect(e.stereo); e.stereo.connect(split);
+  split.connect(e.mid, 0); split.connect(e.mid, 1);
+  split.connect(e.side, 0); split.connect(rInv, 1); rInv.connect(e.side);
+  e.side.connect(e.sideL); e.side.connect(e.sideR);
+  e.mid.connect(merge, 0, 0); e.sideL.connect(merge, 0, 0);
+  e.mid.connect(merge, 0, 1); e.sideR.connect(merge, 0, 1);
+
+  e.outGain = g(1);
+  // No oversampling on the safety clip, deliberately: an oversampled shaper
+  // overshoots its own ceiling by ~20% (measured), which defeats the point of
+  // a last-stage limiter. The per-band shapers, where the sound is actually
+  // made, do oversample at 4x. Ceiling is -0.9 dBFS.
+  e.safety  = ws(softCurve(1.4, 0.9), 'none');
+  e.safeOn  = g(1); e.safeOff = g(0);
+  e.outAn   = ctx.createAnalyser(); e.outAn.fftSize = 2048; e.outAn.smoothingTimeConstant = 0.55;
+  e.final   = g(1);
+  e.byp     = g(0);
+
+  merge.connect(e.outGain);
+  e.outGain.connect(e.safeOn); e.safeOn.connect(e.safety); e.safety.connect(e.final);
+  e.outGain.connect(e.safeOff); e.safeOff.connect(e.final);
+  e.input.connect(e.byp); e.byp.connect(e.final);
+  e.final.connect(e.outAn); e.outAn.connect(ctx.destination);
+
+  e.input.connect(e.inGain);
+  e.inGain.connect(e.inAn);
+  e.inGain.connect(e.dry); e.dry.connect(e.mixBus);
+  e.inGain.connect(e.preHP); e.preHP.connect(e.preLP);
+  e.sum.connect(e.postIn);
+  e.postIn.connect(e.crushIn);
+  e.crushOut.connect(e.flt); e.flt.connect(e.flt2); e.flt2.connect(e.wet);
+  e.wet.connect(e.mixBus);
+
+  /* ---- routing that changes with band count ---- */
+  e.bandCount = 3;
+  e.route = function(n){
+    e.bandCount = n;
+    try { e.preLP.disconnect(); } catch(_){}
+    try { e.lp1[1].disconnect(); } catch(_){}
+    try { e.hp1[1].disconnect(); } catch(_){}
+    try { e.lp2[1].disconnect(); } catch(_){}
+    try { e.hp2[1].disconnect(); } catch(_){}
+    if (n === 1){
+      e.preLP.connect(e.bands[0].in);
+    } else if (n === 2){
+      e.preLP.connect(e.lp1[0]); e.lp1[1].connect(e.bands[0].in);
+      e.preLP.connect(e.hp1[0]); e.hp1[1].connect(e.bands[1].in);
+    } else {
+      e.preLP.connect(e.lp1[0]); e.lp1[1].connect(e.bands[0].in);
+      e.preLP.connect(e.hp1[0]);
+      e.hp1[1].connect(e.lp2[0]); e.lp2[1].connect(e.bands[1].in);
+      e.hp1[1].connect(e.hp2[0]); e.hp2[1].connect(e.bands[2].in);
+    }
+    e.applyBandGains();
+  };
+
+  /* ---- helpers used by the parameter table ---- */
+  const T = 0.012;                                  // smoothing for control-rate writes
+  e.instant = false;                                // set while loading a patch
+  e.set = (param, v, t) => {
+    const now = t === undefined ? ctx.currentTime : t;
+    if (!Number.isFinite(v)) return;
+    if (e.instant){ param.cancelScheduledValues(now); param.setValueAtTime(v, now); }
+    else param.setTargetAtTime(v, now, T);
+  };
+  e.setDrive = (bi, si, drive) => {
+    const b = e.bands[bi], s = b.stage[si];
+    s.drive = drive;
+    e.set(s.pre.gain, drive/D_MAX);
+    e.set(s.post.gain, e.autoGain ? Math.pow(drive, -0.55) : 1);
+  };
+  e.setMode = (bi, si, id) => {
+    const b = e.bands[bi];
+    b.mode[si] = id;
+    b.stage[si].shp.curve = curveFor(id);
+  };
+  e.applyBandGains = () => {
+    for (let i = 0; i < 3; i++){
+      const b = e.bands[i];
+      const active = i < e.bandCount;
+      const audible = active && !b.mute && (e.solo === 0 || e.solo === i+1);
+      e.set(b.out.gain, audible ? dB(b.level) : 0);
+    }
+  };
+  e.setFilterType = id => {
+    e.fltType = id;
+    const map = { off:'allpass', lp:'lowpass', hp:'highpass', bp:'bandpass', notch:'notch', peak:'peaking' };
+    const t = map[id] || 'allpass';
+    e.flt.type = t; e.flt2.type = t;
+    if (id === 'off'){ e.flt.frequency.value = 20000; e.flt2.frequency.value = 20000; }
+  };
+  e.setAutoGain = on => {
+    e.autoGain = on;
+    for (let i = 0; i < 3; i++) for (let s = 0; s < 2; s++)
+      e.setDrive(i, s, e.bands[i].stage[s].drive || 1);
+  };
+
+  // The worklet module is loaded from a data: URL, not a blob: URL. Chrome
+  // refuses to load a worklet from a blob on a file:// page (opaque origin),
+  // and double-clicking the file is exactly how this gets used. A data: URL
+  // is not a network fetch, so the page still makes no requests. blob: is
+  // kept as a fallback for browsers that dislike data:.
+  e.initWorklet = async () => {
+    if (!ctx.audioWorklet) return false;
+    const urls = [
+      'data:application/javascript,' + encodeURIComponent(CRUSH_WORKLET),
+      () => URL.createObjectURL(new Blob([CRUSH_WORKLET], { type:'application/javascript' }))
+    ];
+    for (const u of urls){
+      let url = null;
+      try {
+        url = typeof u === 'function' ? u() : u;
+        await ctx.audioWorklet.addModule(url);
+        const node = new AudioWorkletNode(ctx, 'crush',
+          { numberOfInputs:1, numberOfOutputs:1, outputChannelCount:[2] });
+        e.crushIn.disconnect(e.crushOut);
+        e.crushIn.connect(node); node.connect(e.crushOut);
+        e.worklet = node;
+        e.crushAvailable = true;
+        return true;
+      } catch (err){
+        /* try the next form */
+      } finally {
+        if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+      }
+    }
+    e.crushAvailable = false;
+    return false;
+  };
+  e.wp = name => e.worklet ? e.worklet.parameters.get(name) : null;
+
+  e.route(3);
+  return e;
+}
+
+/* --------------------------------------------------------- parameter table */
+const P = {}, PLIST = [];
+function p(o){
+  o.type = o.type || 'knob';
+  o.taper = o.taper || 'lin';
+  PLIST.push(o); P[o.id] = o; return o;
+}
+const fmtHz  = v => v >= 1000 ? (v/1000).toFixed(v < 10000 ? 2 : 1)+'k' : Math.round(v)+'';
+const fmtDb  = v => (v > 0 ? '+' : '')+v.toFixed(1);
+const fmtPc  = v => Math.round(v)+'%';
+const fmtMs  = v => v < 10 ? v.toFixed(1)+'m' : Math.round(v)+'m';
+const fmtDrv = v => (20*Math.log10(v)).toFixed(1);
+
+const norm   = (d,v) => d.taper === 'log'
+  ? Math.log(clamp(v,d.min,d.max)/d.min)/Math.log(d.max/d.min)
+  : (clamp(v,d.min,d.max)-d.min)/(d.max-d.min);
+const denorm = (d,n) => d.taper === 'log'
+  ? d.min*Math.pow(d.max/d.min, clamp(n,0,1))
+  : d.min + (d.max-d.min)*clamp(n,0,1);
+
+/* input & pre-filter */
+p({ id:'inGain', label:'Input',  min:-24, max:24, def:0, fmt:fmtDb, mod:true,
+    apply:(e,v) => e.set(e.inGain.gain, dB(v)) });
+p({ id:'preHP',  label:'Pre HP', min:20, max:2000, def:20, taper:'log', fmt:fmtHz, mod:true,
+    apply:(e,v) => e.set(e.preHP.frequency, v) });
+p({ id:'preLP',  label:'Pre LP', min:500, max:20000, def:20000, taper:'log', fmt:fmtHz, mod:true,
+    apply:(e,v) => e.set(e.preLP.frequency, v) });
+
+/* split */
+p({ id:'bands', label:'Bands', type:'sel', def:'3',
+    opts:[['1','1 band'],['2','2 bands'],['3','3 bands']],
+    apply:(e,v) => { const n = +v; if (n !== e.bandCount) e.route(n); } });
+p({ id:'x1', label:'Split 1', min:60, max:1200, def:220, taper:'log', fmt:fmtHz, mod:true,
+    apply:(e,v) => { for (const f of [...e.lp1, ...e.hp1]) e.set(f.frequency, v); } });
+p({ id:'x2', label:'Split 2', min:600, max:9000, def:2200, taper:'log', fmt:fmtHz, mod:true,
+    apply:(e,v) => { for (const f of [...e.lp2, ...e.hp2]) e.set(f.frequency, v); } });
+
+/* drive, per band */
+const BAND_NAMES = ['Low','Mid','High'];
+for (let i = 0; i < 3; i++){
+  p({ id:`d${i}a`, label:'Drive A', min:1, max:D_MAX, def:4, taper:'log', fmt:fmtDrv, unit:'dB', mod:true,
+      band:i, apply:(e,v) => e.setDrive(i, 0, v) });
+  p({ id:`m${i}a`, label:'Mode A', type:'sel', def:'soft', band:i,
+      opts:MODES.map(m => [m.id, m.name]), apply:(e,v) => e.setMode(i, 0, v) });
+  p({ id:`sb${i}`, label:'Stage B', type:'tgl', def:false, band:i,
+      apply:(e,v) => { e.set(e.bands[i].bOn.gain, v?1:0); e.set(e.bands[i].bOff.gain, v?0:1); } });
+  p({ id:`d${i}b`, label:'Drive B', min:1, max:D_MAX, def:2.5, taper:'log', fmt:fmtDrv, unit:'dB', mod:true,
+      band:i, apply:(e,v) => e.setDrive(i, 1, v) });
+  p({ id:`m${i}b`, label:'Mode B', type:'sel', def:'hard', band:i,
+      opts:MODES.map(m => [m.id, m.name]), apply:(e,v) => e.setMode(i, 1, v) });
+  p({ id:`t${i}`, label:'Tone', min:-12, max:12, def:0, fmt:fmtDb, bip:true, mod:true, band:i,
+      apply:(e,v) => { e.set(e.bands[i].tiltLo.gain, -v); e.set(e.bands[i].tiltHi.gain, v); } });
+  p({ id:`mx${i}`, label:'Mix', min:0, max:100, def:100, fmt:fmtPc, mod:true, band:i,
+      apply:(e,v) => { const m = v/100; e.set(e.bands[i].wet.gain, m); e.set(e.bands[i].dryG.gain, 1-m); } });
+  p({ id:`lv${i}`, label:'Level', min:-24, max:12, def:0, fmt:fmtDb, mod:true, band:i,
+      apply:(e,v) => { e.bands[i].level = v; e.applyBandGains(); } });
+  p({ id:`mu${i}`, label:'Mute', type:'tgl', def:false, band:i,
+      apply:(e,v) => { e.bands[i].mute = v; e.applyBandGains(); } });
+  p({ id:`so${i}`, label:'Solo', type:'tgl', def:false, band:i,
+      apply:(e,v) => { if (v) e.solo = i+1; else if (e.solo === i+1) e.solo = 0; e.applyBandGains(); } });
+}
+
+/* crush & feedback */
+p({ id:'bits', label:'Bits', min:2, max:16, def:8, fmt:v => v.toFixed(1), mod:true, needsWorklet:true,
+    apply:(e,v) => { const w = e.wp('bits'); if (w) e.set(w, v); } });
+p({ id:'redux', label:'Downsample', min:1, max:32, def:1, taper:'log', fmt:v => '/'+Math.round(v), mod:true, needsWorklet:true,
+    apply:(e,v) => { const w = e.wp('reduce'); if (w) e.set(w, v); } });
+p({ id:'crMix', label:'Crush', min:0, max:100, def:0, fmt:fmtPc, mod:true, needsWorklet:true,
+    apply:(e,v) => { const w = e.wp('mix'); if (w) e.set(w, v/100); } });
+p({ id:'fbAmt', label:'Feedback', min:0, max:85, def:0, fmt:fmtPc, mod:true,
+    apply:(e,v) => e.set(e.fbAmt.gain, v/100) });
+p({ id:'fbTime', label:'FB time', min:1, max:250, def:55, taper:'log', fmt:fmtMs, mod:true,
+    apply:(e,v) => e.set(e.fbDelay.delayTime, v/1000) });
+p({ id:'fbTone', label:'FB tone', min:300, max:14000, def:3500, taper:'log', fmt:fmtHz, mod:true,
+    apply:(e,v) => e.set(e.fbTone.frequency, v) });
+
+/* post filter */
+p({ id:'fltType', label:'Type', type:'sel', def:'off',
+    opts:[['off','Off'],['lp','Low pass'],['hp','High pass'],['bp','Band pass'],['notch','Notch'],['peak','Peak']],
+    apply:(e,v) => e.setFilterType(v) });
+p({ id:'fltFreq', label:'Cutoff', min:30, max:18000, def:1200, taper:'log', fmt:fmtHz, mod:true,
+    apply:(e,v) => { if (e.fltType !== 'off'){ e.set(e.flt.frequency, v); e.set(e.flt2.frequency, v); } } });
+p({ id:'fltQ', label:'Reso', min:0.3, max:18, def:0.7, taper:'log', fmt:v => v.toFixed(2), mod:true,
+    apply:(e,v) => { e.set(e.flt.Q, v); e.set(e.flt2.Q, v); } });
+
+/* output */
+p({ id:'mix', label:'Dry/wet', min:0, max:100, def:100, fmt:fmtPc, mod:true,
+    apply:(e,v) => { const m = v/100; e.set(e.wet.gain, m); e.set(e.dry.gain, 1-m); } });
+p({ id:'width', label:'Width', min:0, max:200, def:100, fmt:fmtPc, mod:true,
+    apply:(e,v) => { const w = v/100; e.set(e.sideL.gain, w); e.set(e.sideR.gain, -w); } });
+p({ id:'outGain', label:'Output', min:-24, max:12, def:0, fmt:fmtDb, mod:true,
+    apply:(e,v) => e.set(e.outGain.gain, dB(v)) });
+p({ id:'autoGain', label:'Auto gain', type:'tgl', def:true, apply:(e,v) => e.setAutoGain(v) });
+p({ id:'safety', label:'Safety clip', type:'tgl', def:true,
+    apply:(e,v) => { e.set(e.safeOn.gain, v?1:0); e.set(e.safeOff.gain, v?0:1); } });
+
+/* modulation sources */
+const SHAPES = [['sin','Sine'],['tri','Triangle'],['saw','Saw up'],['ramp','Saw down'],
+                ['sqr','Square'],['sh','Random S&H'],['smooth','Random smooth']];
+for (const n of [1,2]){
+  p({ id:`l${n}Rate`, label:'Rate', min:0.02, max:20, def:n===1?0.5:3, taper:'log',
+      fmt:v => v < 1 ? v.toFixed(2) : v.toFixed(1), unit:'Hz', apply:()=>{} });
+  p({ id:`l${n}Shape`, label:'Shape', type:'sel', def:'sin', opts:SHAPES, apply:()=>{} });
+  p({ id:`l${n}Depth`, label:'Depth', min:0, max:100, def:100, fmt:fmtPc, apply:()=>{} });
+}
+p({ id:'envAtk',  label:'Attack', min:1, max:300, def:12, taper:'log', fmt:fmtMs, apply:()=>{} });
+p({ id:'envRel',  label:'Release', min:20, max:1200, def:220, taper:'log', fmt:fmtMs, apply:()=>{} });
+p({ id:'envSens', label:'Sens', min:0, max:100, def:60, fmt:fmtPc, apply:()=>{} });
+
+/* mod matrix */
+const MOD_SOURCES = [['','—'],['lfo1','LFO 1'],['lfo2','LFO 2'],['env','Envelope'],['env-','Envelope inv']];
+const MOD_DESTS = [['','—'], ...PLIST.filter(d => d.mod).map(d => {
+  const pre = d.band !== undefined ? `B${d.band+1} ` : '';
+  return [d.id, pre + d.label];
+})];
+const MSLOTS = 6;
+for (let k = 0; k < MSLOTS; k++){
+  p({ id:`mS${k}`, label:'Source', type:'sel', def:'', opts:MOD_SOURCES, apply:()=>{} });
+  p({ id:`mD${k}`, label:'Target', type:'sel', def:'', opts:MOD_DESTS, apply:()=>{} });
+  p({ id:`mA${k}`, label:'Amount', min:-100, max:100, def:0, fmt:fmtPc, bip:true, apply:()=>{} });
+}
+
+/* ------------------------------------------------------------------ presets */
+const PRESETS = [
+  { name:'Init', v:{} },
+  { name:'Thermal-ish — three bands, gentle',
+    v:{ bands:'3', x1:180, x2:2600, d0a:6, m0a:'tube', d1a:5, m1a:'tape', d2a:3, m2a:'soft',
+        t0:2, t2:-3, mx0:70, mx1:85, mx2:55, lv2:-2, mix:100, autoGain:true } },
+  { name:'Rift-ish — serial fold into filter',
+    v:{ bands:'1', d0a:9, m0a:'fold', sb0:true, d0b:5, m0b:'wrap', t0:-2, mx0:100,
+        fltType:'lp', fltFreq:3000, fltQ:4, mS0:'lfo1', mD0:'fltFreq', mA0:45, l1Rate:0.35,
+        mix:85, outGain:-3 } },
+  { name:'Speaker in a bin',
+    v:{ bands:'2', x1:400, d0a:14, m0a:'diode', d1a:20, m1a:'gap', preHP:180, preLP:4200,
+        t1:-6, mx0:100, mx1:100, lv1:-4, fltType:'bp', fltFreq:1400, fltQ:2.2, outGain:-4 } },
+  { name:'Bit rot',
+    v:{ bands:'1', d0a:3, m0a:'soft', bits:4.5, redux:6, crMix:85, fltType:'lp', fltFreq:6000,
+        mS0:'env', mD0:'redux', mA0:55, mix:100, outGain:-3 } },
+  { name:'Screaming lead',
+    v:{ bands:'1', d0a:22, m0a:'tube', sb0:true, d0b:8, m0b:'sine', preHP:120, t0:3,
+        fltType:'peak', fltFreq:2400, fltQ:3, fbAmt:22, fbTime:9, fbTone:5200, outGain:-6 } },
+  { name:'Sub warmer, top untouched',
+    v:{ bands:'3', x1:120, x2:1800, d0a:12, m0a:'warm', mx0:60, d1a:2, mx1:20, d2a:1, mx2:0,
+        t0:4, outGain:-1 } },
+  { name:'Motion — LFO across the mids',
+    v:{ bands:'3', x1:240, x2:3200, d1a:16, m1a:'harm', mx1:90, d0a:4, d2a:6, m2a:'tape',
+        mS0:'lfo1', mD0:'d1a', mA0:60, l1Rate:0.22, mS1:'lfo2', mD1:'mx1', mA1:-30, l2Rate:5.5,
+        mS2:'env', mD2:'t1', mA2:35, mix:95, outGain:-2 } },
+  { name:'Total collapse',
+    v:{ bands:'2', x1:600, d0a:30, m0a:'wrap', d1a:26, m1a:'rect', sb0:true, d0b:12, m0b:'bits',
+        bits:3, redux:12, crMix:100, fbAmt:55, fbTime:22, fltType:'lp', fltFreq:5200, fltQ:1.4,
+        width:140, outGain:-9 } }
+];
+
+/* -------------------------------------------------------------------- state */
+const state = {};
+for (const d of PLIST) state[d.id] = d.def;
+
+let ctx = null, engine = null, srcNode = null, micStream = null, fileBuf = null;
+let playing = false, bypassed = false, curBand = 0, loopOn = true;
+const els = {};                                  // param id -> control element
+
+function applyParam(id){ if (engine) P[id].apply(engine, state[id]); }
+function applyAll(instant){
+  if (!engine) return;
+  if (instant) engine.instant = true;
+  for (const d of PLIST) d.apply(engine, state[d.id]);
+  engine.instant = false;
+}
+
+/* --------------------------------------------------------------- modulation */
+const lfo = [{ ph:0, sh:0, last:0, next:0 }, { ph:0, sh:0, last:0, next:0 }];
+let envVal = 0;
+const mod = { lfo1:0, lfo2:0, env:0, 'env-':0 };
+const tdIn = new Float32Array(1024), tdOut = new Float32Array(1024);
+
+function lfoShape(shape, l){
+  const ph = l.ph;
+  switch (shape){
+    case 'tri':  return 4*Math.abs(ph-0.5) - 1;
+    case 'saw':  return ph*2 - 1;
+    case 'ramp': return 1 - ph*2;
+    case 'sqr':  return ph < 0.5 ? 1 : -1;
+    case 'sh':   return l.last;
+    case 'smooth': return lerp(l.last, l.next, ph);
+    default:     return Math.sin(ph*Math.PI*2);
+  }
+}
+function tickSources(dt){
+  for (let i = 0; i < 2; i++){
+    const l = lfo[i], rate = state[`l${i+1}Rate`], shape = state[`l${i+1}Shape`];
+    l.ph += dt*rate;
+    if (l.ph >= 1){
+      l.ph %= 1;
+      l.last = l.next || (Math.random()*2-1);
+      l.next = Math.random()*2-1;
+    }
+    mod[`lfo${i+1}`] = lfoShape(shape, l) * state[`l${i+1}Depth`]/100;
+  }
+  if (engine){
+    engine.inAn.getFloatTimeDomainData(tdIn);
+    let s = 0;
+    for (let i = 0; i < tdIn.length; i++) s += tdIn[i]*tdIn[i];
+    const rms = Math.sqrt(s/tdIn.length);
+    const target = clamp(rms*3.2, 0, 1);
+    const ka = 1 - Math.exp(-dt/Math.max(0.001, state.envAtk/1000));
+    const kr = 1 - Math.exp(-dt/Math.max(0.001, state.envRel/1000));
+    envVal += (target - envVal) * (target > envVal ? ka : kr);
+  }
+  mod.env  =  envVal * state.envSens/100;
+  mod['env-'] = -mod.env;
+}
+function modOffsets(){
+  const off = new Map();
+  for (let k = 0; k < MSLOTS; k++){
+    const s = state[`mS${k}`], d = state[`mD${k}`], a = state[`mA${k}`]/100;
+    if (!s || !d || !a) continue;
+    off.set(d, (off.get(d) || 0) + mod[s]*a);
+  }
+  return off;
+}
+
+/* --------------------------------------------------------------- UI: knobs */
+function paintKnob(d, el, value, modded){
+  const n = norm(d, value);
+  const dial = el.querySelector('.dial');
+  const c = d.bip ? 0.5 : 0;
+  dial.style.setProperty('--f', n.toFixed(4));
+  dial.style.setProperty('--s', Math.min(c, n).toFixed(4));
+  dial.style.setProperty('--e', Math.max(c, n).toFixed(4));
+  el.classList.toggle('mod', !!modded);
+  const fmt = d.fmt || (v => v.toFixed(2));
+  el.querySelector('.kval').textContent = fmt(value);
+}
+function knobEl(d){
+  const el = document.createElement('div');
+  el.className = 'knob' + (d.small ? ' sml' : '');
+  el.innerHTML = '<div class="dial"><div class="ind"></div></div>' +
+                 '<div class="klab"></div><div class="kval"></div>';
+  el.querySelector('.klab').textContent = d.label;
+  const dial = el.querySelector('.dial');
+  let dragging = false, startY = 0, startN = 0;
+  dial.addEventListener('pointerdown', ev => {
+    dragging = true; startY = ev.clientY; startN = norm(d, state[d.id]);
+    dial.setPointerCapture(ev.pointerId); ev.preventDefault();
+  });
+  dial.addEventListener('pointermove', ev => {
+    if (!dragging) return;
+    const span = ev.shiftKey ? 900 : 220;
+    setParam(d.id, denorm(d, startN + (startY - ev.clientY)/span));
+  });
+  dial.addEventListener('pointerup', () => { dragging = false; });
+  dial.addEventListener('pointercancel', () => { dragging = false; });
+  dial.addEventListener('dblclick', () => setParam(d.id, d.def));
+  dial.addEventListener('wheel', ev => {
+    ev.preventDefault();
+    const step = (ev.shiftKey ? 0.004 : 0.02) * (ev.deltaY < 0 ? 1 : -1);
+    setParam(d.id, denorm(d, norm(d, state[d.id]) + step));
+  }, { passive:false });
+  paintKnob(d, el, d.def, false);
+  return el;
+}
+function selEl(d){
+  const f = document.createElement('div'); f.className = 'field';
+  const lab = document.createElement('label'); lab.textContent = d.label;
+  const sel = document.createElement('select');
+  for (const [v, t] of d.opts){
+    const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
+  }
+  sel.value = d.def;
+  sel.addEventListener('change', () => setParam(d.id, sel.value));
+  f.append(lab, sel);
+  f.setValue = v => { sel.value = v; };
+  return f;
+}
+function tglEl(d){
+  const f = document.createElement('div'); f.className = 'field';
+  const lab = document.createElement('label'); lab.textContent = ' ';
+  const b = document.createElement('button');
+  b.className = 'tgl sm' + (d.def ? ' on' : '');
+  b.textContent = d.label;
+  b.addEventListener('click', () => setParam(d.id, !state[d.id]));
+  f.append(lab, b);
+  f.setValue = v => b.classList.toggle('on', !!v);
+  return f;
+}
+function ctlEl(d){
+  const el = d.type === 'sel' ? selEl(d) : d.type === 'tgl' ? tglEl(d) : knobEl(d);
+  els[d.id] = el;
+  if (d.needsWorklet) el.dataset.worklet = '1';
+  return el;
+}
+function mount(host, ids){
+  const h = typeof host === 'string' ? document.getElementById(host) : host;
+  for (const id of ids) h.appendChild(ctlEl(P[id]));
+  return h;
+}
+function group(hostId, title, ids){
+  const host = document.getElementById(hostId);
+  const wrap = document.createElement('div'); wrap.className = 'grp-row';
+  const head = document.createElement('div'); head.className = 'sub-h'; head.textContent = title;
+  const row  = document.createElement('div'); row.className = 'row';
+  wrap.append(head, row); host.appendChild(wrap);
+  mount(row, ids);
+}
+function paint(id){
+  const d = P[id], el = els[id];
+  if (!el) return;
+  if (d.type === 'knob') paintKnob(d, el, state[id], false);
+  else el.setValue(state[id]);
+}
+function setParam(id, v, silent){
+  const d = P[id];
+  if (d.type === 'knob') v = clamp(v, d.min, d.max);
+  state[id] = v;
+  if (d.type === 'tgl' && v && /^so\d$/.test(id)){          // solo is exclusive
+    for (let i = 0; i < 3; i++){
+      const other = `so${i}`;
+      if (other !== id && state[other]){ state[other] = false; paint(other); applyParam(other); }
+    }
+  }
+  paint(id);
+  applyParam(id);
+  if (d.type !== 'knob') applyAll();                        // structural: re-assert everything
+  if (!silent) refreshBandTabs();
+}
+
+/* ------------------------------------------------------------ band UI panes */
+function refreshBandTabs(){
+  const n = +state.bands;
+  document.querySelectorAll('#bandTabs .tab').forEach((t, i) => {
+    t.classList.toggle('hidden', i >= n);
+    t.classList.toggle('on', i === curBand);
+    t.classList.toggle('muted', state[`mu${i}`]);
+    const hz = i === 0 ? '< '+fmtHz(state.x1)
+             : i === 1 ? (n === 2 ? '> '+fmtHz(state.x1) : fmtHz(state.x1)+'–'+fmtHz(state.x2))
+             : '> '+fmtHz(state.x2);
+    t.querySelector('.hz').textContent = n === 1 ? 'full range' : hz;
+  });
+  if (curBand >= n) selectBand(0);
+  document.querySelectorAll('.bandpane').forEach((pn, i) => pn.classList.toggle('on', i === curBand));
+  els.x2 && els.x2.classList.toggle('dis', n < 3);
+  els.x1 && els.x1.classList.toggle('dis', n < 2);
+}
+function selectBand(i){ curBand = i; refreshBandTabs(); }
+
+function buildBands(){
+  const tabs = document.getElementById('bandTabs'), panes = document.getElementById('bandPanes');
+  for (let i = 0; i < 3; i++){
+    const t = document.createElement('button');
+    t.className = 'tab';
+    t.innerHTML = '<span class="dot"></span>' + BAND_NAMES[i] + ' <span class="hz" style="color:var(--dim2);font-size:10px"></span>';
+    t.addEventListener('click', () => selectBand(i));
+    tabs.appendChild(t);
+
+    const pane = document.createElement('div');
+    pane.className = 'bandpane' + (i === 0 ? ' on' : '');
+    const row = document.createElement('div');
+    row.className = 'row';
+    pane.appendChild(row);
+    panes.appendChild(pane);
+    mount(row, [`m${i}a`, `d${i}a`, `sb${i}`, `m${i}b`, `d${i}b`, `t${i}`, `mx${i}`, `lv${i}`, `mu${i}`, `so${i}`]);
+  }
+}
+
+/* ------------------------------------------------------------- mod matrix UI */
+function buildMatrix(){
+  const host = document.getElementById('matrix');
+  for (let k = 0; k < MSLOTS; k++){
+    const row = document.createElement('div');
+    row.className = 'mx' + (k ? ' nolab' : '');
+    host.appendChild(row);
+    mount(row, [`mS${k}`, `mD${k}`]);
+    const amt = ctlEl(Object.assign({}, P[`mA${k}`], { small:true }));
+    // keep the shared element registry pointing at the rendered knob
+    els[`mA${k}`] = amt;
+    amt.classList.add('sml');
+    row.appendChild(amt);
+  }
+  const meters = document.getElementById('modMeters');
+  for (const [id, nm] of [['lfo1','LFO 1'],['lfo2','LFO 2'],['env','ENV']]){
+    const r = document.createElement('div');
+    r.className = 'modrow';
+    r.innerHTML = `<div class="nm">${nm}</div><div class="srcbar"><i></i></div>`;
+    meters.appendChild(r);
+    els['__' + id] = r.querySelector('i');
+  }
+}
+
+/* ------------------------------------------------------------------- meters */
+function buildMeters(){
+  const host = document.getElementById('meters');
+  for (const [id, cap] of [['in','IN'],['out','OUT']]){
+    const m = document.createElement('div');
+    m.className = 'meter';
+    m.innerHTML = `<div class="bar"><div class="fill"></div></div><div class="cap">${cap}</div><div class="num">-∞</div>`;
+    host.appendChild(m);
+    els['__m' + id] = { fill:m.querySelector('.fill'), num:m.querySelector('.num') };
+  }
+}
+
+/* ------------------------------------------------------------------ visuals */
+const cvSpec = document.getElementById('cvSpec'), cvCurve = document.getElementById('cvCurve');
+const gSpec = cvSpec.getContext('2d'), gCurve = cvCurve.getContext('2d');
+let freqBuf = new Uint8Array(1024);
+
+function fit(cv){
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  // the CSS height is remembered on first sight: setting cv.height rewrites the
+  // attribute, so reading it back each frame would grow the canvas forever
+  if (!cv.dataset.h) cv.dataset.h = cv.getAttribute('height') || '150';
+  const cssH = +cv.dataset.h;
+  const W = Math.max(1, Math.round(cv.clientWidth*dpr)), H = Math.round(cssH*dpr);
+  if (cv.width !== W || cv.height !== H){
+    cv.width = W; cv.height = H; cv.style.height = cssH+'px';
+  }
+  return { w:W, h:H, dpr };
+}
+function drawSpec(){
+  const { w, h } = fit(cvSpec);
+  gSpec.clearRect(0,0,w,h);
+  gSpec.fillStyle = '#0d0f15'; gSpec.fillRect(0,0,w,h);
+  gSpec.strokeStyle = '#1e2331'; gSpec.lineWidth = 1;
+  for (const f of [100,1000,10000]){
+    const x = w * Math.log(f/20)/Math.log(1000);
+    gSpec.beginPath(); gSpec.moveTo(x,0); gSpec.lineTo(x,h); gSpec.stroke();
+  }
+  if (!engine) return;
+  if (freqBuf.length !== engine.outAn.frequencyBinCount) freqBuf = new Uint8Array(engine.outAn.frequencyBinCount);
+  engine.outAn.getByteFrequencyData(freqBuf);
+  const sr = ctx.sampleRate, bins = freqBuf.length;
+  const grad = gSpec.createLinearGradient(0,h,0,0);
+  grad.addColorStop(0,'rgba(255,106,43,.12)');
+  grad.addColorStop(.6,'rgba(255,45,120,.35)');
+  grad.addColorStop(1,'rgba(124,92,255,.75)');
+  gSpec.beginPath(); gSpec.moveTo(0,h);
+  for (let x = 0; x < w; x++){
+    const f = 20*Math.pow(1000, x/w);
+    const b = clamp(Math.round(f/(sr/2)*bins), 0, bins-1);
+    const y = h - (freqBuf[b]/255)*h*0.98;
+    gSpec.lineTo(x,y);
+  }
+  gSpec.lineTo(w,h); gSpec.closePath();
+  gSpec.fillStyle = grad; gSpec.fill();
+  gSpec.strokeStyle = 'rgba(255,170,120,.8)'; gSpec.lineWidth = 1.2; gSpec.stroke();
+}
+function bandTransfer(x){
+  const i = curBand;
+  const dA = state[`d${i}a`], fA = MODE_BY_ID[state[`m${i}a`]].fn;
+  const ag = state.autoGain;
+  let v = clamp(fA(x*dA), -1, 1) * (ag ? Math.pow(dA, -0.55) : 1);
+  if (state[`sb${i}`]){
+    const dBv = state[`d${i}b`], fB = MODE_BY_ID[state[`m${i}b`]].fn;
+    v = clamp(fB(v*dBv), -1, 1) * (ag ? Math.pow(dBv, -0.55) : 1);
+  }
+  const m = state[`mx${i}`]/100;
+  return lerp(x, v, m) * dB(state[`lv${i}`]);
+}
+function drawCurve(){
+  const { w, h, dpr } = fit(cvCurve);
+  gCurve.clearRect(0,0,w,h);
+  gCurve.fillStyle = '#0d0f15'; gCurve.fillRect(0,0,w,h);
+  gCurve.strokeStyle = '#1e2331';
+  gCurve.beginPath(); gCurve.moveTo(0,h/2); gCurve.lineTo(w,h/2);
+  gCurve.moveTo(w/2,0); gCurve.lineTo(w/2,h); gCurve.stroke();
+  gCurve.strokeStyle = '#252b3b'; gCurve.setLineDash([3,4]);
+  gCurve.beginPath(); gCurve.moveTo(0,h); gCurve.lineTo(w,0); gCurve.stroke();
+  gCurve.setLineDash([]);
+  const grad = gCurve.createLinearGradient(0,0,w,0);
+  grad.addColorStop(0,'#7c5cff'); grad.addColorStop(.5,'#ff2d78'); grad.addColorStop(1,'#ff6a2b');
+  gCurve.strokeStyle = grad; gCurve.lineWidth = 2;
+  gCurve.beginPath();
+  for (let px = 0; px <= w; px++){
+    const x = (px/w)*2 - 1;
+    const y = h/2 - clamp(bandTransfer(x), -1.4, 1.4)*(h/2)*0.92;
+    px ? gCurve.lineTo(px,y) : gCurve.moveTo(px,y);
+  }
+  gCurve.stroke();
+  gCurve.fillStyle = '#5f647a';
+  gCurve.font = Math.round(11*dpr)+'px ui-monospace,Menlo,monospace';
+  gCurve.fillText(BAND_NAMES[curBand] + ' transfer curve', 9*dpr, 18*dpr);
+}
+function peakDb(an, buf){
+  an.getFloatTimeDomainData(buf);
+  let pk = 0;
+  for (let i = 0; i < buf.length; i++){ const a = Math.abs(buf[i]); if (a > pk) pk = a; }
+  return pk > 0 ? 20*Math.log10(pk) : -Infinity;
+}
+function drawMeters(){
+  if (!engine) return;
+  const vals = { in:peakDb(engine.inAn, tdIn), out:peakDb(engine.outAn, tdOut) };
+  for (const k of ['in','out']){
+    const m = els['__m'+k], d = vals[k];
+    m.fill.style.height = clamp((d+60)/60*100, 0, 100).toFixed(1)+'%';
+    m.num.textContent = d === -Infinity ? '-∞' : d.toFixed(1);
+  }
+  for (const s of ['lfo1','lfo2','env']){
+    const bar = els['__'+s];
+    const v = clamp(mod[s], -1, 1);
+    const c = 50 + v*50;
+    bar.style.left = Math.min(50, c)+'%';
+    bar.style.width = Math.max(1.5, Math.abs(c-50))+'%';
+  }
+}
+
+/* --------------------------------------------------------------- render loop */
+let prevMod = new Set(), lastT = performance.now();
+function frame(){
+  const now = performance.now();
+  const dt = clamp((now-lastT)/1000, 0, 0.1);
+  lastT = now;
+  tickSources(dt);
+  const off = modOffsets();
+  for (const [id, o] of off){
+    const d = P[id];
+    if (!d) continue;
+    const v = denorm(d, norm(d, state[id]) + o);
+    if (engine) d.apply(engine, v);
+    if (els[id]) paintKnob(d, els[id], v, true);
+  }
+  for (const id of prevMod){
+    if (!off.has(id)){
+      if (engine) P[id].apply(engine, state[id]);
+      if (els[id]) paintKnob(P[id], els[id], state[id], false);
+    }
+  }
+  prevMod = new Set(off.keys());
+  drawSpec(); drawCurve(); drawMeters();
+  requestAnimationFrame(frame);
+}
+
+/* -------------------------------------------------------------- test signals */
+function makeNoise(){
+  const len = ctx.sampleRate*2, b = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let c = 0; c < 2; c++){
+    const d = b.getChannelData(c);
+    let b0=0,b1=0,b2=0;                            // cheap pink-ish filter
+    for (let i = 0; i < len; i++){
+      const w = Math.random()*2-1;
+      b0 = 0.99765*b0 + w*0.0990460;
+      b1 = 0.96300*b1 + w*0.2965164;
+      b2 = 0.57000*b2 + w*1.0526913;
+      d[i] = (b0+b1+b2+w*0.1848)*0.22;
+    }
+  }
+  return b;
+}
+function makeTone(){
+  const len = ctx.sampleRate, b = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let c = 0; c < 2; c++){
+    const d = b.getChannelData(c);
+    for (let i = 0; i < len; i++) d[i] = Math.sin(2*Math.PI*110*i/ctx.sampleRate)*0.5;
+  }
+  return b;
+}
+function makePluck(){
+  const sr = ctx.sampleRate, len = sr*2, b = ctx.createBuffer(2, len, sr);
+  const notes = [110, 146.83, 164.81, 220];
+  for (let c = 0; c < 2; c++){
+    const d = b.getChannelData(c);
+    notes.forEach((f, n) => {
+      const start = Math.floor(n*0.5*sr), dur = Math.floor(0.48*sr);
+      for (let i = 0; i < dur; i++){
+        const t = i/sr, env = Math.exp(-t*4.5);
+        let v = Math.sin(2*Math.PI*f*t) + 0.5*Math.sin(4*Math.PI*f*t) + 0.25*Math.sin(6*Math.PI*f*t);
+        v += (Math.random()*2-1)*Math.exp(-t*90)*0.8;      // pick noise
+        d[start+i] += v*env*0.22;
+      }
+    });
+  }
+  return b;
+}
+
+/* ------------------------------------------------------------ audio plumbing */
+async function ensureCtx(){
+  if (!ctx){
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    engine = createEngine(ctx);
+    await engine.initWorklet();
+    applyAll(true);
+    if (!engine.crushAvailable){
+      const warn = document.getElementById('crushWarn');
+      warn.textContent = 'Bit crusher unavailable in this browser (no AudioWorklet) — crush controls disabled.';
+      warn.classList.remove('hidden');
+      document.querySelectorAll('[data-worklet]').forEach(el => el.classList.add('dis'));
+    }
+    setBypass(bypassed);            // honour a bypass chosen before audio started
+  }
+  if (ctx.state === 'suspended') await ctx.resume();
+  return ctx;
+}
+function stopSource(){
+  if (srcNode){
+    try { srcNode.stop && srcNode.stop(); } catch(_){}
+    try { srcNode.disconnect(); } catch(_){}
+    srcNode = null;
+  }
+  if (micStream){ micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  playing = false;
+  document.getElementById('btnPlay').textContent = '▶ Play';
+}
+async function startSource(){
+  await ensureCtx();
+  stopSource();
+  const kind = document.getElementById('srcSel').value;
+  const note = document.getElementById('srcNote');
+  if (kind === 'mic'){
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+      });
+    } catch (err){
+      note.textContent = 'Microphone refused: ' + err.name + '. Pick another source.';
+      return;
+    }
+    srcNode = ctx.createMediaStreamSource(micStream);
+    srcNode.connect(engine.input);
+    note.textContent = 'Live input — use headphones, speakers will howl through the feedback stage.';
+  } else {
+    let buf = null;
+    if (kind === 'file'){
+      if (!fileBuf){ note.textContent = 'No file loaded yet — load one, or pick a generated source.'; return; }
+      buf = fileBuf;
+    }
+    else if (kind === 'noise') buf = makeNoise();
+    else if (kind === 'tone')  buf = makeTone();
+    else                       buf = makePluck();
+    srcNode = ctx.createBufferSource();
+    srcNode.buffer = buf;
+    srcNode.loop = loopOn;
+    srcNode.connect(engine.input);
+    srcNode.onended = () => { if (!loopOn) stopSource(); };
+    srcNode.start();
+  }
+  playing = true;
+  document.getElementById('btnPlay').textContent = '■ Stop';
+}
+function togglePlay(){ playing ? stopSource() : startSource(); }
+
+/* ------------------------------------------------------------------- patches */
+function applyPatch(v){
+  for (const d of PLIST) state[d.id] = (v && d.id in v) ? v[d.id] : d.def;
+  for (const d of PLIST) paint(d.id);
+  applyAll(true);
+  prevMod = new Set();
+  refreshBandTabs();
+}
+function currentPatch(){
+  const out = {};
+  for (const d of PLIST) if (state[d.id] !== d.def) out[d.id] = state[d.id];
+  return out;
+}
+function randomise(){
+  const pick = a => a[Math.floor(Math.random()*a.length)];
+  const n = +state.bands;
+  for (let i = 0; i < n; i++){
+    setParam(`m${i}a`, pick(MODES).id, true);
+    setParam(`d${i}a`, denorm(P[`d${i}a`], 0.15 + Math.random()*0.7), true);
+    setParam(`sb${i}`, Math.random() < 0.4, true);
+    setParam(`m${i}b`, pick(MODES).id, true);
+    setParam(`d${i}b`, denorm(P[`d${i}b`], Math.random()*0.5), true);
+    setParam(`t${i}`, (Math.random()*2-1)*6, true);
+    setParam(`mx${i}`, 40 + Math.random()*60, true);
+  }
+  refreshBandTabs();
+}
+
+/* ---------------------------------------------------------------------- boot */
+mount('secIn',     ['inGain','preHP','preLP']);
+mount('secSplit',  ['bands','x1','x2']);
+mount('secCrush',  ['bits','redux','crMix','fbAmt','fbTime','fbTone']);
+mount('secFilter', ['fltType','fltFreq','fltQ']);
+mount('secOut',    ['mix','width','outGain','autoGain','safety']);
+group('secMod', 'LFO 1', ['l1Rate','l1Shape','l1Depth']);
+group('secMod', 'LFO 2', ['l2Rate','l2Shape','l2Depth']);
+group('secMod', 'Envelope follower', ['envAtk','envRel','envSens']);
+buildBands();
+buildMatrix();
+buildMeters();
+
+const presetSel = document.getElementById('presetSel');
+PRESETS.forEach((pr, i) => {
+  const o = document.createElement('option');
+  o.value = String(i); o.textContent = pr.name;
+  presetSel.appendChild(o);
+});
+presetSel.addEventListener('change', () => applyPatch(PRESETS[+presetSel.value].v));
+
+document.getElementById('btnPlay').addEventListener('click', togglePlay);
+document.getElementById('btnRandom').addEventListener('click', randomise);
+
+const btnBypass = document.getElementById('btnBypass');
+function setBypass(on){
+  bypassed = on;
+  btnBypass.classList.toggle('on', on);
+  if (engine){
+    engine.set(engine.byp.gain, on ? 1 : 0);
+    engine.set(engine.mixBus.gain, on ? 0 : 1);
+  }
+}
+btnBypass.addEventListener('click', () => setBypass(!bypassed));
+
+const loopBtn = document.getElementById('loopChk');
+loopBtn.addEventListener('click', () => {
+  loopOn = !loopOn;
+  loopBtn.classList.toggle('on', loopOn);
+  if (srcNode && 'loop' in srcNode) srcNode.loop = loopOn;
+});
+
+document.getElementById('srcSel').addEventListener('change', () => { if (playing) startSource(); });
+
+document.getElementById('fAudio').addEventListener('change', async ev => {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  const note = document.getElementById('srcNote');
+  note.textContent = 'Decoding ' + f.name + '…';
+  try {
+    await ensureCtx();
+    fileBuf = await ctx.decodeAudioData(await f.arrayBuffer());
+    document.getElementById('srcSel').value = 'file';
+    note.textContent = f.name + ' — ' + fileBuf.duration.toFixed(1) + 's, ' +
+      fileBuf.numberOfChannels + 'ch. Stays on this machine.';
+    if (playing) startSource();
+  } catch (err){
+    note.textContent = 'Could not decode ' + f.name + ' (' + (err.name || 'error') + '). Try WAV or MP3.';
+  }
+});
+
+document.getElementById('btnCopy').addEventListener('click', async () => {
+  const json = JSON.stringify(currentPatch());
+  try { await navigator.clipboard.writeText(json); document.getElementById('srcNote').textContent = 'Patch copied to clipboard.'; }
+  catch(_){ window.prompt('Copy this patch:', json); }
+});
+document.getElementById('btnPaste').addEventListener('click', () => {
+  const t = window.prompt('Paste a patch:');
+  if (!t) return;
+  try { applyPatch(JSON.parse(t)); presetSel.selectedIndex = 0; }
+  catch(_){ document.getElementById('srcNote').textContent = 'That was not a valid patch.'; }
+});
+
+window.addEventListener('keydown', ev => {
+  if (ev.target.tagName === 'SELECT' || ev.target.tagName === 'INPUT') return;
+  if (ev.code === 'Space'){ ev.preventDefault(); togglePlay(); }
+  else if (ev.key === 'b' || ev.key === 'B') setBypass(!bypassed);
+  else if (ev.key >= '1' && ev.key <= '3') selectBand(+ev.key - 1);
+});
+
+refreshBandTabs();
+requestAnimationFrame(frame);
+
+/* Exposed for the smoke test in tests/fx.mjs: it builds the same graph in an
+   OfflineAudioContext and renders it, which is the only way to prove the whole
+   chain (including the feedback loop) stays finite and audible. */
+window.FX = {
+  createEngine, MODES, PRESETS, PLIST, P, state,
+  defaults: () => Object.fromEntries(PLIST.map(d => [d.id, d.def])),
+  applyValues: (eng, vals) => {
+    eng.instant = true;
+    for (const d of PLIST) d.apply(eng, vals && d.id in vals ? vals[d.id] : d.def);
+    eng.instant = false;
+  }
+};
+})();
+</script>
+</body>
+</html>
