@@ -1,0 +1,493 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap">
+  <style>
+    body { margin: 0; background: #d6d1c6; }
+    a { color: #c0392f; } a:hover { color: #17150f; }
+    .root { font-family: Archivo, "Helvetica Neue", Helvetica, Arial, sans-serif; color: #17150f;
+            -webkit-font-smoothing: antialiased; }
+    .disp { font-family: "Archivo Black", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    .mono { font-family: "Space Mono", Menlo, Consolas, monospace; }
+    .cap { font-weight: 600; font-size: 9px; line-height: 1.1; letter-spacing: .18em; text-transform: uppercase; }
+
+    .panel { border: 1.5px solid #17150f; background: #e9e5dc; }
+    .bar { display: flex; align-items: center; gap: 9px; padding: 7px 10px;
+           font-weight: 700; font-size: 10px; letter-spacing: .22em; text-transform: uppercase; }
+    .bar .idx { font-size: 9px; opacity: .65; }
+    .body { padding: 14px; }
+
+    .row { display: flex; flex-wrap: wrap; gap: 16px 12px; align-items: flex-start; }
+
+    .k { width: 62px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .dial { position: relative; width: 46px; height: 46px; border-radius: 50%;
+            background: conic-gradient(from 215deg,
+              #bdb7aa 0 calc(var(--s, 0) * 280deg),
+              var(--fill) calc(var(--s, 0) * 280deg) calc(var(--e, 0) * 280deg),
+              #bdb7aa calc(var(--e, 0) * 280deg) 280deg,
+              rgba(0,0,0,0) 280deg); }
+    .dial:after { content: ""; position: absolute; inset: 7px; border-radius: 50%;
+                  background: #f4f1ea; border: 1.5px solid #17150f; }
+    .dial .ind { position: absolute; left: 50%; top: 50%; width: 2.5px; height: 15px; margin-left: -1.25px;
+                 background: #17150f; z-index: 2; transform-origin: 50% 100%;
+                 transform: translateY(-100%) rotate(calc(-145deg + var(--f, 0) * 280deg)); }
+    .k .klab { font-weight: 600; font-size: 9px; letter-spacing: .13em; text-transform: uppercase;
+               text-align: center; color: #17150f; }
+    .k .kval { font-family: "Space Mono", Menlo, monospace; font-size: 11px; color: #5f5a51; }
+    .k.sm { width: 54px; } .k.sm .dial { width: 34px; height: 34px; }
+    .k.sm .dial:after { inset: 5px; } .k.sm .dial .ind { height: 11px; }
+
+    .fld { display: flex; flex-direction: column; gap: 6px; }
+    .fldlab { font-weight: 600; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: #6d685e; }
+    .sel { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+           min-width: 108px; padding: 7px 9px; border: 1.5px solid #17150f; background: #f4f1ea;
+           font-size: 12px; font-weight: 500; }
+    .btn { padding: 8px 11px; border: 1.5px solid #17150f; background: #f4f1ea;
+           font-weight: 600; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
+    .btn.y { background: var(--yellow); } .btn.r { background: var(--red); color: #f4f1ea; }
+    .btn.b { background: var(--blue); color: #f4f1ea; } .btn.k { background: #17150f; color: #f4f1ea; }
+
+    .tab { display: flex; align-items: center; gap: 8px; padding: 8px 13px 8px 10px;
+           border: 1.5px solid #17150f; background: #f4f1ea;
+           font-weight: 600; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+    .tab .no { font-family: "Space Mono", Menlo, monospace; font-size: 10px; }
+    .tab.on { background: #17150f; color: #f4f1ea; }
+    .tab .hz { font-family: "Space Mono", Menlo, monospace; font-size: 9.5px; letter-spacing: 0; opacity: .7; }
+
+    .mx { display: grid; grid-template-columns: 14px 1fr 1fr 54px; gap: 10px; align-items: end; }
+    .mxflag { height: 30px; border: 1.5px solid #17150f; background: #d7d2c7; }
+    .srcbar { position: relative; height: 10px; border: 1.5px solid #17150f; background: #f4f1ea; }
+    .srcbar i { position: absolute; top: 0; bottom: 0; background: var(--blue); }
+    .meterbar { position: relative; width: 20px; border: 1.5px solid #17150f; background: #f4f1ea; }
+    .meterbar i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--yellow); }
+    .meterbar u { position: absolute; left: 0; right: 0; background: var(--red); }
+    .rule { height: 1.5px; background: #17150f; }
+  </style>
+</helmet>
+
+<div class="root" style="--yellow: {{yellow}}; --red: {{red}}; --blue: {{blue}}; width: 1280px; box-sizing: border-box; background: #d6d1c6; padding: 20px;">
+
+  <!-- ============ header ============ -->
+  <div style="display: flex; align-items: flex-end; gap: 22px; padding-bottom: 14px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="width: 30px; height: 30px; background: #17150f;"></div>
+      <div style="width: 30px; height: 30px; border-radius: 50%; background: var(--red);"></div>
+      <div style="width: 30px; height: 30px; background: var(--blue); border-radius: 30px 0 0 0;"></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <div class="disp" style="font-size: 40px; line-height: .9; letter-spacing: -.015em;">FRACTURE</div>
+      <div class="cap" style="letter-spacing: .3em; color: #5f5a51;">Multi-band multi-fx distortion</div>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: flex-end; gap: 8px;">
+      <div class="fld">
+        <div class="fldlab">Patch</div>
+        <div class="sel" style="min-width: 210px;">
+          <span>Motion — LFO across the mids</span>
+          <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg>
+        </div>
+      </div>
+      <div class="btn">Randomise</div>
+      <div class="btn">Copy</div>
+      <div class="btn">Paste</div>
+      <div class="btn k">Bypass</div>
+    </div>
+  </div>
+  <div style="display: flex; gap: 0; height: 8px; margin-bottom: 16px;">
+    <div style="flex-grow: 1; background: var(--yellow);"></div>
+    <div style="width: 180px; background: var(--red);"></div>
+    <div style="width: 120px; background: var(--blue);"></div>
+    <div style="width: 60px; background: #17150f;"></div>
+  </div>
+
+  <!-- ============ source ============ -->
+  <div class="panel" style="margin-bottom: 14px;">
+    <div class="body" style="display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap;">
+      <div class="btn k" style="padding: 11px 18px;">■ Stop</div>
+      <div class="btn">Load audio file</div>
+      <div class="fld">
+        <div class="fldlab">Source</div>
+        <div class="sel"><span>Pluck loop</span>
+          <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg>
+        </div>
+      </div>
+      <div class="btn y">Loop</div>
+      <div style="flex-grow: 1;"></div>
+      <div class="mono" style="font-size: 11px; color: #5f5a51; max-width: 460px; text-wrap: pretty;">
+        Pink noise, tone and pluck loop are generated on this page. Nothing is uploaded.
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ input / split ============ -->
+  <div style="display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px;">
+    <div class="panel" style="grid-column: span 4;">
+      <div class="bar" style="background: #17150f; color: #f4f1ea;"><span class="idx">01</span><span>Input &amp; pre-filter</span></div>
+      <div class="body row">
+        <div class="k"><div class="dial" style="--f: .5; --s: 0; --e: .5; --fill: #17150f;"><div class="ind"></div></div>
+          <div class="klab">Input</div><div class="kval">0.0 dB</div></div>
+        <div class="k"><div class="dial" style="--f: .06; --s: 0; --e: .06; --fill: #17150f;"><div class="ind"></div></div>
+          <div class="klab">Pre HP</div><div class="kval">20 Hz</div></div>
+        <div class="k"><div class="dial" style="--f: 1; --s: 0; --e: 1; --fill: #17150f;"><div class="ind"></div></div>
+          <div class="klab">Pre LP</div><div class="kval">20.0k</div></div>
+      </div>
+    </div>
+    <div class="panel" style="grid-column: span 8;">
+      <div class="bar" style="background: #17150f; color: #f4f1ea;"><span class="idx">02</span><span>Split</span></div>
+      <div class="body row" style="align-items: flex-end;">
+        <div class="fld">
+          <div class="fldlab">Bands</div>
+          <div class="sel" style="min-width: 96px;"><span>3 bands</span>
+            <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg>
+          </div>
+        </div>
+        <div class="k"><div class="dial" style="--f: .46; --s: 0; --e: .46; --fill: #17150f;"><div class="ind"></div></div>
+          <div class="klab">Split 1</div><div class="kval">240 Hz</div></div>
+        <div class="k"><div class="dial" style="--f: .68; --s: 0; --e: .68; --fill: #17150f;"><div class="ind"></div></div>
+          <div class="klab">Split 2</div><div class="kval">3.20k</div></div>
+        <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 6px; min-width: 260px;">
+          <div class="fldlab">Crossover map</div>
+          <div style="display: flex; height: 34px; border: 1.5px solid #17150f;">
+            <div style="width: 26%; background: #f4f1ea; display: flex; align-items: center; padding-left: 8px;"
+                 class="cap">Low</div>
+            <div style="width: 1.5px; background: #17150f;"></div>
+            <div style="width: 44%; background: #f4f1ea; display: flex; align-items: center; padding-left: 8px;"
+                 class="cap">Mid</div>
+            <div style="width: 1.5px; background: #17150f;"></div>
+            <div style="flex-grow: 1; background: #f4f1ea; display: flex; align-items: center; padding-left: 8px;"
+                 class="cap">High</div>
+          </div>
+          <div class="mono" style="display: flex; justify-content: space-between; font-size: 9.5px; color: #6d685e;">
+            <span>20</span><span>240</span><span>3.20k</span><span>20k</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ drive ============ -->
+  <div class="panel" style="margin-bottom: 14px;">
+    <div class="bar" style="background: var(--yellow); color: #17150f;">
+      <span class="idx">03</span><span>Drive</span>
+      <span style="flex-grow: 1;"></span>
+      <span class="mono" style="font-size: 9.5px; letter-spacing: 0; opacity: .75;">two serial stages per band · 14 modes</span>
+    </div>
+    <div class="body">
+      <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+        <div class="tab on"><span class="no">1</span><span>Low</span><span class="hz">&lt; 240</span></div>
+        <div class="tab"><span class="no">2</span><span>Mid</span><span class="hz">240 – 3.20k</span></div>
+        <div class="tab"><span class="no">3</span><span>High</span><span class="hz">&gt; 3.20k</span></div>
+      </div>
+      <div class="row" style="align-items: flex-end;">
+        <div class="fld">
+          <div class="fldlab">Mode A</div>
+          <div class="sel"><span>Soft</span>
+            <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg>
+          </div>
+        </div>
+        <div class="k"><div class="dial" style="--f: .62; --s: 0; --e: .62; --fill: var(--yellow);"><div class="ind"></div></div>
+          <div class="klab">Drive A</div><div class="kval">12.0 dB</div></div>
+        <div class="btn y">Stage B</div>
+        <div class="fld">
+          <div class="fldlab">Mode B</div>
+          <div class="sel"><span>Hard</span>
+            <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg>
+          </div>
+        </div>
+        <div class="k"><div class="dial" style="--f: .43; --s: 0; --e: .43; --fill: var(--yellow);"><div class="ind"></div></div>
+          <div class="klab">Drive B</div><div class="kval">8.0 dB</div></div>
+        <div style="width: 1.5px; align-self: stretch; background: #17150f;"></div>
+        <div class="k"><div class="dial" style="--f: .5; --s: .5; --e: .5; --fill: var(--blue);"><div class="ind"></div></div>
+          <div class="klab">Tone</div><div class="kval">0.0 dB</div></div>
+        <div class="k"><div class="dial" style="--f: 1; --s: 0; --e: 1; --fill: #17150f;"><div class="ind"></div></div>
+          <div class="klab">Mix</div><div class="kval">100%</div></div>
+        <div class="k"><div class="dial" style="--f: .66; --s: 0; --e: .66; --fill: #17150f;"><div class="ind"></div></div>
+          <div class="klab">Level</div><div class="kval">0.0 dB</div></div>
+        <div style="width: 1.5px; align-self: stretch; background: #17150f;"></div>
+        <div class="btn">Mute</div>
+        <div class="btn">Solo</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ crush / filter / output ============ -->
+  <div style="display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px;">
+    <div class="panel" style="grid-column: span 5;">
+      <div class="bar" style="background: var(--red); color: #f4f1ea;"><span class="idx">04</span><span>Crush &amp; feedback</span></div>
+      <div class="body row">
+        <div class="k"><div class="dial" style="--f: .5; --s: 0; --e: .5; --fill: var(--red);"><div class="ind"></div></div>
+          <div class="klab">Bits</div><div class="kval">8.0</div></div>
+        <div class="k"><div class="dial" style="--f: 0; --s: 0; --e: 0; --fill: var(--red);"><div class="ind"></div></div>
+          <div class="klab">Downsample</div><div class="kval">/1</div></div>
+        <div class="k"><div class="dial" style="--f: 0; --s: 0; --e: 0; --fill: var(--red);"><div class="ind"></div></div>
+          <div class="klab">Crush</div><div class="kval">0%</div></div>
+        <div style="width: 1.5px; align-self: stretch; background: #17150f;"></div>
+        <div class="k"><div class="dial" style="--f: 0; --s: 0; --e: 0; --fill: var(--red);"><div class="ind"></div></div>
+          <div class="klab">Feedback</div><div class="kval">0%</div></div>
+        <div class="k"><div class="dial" style="--f: .73; --s: 0; --e: .73; --fill: var(--red);"><div class="ind"></div></div>
+          <div class="klab">FB time</div><div class="kval">55 ms</div></div>
+        <div class="k"><div class="dial" style="--f: .64; --s: 0; --e: .64; --fill: var(--red);"><div class="ind"></div></div>
+          <div class="klab">FB tone</div><div class="kval">3.50k</div></div>
+      </div>
+    </div>
+    <div class="panel" style="grid-column: span 4;">
+      <div class="bar" style="background: var(--blue); color: #f4f1ea;"><span class="idx">05</span><span>Filter</span></div>
+      <div class="body row" style="align-items: flex-end;">
+        <div class="fld">
+          <div class="fldlab">Type</div>
+          <div class="sel"><span>Low pass</span>
+            <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg>
+          </div>
+        </div>
+        <div class="k"><div class="dial" style="--f: .58; --s: 0; --e: .58; --fill: var(--blue);"><div class="ind"></div></div>
+          <div class="klab">Cutoff</div><div class="kval">1.20k</div></div>
+        <div class="k"><div class="dial" style="--f: .22; --s: 0; --e: .22; --fill: var(--blue);"><div class="ind"></div></div>
+          <div class="klab">Reso</div><div class="kval">0.70</div></div>
+      </div>
+    </div>
+    <div class="panel" style="grid-column: span 3;">
+      <div class="bar" style="background: #17150f; color: #f4f1ea;"><span class="idx">06</span><span>Output</span></div>
+      <div class="body">
+        <div class="row" style="margin-bottom: 14px;">
+          <div class="k"><div class="dial" style="--f: .95; --s: 0; --e: .95; --fill: #17150f;"><div class="ind"></div></div>
+            <div class="klab">Dry / wet</div><div class="kval">95%</div></div>
+          <div class="k"><div class="dial" style="--f: .5; --s: 0; --e: .5; --fill: #17150f;"><div class="ind"></div></div>
+            <div class="klab">Width</div><div class="kval">100%</div></div>
+          <div class="k"><div class="dial" style="--f: .61; --s: 0; --e: .61; --fill: #17150f;"><div class="ind"></div></div>
+            <div class="klab">Output</div><div class="kval">-2.0 dB</div></div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <div class="btn y" style="flex-grow: 1; text-align: center;">Auto gain</div>
+          <div class="btn r" style="flex-grow: 1; text-align: center;">Safety clip</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ modulation / scope ============ -->
+  <div style="display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px;">
+    <div class="panel" style="grid-column: span 7;">
+      <div class="bar" style="background: var(--blue); color: #f4f1ea;"><span class="idx">07</span><span>Modulation</span></div>
+      <div class="body">
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px;">
+          <div style="border-left: 4px solid var(--blue); padding-left: 10px;">
+            <div class="fldlab" style="margin-bottom: 8px;">LFO 1</div>
+            <div class="row" style="gap: 10px;">
+              <div class="k sm"><div class="dial" style="--f: .38; --s: 0; --e: .38; --fill: var(--blue);"><div class="ind"></div></div>
+                <div class="klab">Rate</div><div class="kval">0.22</div></div>
+              <div class="k sm"><div class="dial" style="--f: 1; --s: 0; --e: 1; --fill: var(--blue);"><div class="ind"></div></div>
+                <div class="klab">Depth</div><div class="kval">100%</div></div>
+              <div class="fld" style="gap: 4px;"><div class="fldlab">Shape</div>
+                <div class="sel" style="min-width: 84px; padding: 5px 8px; font-size: 11px;"><span>Sine</span>
+                  <svg width="9" height="6" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg>
+                </div></div>
+            </div>
+          </div>
+          <div style="border-left: 4px solid var(--blue); padding-left: 10px;">
+            <div class="fldlab" style="margin-bottom: 8px;">LFO 2</div>
+            <div class="row" style="gap: 10px;">
+              <div class="k sm"><div class="dial" style="--f: .74; --s: 0; --e: .74; --fill: var(--blue);"><div class="ind"></div></div>
+                <div class="klab">Rate</div><div class="kval">5.50</div></div>
+              <div class="k sm"><div class="dial" style="--f: 1; --s: 0; --e: 1; --fill: var(--blue);"><div class="ind"></div></div>
+                <div class="klab">Depth</div><div class="kval">100%</div></div>
+              <div class="fld" style="gap: 4px;"><div class="fldlab">Shape</div>
+                <div class="sel" style="min-width: 84px; padding: 5px 8px; font-size: 11px;"><span>Random S&amp;H</span>
+                  <svg width="9" height="6" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg>
+                </div></div>
+            </div>
+          </div>
+          <div style="border-left: 4px solid var(--red); padding-left: 10px;">
+            <div class="fldlab" style="margin-bottom: 8px;">Envelope follower</div>
+            <div class="row" style="gap: 10px;">
+              <div class="k sm"><div class="dial" style="--f: .3; --s: 0; --e: .3; --fill: var(--red);"><div class="ind"></div></div>
+                <div class="klab">Attack</div><div class="kval">12 ms</div></div>
+              <div class="k sm"><div class="dial" style="--f: .55; --s: 0; --e: .55; --fill: var(--red);"><div class="ind"></div></div>
+                <div class="klab">Release</div><div class="kval">220 ms</div></div>
+              <div class="k sm"><div class="dial" style="--f: .6; --s: 0; --e: .6; --fill: var(--red);"><div class="ind"></div></div>
+                <div class="klab">Sens</div><div class="kval">60%</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="cap" style="width: 46px;">LFO 1</div>
+            <div class="srcbar" style="flex-grow: 1;"><i style="left: 50%; width: 22%;"></i></div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="cap" style="width: 46px;">LFO 2</div>
+            <div class="srcbar" style="flex-grow: 1;"><i style="left: 26%; width: 24%;"></i></div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="cap" style="width: 46px;">Env</div>
+            <div class="srcbar" style="flex-grow: 1;"><i style="left: 50%; width: 9%; background: #c0392f;"></i></div>
+          </div>
+        </div>
+
+        <div class="rule" style="margin-bottom: 12px;"></div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="mx">
+            <div></div>
+            <div class="fldlab">Source</div>
+            <div class="fldlab">Target</div>
+            <div class="fldlab" style="text-align: center;">Amount</div>
+          </div>
+          <div class="mx">
+            <div class="mxflag" style="background: var(--blue);"></div>
+            <div class="sel"><span>LFO 1</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg></div>
+            <div class="sel"><span>B2 Drive A</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg></div>
+            <div class="k sm" style="width: 54px;"><div class="dial" style="--f: .8; --s: .5; --e: .8; --fill: var(--blue);"><div class="ind"></div></div>
+              <div class="kval">+60%</div></div>
+          </div>
+          <div class="mx">
+            <div class="mxflag" style="background: var(--blue);"></div>
+            <div class="sel"><span>LFO 2</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg></div>
+            <div class="sel"><span>B2 Mix</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg></div>
+            <div class="k sm" style="width: 54px;"><div class="dial" style="--f: .35; --s: .35; --e: .5; --fill: var(--blue);"><div class="ind"></div></div>
+              <div class="kval">-30%</div></div>
+          </div>
+          <div class="mx">
+            <div class="mxflag" style="background: var(--red);"></div>
+            <div class="sel"><span>Envelope</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg></div>
+            <div class="sel"><span>B2 Tone</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg></div>
+            <div class="k sm" style="width: 54px;"><div class="dial" style="--f: .67; --s: .5; --e: .67; --fill: var(--red);"><div class="ind"></div></div>
+              <div class="kval">+35%</div></div>
+          </div>
+          <div class="mx">
+            <div class="mxflag"></div>
+            <div class="sel" style="color: #8d877c;"><span>—</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#8d877c"/></svg></div>
+            <div class="sel" style="color: #8d877c;"><span>—</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#8d877c"/></svg></div>
+            <div class="k sm" style="width: 54px;"><div class="dial" style="--f: .5; --s: .5; --e: .5; --fill: #bdb7aa;"><div class="ind"></div></div>
+              <div class="kval">0%</div></div>
+          </div>
+          <div class="mx">
+            <div class="mxflag"></div>
+            <div class="sel" style="color: #8d877c;"><span>—</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#8d877c"/></svg></div>
+            <div class="sel" style="color: #8d877c;"><span>—</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#8d877c"/></svg></div>
+            <div class="k sm" style="width: 54px;"><div class="dial" style="--f: .5; --s: .5; --e: .5; --fill: #bdb7aa;"><div class="ind"></div></div>
+              <div class="kval">0%</div></div>
+          </div>
+          <div class="mx">
+            <div class="mxflag"></div>
+            <div class="sel" style="color: #8d877c;"><span>—</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#8d877c"/></svg></div>
+            <div class="sel" style="color: #8d877c;"><span>—</span>
+              <svg width="10" height="7" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#8d877c"/></svg></div>
+            <div class="k sm" style="width: 54px;"><div class="dial" style="--f: .5; --s: .5; --e: .5; --fill: #bdb7aa;"><div class="ind"></div></div>
+              <div class="kval">0%</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="grid-column: span 5;">
+      <div class="bar" style="background: #17150f; color: #f4f1ea;"><span class="idx">08</span><span>Scope</span></div>
+      <div class="body" style="display: grid; grid-template-columns: 1fr 84px; gap: 14px;">
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <div class="fldlab" style="margin-bottom: 6px;">Spectrum</div>
+            <div style="border: 1.5px solid #17150f; background: #f4f1ea; padding: 0;">
+              <svg viewBox="0 0 420 150" width="100%" height="150" preserveAspectRatio="none" aria-label="Spectrum">
+                <g fill="#c0392f">
+                  <rect x="6" y="58" width="16" height="92"/><rect x="24" y="40" width="16" height="110"/>
+                  <rect x="42" y="30" width="16" height="120"/><rect x="60" y="46" width="16" height="104"/>
+                  <rect x="78" y="66" width="16" height="84"/>
+                </g>
+                <g fill="#e9b21f">
+                  <rect x="96" y="34" width="16" height="116"/><rect x="114" y="22" width="16" height="128"/>
+                  <rect x="132" y="52" width="16" height="98"/><rect x="150" y="70" width="16" height="80"/>
+                  <rect x="168" y="60" width="16" height="90"/><rect x="186" y="84" width="16" height="66"/>
+                  <rect x="204" y="76" width="16" height="74"/>
+                </g>
+                <g fill="#1e4b8f">
+                  <rect x="222" y="96" width="16" height="54"/><rect x="240" y="88" width="16" height="62"/>
+                  <rect x="258" y="106" width="16" height="44"/><rect x="276" y="98" width="16" height="52"/>
+                  <rect x="294" y="114" width="16" height="36"/><rect x="312" y="108" width="16" height="42"/>
+                  <rect x="330" y="122" width="16" height="28"/><rect x="348" y="116" width="16" height="34"/>
+                  <rect x="366" y="130" width="16" height="20"/><rect x="384" y="126" width="16" height="24"/>
+                  <rect x="402" y="136" width="12" height="14"/>
+                </g>
+              </svg>
+            </div>
+            <div class="mono" style="display: flex; justify-content: space-between; font-size: 9.5px; color: #6d685e; padding-top: 4px;">
+              <span>20</span><span>200</span><span>2k</span><span>20k</span>
+            </div>
+          </div>
+          <div>
+            <div class="fldlab" style="margin-bottom: 6px;">Low band · transfer curve</div>
+            <div style="border: 1.5px solid #17150f; background: #f4f1ea;">
+              <svg viewBox="0 0 220 150" width="100%" height="150" aria-label="Transfer curve">
+                <line x1="0" y1="75" x2="220" y2="75" stroke="#bdb7aa" stroke-width="1.5"/>
+                <line x1="110" y1="0" x2="110" y2="150" stroke="#bdb7aa" stroke-width="1.5"/>
+                <line x1="0" y1="150" x2="220" y2="0" stroke="#bdb7aa" stroke-width="1.5" stroke-dasharray="4 5"/>
+                <path d="M0 142 C 55 140, 80 120, 110 75 C 140 30, 165 10, 220 8"
+                      fill="none" stroke="#e9b21f" stroke-width="4"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; flex-grow: 1;">
+            <div class="meterbar" style="flex-grow: 1; min-height: 250px;">
+              <i style="height: 46%;"></i>
+            </div>
+            <div class="cap">In</div>
+            <div class="mono" style="font-size: 10px; color: #5f5a51;">-20.7</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; flex-grow: 1;">
+            <div class="meterbar" style="flex-grow: 1; min-height: 250px;">
+              <i style="height: 72%;"></i><u style="bottom: 72%; height: 6%;"></u>
+            </div>
+            <div class="cap">Out</div>
+            <div class="mono" style="font-size: 10px; color: #5f5a51;">-9.8</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ footer ============ -->
+  <div style="display: flex; align-items: baseline; gap: 18px; padding-top: 16px;">
+    <div class="mono" style="font-size: 10.5px; color: #5f5a51;">
+      drag a knob · shift + drag fine · double-click resets · space plays · b bypasses
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div class="cap" style="color: #17150f;">Web audio · no network · no plugin host</div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{
+  "yellow": {"editor": "color", "default": "#e9b21f", "options": ["#e9b21f", "#f2c811", "#d99a14", "#eec95a"], "section": "Polychromie"},
+  "red":    {"editor": "color", "default": "#c0392f", "options": ["#c0392f", "#b3271c", "#a8443a", "#d1503f"], "section": "Polychromie"},
+  "blue":   {"editor": "color", "default": "#1e4b8f", "options": ["#1e4b8f", "#173b73", "#2b5da3", "#3f6fae"], "section": "Polychromie"},
+  "$preview": {"width": 1280, "height": 1620}
+}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yellow: this.props.yellow ?? '#e9b21f',
+      red: this.props.red ?? '#c0392f',
+      blue: this.props.blue ?? '#1e4b8f'
+    };
+  }
+}
+</script>
+</body>
+</html>

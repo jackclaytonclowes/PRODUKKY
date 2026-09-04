@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap">
+  <style>
+    body { margin: 0; background: #f6f4ee; }
+    a { color: #17150f; } a:hover { color: #6d685e; }
+    .root { font-family: Archivo, "Helvetica Neue", Helvetica, Arial, sans-serif; color: #17150f; }
+    .disp { font-family: "Archivo Black", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    .mono { font-family: "Space Mono", Menlo, Consolas, monospace; }
+    .cap { font-weight: 600; font-size: 9px; letter-spacing: .2em; text-transform: uppercase; }
+    .hair { height: 1px; background: #17150f; }
+    .row { display: flex; flex-wrap: wrap; gap: 22px 16px; align-items: flex-start; }
+    .k { width: 58px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .dial { position: relative; width: 44px; height: 44px; border-radius: 50%;
+            background: conic-gradient(from 215deg,
+              #d8d3c8 0 calc(var(--s, 0) * 280deg),
+              #17150f calc(var(--s, 0) * 280deg) calc(var(--e, 0) * 280deg),
+              #d8d3c8 calc(var(--e, 0) * 280deg) 280deg,
+              rgba(0,0,0,0) 280deg); }
+    .dial.acc { background: conic-gradient(from 215deg,
+              #d8d3c8 0 calc(var(--s, 0) * 280deg),
+              #f2c811 calc(var(--s, 0) * 280deg) calc(var(--e, 0) * 280deg),
+              #d8d3c8 calc(var(--e, 0) * 280deg) 280deg,
+              rgba(0,0,0,0) 280deg); }
+    .dial:after { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: #f6f4ee; }
+    .dial .ind { position: absolute; left: 50%; top: 50%; width: 2px; height: 15px; margin-left: -1px;
+                 background: #17150f; z-index: 2; transform-origin: 50% 100%;
+                 transform: translateY(-100%) rotate(calc(-145deg + var(--f, 0) * 280deg)); }
+    .klab { font-weight: 600; font-size: 8.5px; letter-spacing: .14em; text-transform: uppercase; text-align: center; }
+    .kval { font-family: "Space Mono", Menlo, monospace; font-size: 11px; color: #6d685e; }
+    .lbl { font-weight: 600; font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: #6d685e; }
+    .plain { padding: 6px 0; border-bottom: 1px solid #17150f; font-size: 12.5px; font-weight: 500;
+             min-width: 104px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .txtbtn { font-weight: 600; font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+              padding: 6px 0; border-bottom: 2px solid #17150f; }
+  </style>
+</helmet>
+
+<div class="root" style="width: 620px; box-sizing: border-box; background: #f6f4ee; padding: 26px;">
+
+  <div class="disp" style="font-size: 30px; line-height: 1; letter-spacing: -.01em;">FRACTURE</div>
+  <div class="cap" style="color: #6d685e; margin: 6px 0 4px;">Option C · one accent · Swiss</div>
+  <div style="height: 6px; background: #f2c811; margin-bottom: 22px;"></div>
+
+  <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px;">
+    <div class="disp" style="font-size: 15px;">03</div>
+    <div class="cap">Drive</div>
+    <div style="flex-grow: 1;" class="hair"></div>
+  </div>
+
+  <div style="display: flex; gap: 26px; margin-bottom: 20px;">
+    <div class="disp" style="font-size: 13px; border-bottom: 3px solid #f2c811; padding-bottom: 4px;">LOW</div>
+    <div class="cap" style="color: #6d685e; padding-bottom: 4px;">Mid</div>
+    <div class="cap" style="color: #6d685e; padding-bottom: 4px;">High</div>
+    <div style="flex-grow: 1;"></div>
+    <div class="mono" style="font-size: 10px; color: #6d685e;">&lt; 240 Hz</div>
+  </div>
+
+  <div class="row" style="margin-bottom: 24px; align-items: flex-end;">
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <div class="lbl">Mode A</div>
+      <div class="plain"><span>Soft</span>
+        <svg width="9" height="6" viewBox="0 0 10 7" aria-hidden="true"><path d="M0 0h10L5 7z" fill="#17150f"/></svg></div>
+    </div>
+    <div class="k"><div class="dial acc" style="--f: .62; --e: .62;"><div class="ind"></div></div>
+      <div class="klab">Drive A</div><div class="kval">12.0</div></div>
+    <div class="txtbtn">Stage B</div>
+    <div class="k"><div class="dial acc" style="--f: .43; --e: .43;"><div class="ind"></div></div>
+      <div class="klab">Drive B</div><div class="kval">8.0</div></div>
+    <div class="k"><div class="dial" style="--f: .5; --s: .5; --e: .5;"><div class="ind"></div></div>
+      <div class="klab">Tone</div><div class="kval">0.0</div></div>
+    <div class="k"><div class="dial" style="--f: 1; --e: 1;"><div class="ind"></div></div>
+      <div class="klab">Mix</div><div class="kval">100%</div></div>
+    <div class="k"><div class="dial" style="--f: .66; --e: .66;"><div class="ind"></div></div>
+      <div class="klab">Level</div><div class="kval">0.0</div></div>
+  </div>
+
+  <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px;">
+    <div class="disp" style="font-size: 15px;">04</div>
+    <div class="cap">Crush &amp; feedback</div>
+    <div style="flex-grow: 1;" class="hair"></div>
+  </div>
+  <div class="row" style="margin-bottom: 24px;">
+    <div class="k"><div class="dial" style="--f: .5; --e: .5;"><div class="ind"></div></div>
+      <div class="klab">Bits</div><div class="kval">8.0</div></div>
+    <div class="k"><div class="dial" style="--f: 0; --e: 0;"><div class="ind"></div></div>
+      <div class="klab">Downs.</div><div class="kval">/1</div></div>
+    <div class="k"><div class="dial acc" style="--f: .85; --e: .85;"><div class="ind"></div></div>
+      <div class="klab">Crush</div><div class="kval">85%</div></div>
+    <div class="k"><div class="dial acc" style="--f: .26; --e: .26;"><div class="ind"></div></div>
+      <div class="klab">Feedback</div><div class="kval">22%</div></div>
+    <div class="k"><div class="dial" style="--f: .73; --e: .73;"><div class="ind"></div></div>
+      <div class="klab">FB time</div><div class="kval">55 ms</div></div>
+  </div>
+
+  <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px;">
+    <div class="disp" style="font-size: 15px;">08</div>
+    <div class="cap">Scope</div>
+    <div style="flex-grow: 1;" class="hair"></div>
+  </div>
+  <svg viewBox="0 0 560 130" width="100%" height="130" preserveAspectRatio="none" aria-label="Spectrum">
+    <g fill="#17150f">
+      <rect x="0" y="50" width="20" height="80"/><rect x="24" y="32" width="20" height="98"/>
+      <rect x="48" y="22" width="20" height="108"/><rect x="72" y="38" width="20" height="92"/>
+      <rect x="96" y="58" width="20" height="72"/>
+    </g>
+    <g fill="#f2c811">
+      <rect x="120" y="26" width="20" height="104"/><rect x="144" y="14" width="20" height="116"/>
+      <rect x="168" y="44" width="20" height="86"/><rect x="192" y="62" width="20" height="68"/>
+      <rect x="216" y="52" width="20" height="78"/>
+    </g>
+    <g fill="#17150f">
+      <rect x="240" y="76" width="20" height="54"/><rect x="264" y="68" width="20" height="62"/>
+      <rect x="288" y="86" width="20" height="44"/><rect x="312" y="78" width="20" height="52"/>
+      <rect x="336" y="94" width="20" height="36"/><rect x="360" y="88" width="20" height="42"/>
+      <rect x="384" y="102" width="20" height="28"/><rect x="408" y="96" width="20" height="34"/>
+      <rect x="432" y="110" width="20" height="20"/><rect x="456" y="106" width="20" height="24"/>
+      <rect x="480" y="116" width="20" height="14"/><rect x="504" y="112" width="20" height="18"/>
+      <rect x="528" y="120" width="20" height="10"/>
+    </g>
+  </svg>
+  <div class="mono" style="display: flex; justify-content: space-between; font-size: 9.5px; color: #6d685e; padding-top: 5px;">
+    <span>20</span><span>200</span><span>2k</span><span>20k</span>
+  </div>
+
+  <div class="mono" style="font-size: 10px; color: #6d685e; padding-top: 22px; text-wrap: pretty;">
+    No panels, no borders: hairlines and numbered sections carry the structure, and yellow means
+    only one thing — this control is adding harmonics. Calmest of the three, and it gives up
+    colour as a way to tell three bands and six mod slots apart.
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview": {"width": 620, "height": 900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

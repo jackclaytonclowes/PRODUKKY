@@ -1,0 +1,19 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Interface" },
+    { "id": "page-2", "name": "Polychromie & parts" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1280, "h": 1450, "page": "page-1", "title": "Béton clair — full interface" },
+    { "file": "OptionB.dc.html", "x": 1400, "y": 0, "w": 620, "h": 740, "page": "page-1", "title": "Option B — béton brut" },
+    { "file": "OptionC.dc.html", "x": 2100, "y": 0, "w": 620, "h": 710, "page": "page-1", "title": "Option C — one accent" },
+    { "file": "Components.dc.html", "x": 0, "y": 0, "w": 1280, "h": 1080, "page": "page-2" }
+  ],
+  "annotations": [
+    { "id": "brief", "x": 0, "y": -260, "w": 620, "page": "page-1",
+      "text": "FRACTURE restyled: Corbusier primaries on concrete.\nStructure, control inventory and knob geometry are lifted from fx/fracture.html — 46px dials, 280 degree sweep from 215 degrees, same panels in the same 12-column grid — so this ports back 1:1.\nColour is functional, not decorative: yellow adds harmonics, red destroys or limits, blue shapes, ink is structure." },
+    { "id": "options", "x": 1400, "y": -260, "w": 620, "page": "page-1",
+      "text": "Two alternates beside the leading candidate, same palette, different stance.\nB inverts the ground to dark béton and spends the primaries on band identity instead of function.\nC drops panels and colour-coding entirely: hairlines, numbered sections, one yellow accent." }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}
