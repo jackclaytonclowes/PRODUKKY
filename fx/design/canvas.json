@@ -4,10 +4,10 @@
     { "id": "page-2", "name": "Polychromie & parts" }
   ],
   "artboards": [
-    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1280, "h": 1450, "page": "page-1", "title": "Béton clair — full interface" },
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1280, "h": 1560, "page": "page-1", "title": "Béton clair — full interface" },
     { "file": "OptionB.dc.html", "x": 1400, "y": 0, "w": 620, "h": 740, "page": "page-1", "title": "Option B — béton brut" },
     { "file": "OptionC.dc.html", "x": 2100, "y": 0, "w": 620, "h": 710, "page": "page-1", "title": "Option C — one accent" },
-    { "file": "Components.dc.html", "x": 0, "y": 0, "w": 1280, "h": 1080, "page": "page-2" }
+    { "file": "Components.dc.html", "x": 0, "y": 0, "w": 1280, "h": 1080, "page": "page-2", "title": "Polychromie and parts" }
   ],
   "annotations": [
     { "id": "brief", "x": 0, "y": -260, "w": 620, "page": "page-1",

@@ -19,10 +19,10 @@
     .bar { display: flex; align-items: center; gap: 9px; padding: 7px 10px; font-weight: 700;
            font-size: 10px; letter-spacing: .22em; text-transform: uppercase;
            background: #17150f; color: #f4f1ea; }
-    .body { padding: 16px; }
-    .row { display: flex; flex-wrap: wrap; gap: 18px 14px; align-items: flex-start; }
+    .body { padding: 14px; }
+    .row { display: flex; flex-wrap: wrap; gap: 16px 12px; align-items: flex-start; }
 
-    .k { width: 66px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .k { width: 62px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
     .dial { position: relative; width: 46px; height: 46px; border-radius: 50%;
             background: conic-gradient(from 215deg,
               #bdb7aa 0 calc(var(--s, 0) * 280deg),
@@ -37,7 +37,8 @@
     .dial .mod { position: absolute; left: 50%; top: -5px; width: 4px; height: 8px; margin-left: -2px;
                  background: #1e4b8f; z-index: 3; transform-origin: 50% 28px;
                  transform: rotate(calc(-145deg + var(--m, 0) * 280deg)); }
-    .k .klab { font-weight: 600; font-size: 9px; letter-spacing: .13em; text-transform: uppercase; text-align: center; }
+    .k .klab { font-weight: 600; font-size: 9px; line-height: 1.15; letter-spacing: .13em;
+               text-transform: uppercase; text-align: center; min-height: 21px; }
     .k .kval { font-family: "Space Mono", Menlo, monospace; font-size: 11px; color: #5f5a51; }
     .k.dis { opacity: .38; }
     .k.sm { width: 54px; } .k.sm .dial { width: 34px; height: 34px; }
@@ -45,7 +46,7 @@
 
     .btn { padding: 8px 11px; border: 1.5px solid #17150f; background: #f4f1ea;
            font-weight: 600; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
-    .sel { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 112px;
+    .sel { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 108px;
            padding: 7px 9px; border: 1.5px solid #17150f; background: #f4f1ea; font-size: 12px; font-weight: 500; }
     .tab { display: flex; align-items: center; gap: 8px; padding: 8px 13px 8px 10px; border: 1.5px solid #17150f;
            background: #f4f1ea; font-weight: 600; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
@@ -56,7 +57,7 @@
     .sw .hex { font-family: "Space Mono", Menlo, monospace; font-size: 10px; color: #5f5a51; }
     .sw .use { font-size: 10.5px; color: #5f5a51; line-height: 1.35; }
     .spec { font-family: "Space Mono", Menlo, monospace; font-size: 10.5px; color: #5f5a51; line-height: 1.7; }
-    .lab { font-weight: 600; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: #6d685e;
+    .lab { font-weight: 600; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: #5f5a51;
            margin-bottom: 10px; }
   </style>
 </helmet>
@@ -129,7 +130,7 @@
               <div class="ind"></div><div class="mod"></div></div>
             <div class="klab">Modulated</div><div class="kval">18.4</div></div>
           <div class="k dis"><div class="dial" style="--f: .3; --e: .3; --fill: #8d877c;"><div class="ind"></div></div>
-            <div class="klab">Unavailable</div><div class="kval">—</div></div>
+            <div class="klab">Unavail.</div><div class="kval">—</div></div>
           <div class="k sm"><div class="dial" style="--f: .8; --s: .5; --e: .8; --fill: #1e4b8f;"><div class="ind"></div></div>
             <div class="kval">+60%</div></div>
         </div>
@@ -197,8 +198,12 @@
             <div class="spec">Archivo 600 · 9 / .13em caps · knob labels</div>
           </div>
           <div style="display: flex; align-items: baseline; gap: 16px;">
-            <div class="mono" style="font-size: 11px;">-9.8 dB / 3.20k / +60%</div>
-            <div class="spec">Space Mono 11 · every number, always</div>
+            <div style="font-weight: 600; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: #5f5a51;">Source</div>
+            <div class="spec">Archivo 600 · 9 / .16em caps · field labels, in readout grey</div>
+          </div>
+          <div style="display: flex; align-items: baseline; gap: 16px;">
+            <div class="mono" style="font-size: 11px;">-9.8 / 3.20k / +60%</div>
+            <div class="spec">Space Mono 11 · every readout · 9.5–10.5 for axis ticks and notes</div>
           </div>
         </div>
       </div>
@@ -210,15 +215,15 @@
         panels: 1.5 px ink border, 0 radius, no shadow, no gradient<br>
         section bar: 7 / 10 px, colour by function, numbered 01–08<br>
         rules: 1.5 px ink for structure, 1 px for hairlines<br>
-        knob row rhythm: 16 px vertical, 12 px horizontal<br>
+        knob row rhythm: 16 px vertical, 12 px horizontal · 62 px column<br>
         divider between control groups: 1.5 px ink, full panel height<br>
-        <span style="color: #17150f;">no rounded corners anywhere — the concrete is the texture</span>
+        <span style="color: #17150f;">no rounded corners except the dials and the header quarter-round</span>
       </div>
     </div>
   </div>
 </div>
 </x-dc>
-<script data-dc-script data-props='{"$preview": {"width": 1280, "height": 1180}}'>
+<script data-dc-script data-props='{"$preview": {"width": 1280, "height": 1080}}'>
 class Component extends DCLogic {}
 </script>
 </body>
