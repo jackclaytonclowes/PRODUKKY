@@ -4,8 +4,37 @@ A native port of `../fx/fracture.html`. Same signal path, same fourteen shapers,
 parameter ids, same nine presets — so a patch copied out of the browser version loads here
 and means the same thing.
 
+## Getting an Audio Unit for Logic
+
+An AU is a macOS binary, so it has to be built on a Mac. Two ways:
+
+**On your Mac** — one command, given Xcode command line tools
+(`xcode-select --install`) and CMake (`brew install cmake`):
+
 ```
-cmake -B build -DCMAKE_BUILD_TYPE=Release          # fetches JUCE 8.0.8
+./plugin/build-macos.sh
+```
+
+It fetches JUCE, builds a universal (arm64 + x86_64) AU, VST3 and standalone app, installs
+them into `~/Library/Audio/Plug-Ins/`, and then runs `auval -v aufx Frcd Frct` — the same
+validation Logic runs before it will load a plugin. Restart Logic and FRACTURE appears
+under Audio Units > Fracture > Distortion.
+
+**Without a Mac toolchain** — GitHub builds it for you.
+`.github/workflows/plugin-macos.yml` runs on a macOS runner: Actions tab > "Build macOS
+plugin" > Run workflow, then download the `FRACTURE-macOS` artifact from the finished run.
+It runs the DSP tests and `auval` on the way through, so a green run means a validated
+plugin. On a private repository macOS runner minutes bill at 10x, so each ~10 minute build
+costs about 100 minutes of quota — worth knowing before wiring it to every push.
+
+Either way the binary is unsigned. That is fine for your own machine; distributing it to
+anyone else means signing and notarising it with a Developer ID, or they will have to strip
+the quarantine flag by hand.
+
+## Building by hand
+
+```
+cmake -B build -DCMAKE_BUILD_TYPE=Release          # fetches JUCE 8.0.15
 cmake --build build --target Fracture_VST3 -j      # also Fracture_AU on macOS
 cmake --build build --target Fracture_Standalone -j
 
@@ -16,6 +45,8 @@ cmake --build build --target host_smoke && ./build/host_smoke_artefacts/Release/
 `COPY_PLUGIN_AFTER_BUILD` is on, so a successful build installs into your user plugin
 folder. On macOS that is `~/Library/Audio/Plug-Ins/VST3` and `.../Components`; Logic will
 find the AU after a restart (`killall -9 AudioComponentRegistrar` if it doesn't).
+
+Verified against JUCE 8.0.15 (what the build pins) and JUCE 9 on Linux.
 
 ## Layout
 

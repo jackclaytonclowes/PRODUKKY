@@ -1,0 +1,64 @@
+# Builds the macOS Audio Unit and VST3 on a GitHub runner and attaches them to
+# the run, so a built plugin can be downloaded without a local toolchain.
+#
+# Run it from the Actions tab ("Run workflow"), pick the branch, wait for it to
+# go green, then download the "FRACTURE-macOS" artifact from the run summary.
+#
+# Note for a private repository: macOS runner minutes are billed at 10x, so this
+# ~10 minute build spends about 100 minutes of the account's quota each time.
+name: Build macOS plugin
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'plugin/**'
+      - '.github/workflows/plugin-macos.yml'
+
+jobs:
+  build:
+    runs-on: macos-14          # Apple Silicon runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: plugin/build-macos/_deps
+          key: juce-${{ runner.os }}-${{ hashFiles('plugin/CMakeLists.txt') }}
+
+      - name: Configure
+        run: |
+          cmake -B plugin/build-macos -S plugin \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+
+      - name: Build the DSP tests and run them
+        run: |
+          cmake --build plugin/build-macos --target test_core -j 3
+          ./plugin/build-macos/test_core plugin/tests/shaper_reference.csv plugin/tests/presets.json
+
+      - name: Build AU, VST3 and standalone
+        run: |
+          cmake --build plugin/build-macos --config Release \
+            --target Fracture_AU Fracture_VST3 Fracture_Standalone -j 3
+
+      - name: Validate the Audio Unit
+        run: |
+          # auval needs the component registered, and the runner's copy lands in
+          # the user plug-in folder because COPY_PLUGIN_AFTER_BUILD is on
+          killall -9 AudioComponentRegistrar || true
+          auval -v aufx Frcd Frct
+
+      - name: Package
+        run: |
+          cd plugin/build-macos/Fracture_artefacts/Release
+          zip -r -y "$GITHUB_WORKSPACE/FRACTURE-macOS.zip" \
+            AU/FRACTURE.component VST3/FRACTURE.vst3 Standalone/FRACTURE.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FRACTURE-macOS
+          path: FRACTURE-macOS.zip
+          retention-days: 30
