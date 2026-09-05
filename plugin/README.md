@@ -27,9 +27,35 @@ It runs the DSP tests and `auval` on the way through, so a green run means a val
 plugin. On a private repository macOS runner minutes bill at 10x, so each ~10 minute build
 costs about 100 minutes of quota — worth knowing before wiring it to every push.
 
-Either way the binary is unsigned. That is fine for your own machine; distributing it to
-anyone else means signing and notarising it with a Developer ID, or they will have to strip
-the quarantine flag by hand.
+## Sending it to other people
+
+```
+./plugin/build-macos.sh --dmg        # build, install, and pack plugin/dist/FRACTURE-0.1.0-macOS.dmg
+```
+
+The disk image carries the Audio Unit, the VST3, the standalone app, an installer and a
+read-me, laid out over a Béton clair background that the packaging script draws (no binary
+in the repository — same trick the extension icons use). `Install FRACTURE.command` copies
+both plugins into the recipient's own plug-in folders, **strips the quarantine flag**, and
+runs `auval` in front of them so they can see it pass.
+
+That quarantine step is the whole reason for having an installer rather than a
+drag-and-drop image. macOS marks anything downloaded as quarantined, and a quarantined
+plug-in is refused *silently* by the host — Logic simply does not list it, with no error
+to explain why. A drag-install would leave every recipient with an invisible failure.
+
+Two things to tell people, both of which `READ ME FIRST.txt` also says:
+
+- **The first launch needs a right-click.** The build is unsigned, so double-clicking the
+  installer gets "unidentified developer". Right-click → Open → Open gets past it. Signing
+  and notarising with a Developer ID ($99/year) is the only way to remove that step.
+- **It has been tested by machine, not by ear.** The read-me says so, and asks for the
+  specific things worth listening for: zipper noise on fast knob moves, whether the crush
+  aliases in a broken way rather than a nasty one, and whether a bounce matches playback.
+
+The CI workflow builds the same disk image and attaches it to the run; pushing a `v*` tag
+also cuts a release with the DMG on it. Both links need a GitHub login while the repository
+is private, so the simplest thing is to download the DMG once yourself and send the file.
 
 ## Building by hand
 

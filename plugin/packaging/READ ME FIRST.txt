@@ -1,0 +1,69 @@
+FRACTURE — multi-band multi-fx distortion
+=========================================
+
+A three-band distortion unit: two serial drive stages per band with fourteen
+shaper modes, a bit crusher, a feedback loop, a resonant filter, and two LFOs
+plus an envelope follower patched through a six-slot modulation matrix.
+
+It installs as an Audio Unit (Logic, GarageBand, Live) and a VST3 (Live, Reaper,
+Cubase, Bitwig), and there is a standalone app if you just want to play with it.
+
+
+INSTALLING
+----------
+
+1. Double-click "Install FRACTURE.command".
+
+2. macOS will probably refuse the first time — "cannot be opened because it is
+   from an unidentified developer". That is expected: this is a personal build,
+   not something bought from the App Store, so Apple has nothing to check it
+   against. Right-click the file, choose Open, then Open again in the dialog.
+
+3. Terminal opens, the installer copies the plugins into your own plug-in
+   folders, and then runs Apple's own validator on the Audio Unit. If it says
+   PASSED, you are done.
+
+4. Drag FRACTURE.app to Applications if you want the standalone version.
+
+Restart Logic afterwards. FRACTURE appears under Audio Units → Fracture →
+Distortion. If it does not show up, quit Logic, open Terminal and run:
+
+    killall -9 AudioComponentRegistrar
+
+then start Logic again.
+
+
+WHAT IT INSTALLS, AND WHERE
+---------------------------
+
+    ~/Library/Audio/Plug-Ins/Components/FRACTURE.component
+    ~/Library/Audio/Plug-Ins/VST3/FRACTURE.vst3
+
+Nothing else is touched. No background processes, no login items, no network
+access of any kind — the plugin never opens a connection. To uninstall, delete
+those two files.
+
+
+BEFORE YOU LOAD IT ON SOMETHING YOU CARE ABOUT
+----------------------------------------------
+
+This is an early build that has been tested by machine, not by ear: the maths is
+checked against 9,000-odd reference points and the whole thing is proven not to
+produce silence, NaNs or runaway levels, but nobody has sat and listened to it in
+a session yet. That is what you are being asked to do.
+
+Save your project first. Start with the Safety clip on (it is on by default, and
+it hard-limits the output). Watch out for the feedback control, which is meant
+to be unruly.
+
+
+WHAT WOULD BE USEFUL TO HEAR BACK
+---------------------------------
+
+  – does anything crackle, zipper or click when you move a knob quickly?
+  – does the crush section alias in a way that sounds broken rather than nasty?
+  – does a bounce sound the same as playback?
+  – does the interface make sense without anyone explaining it?
+  – which modes do you actually reach for, and which never get used?
+
+Thanks for trying it.

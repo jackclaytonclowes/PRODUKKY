@@ -2,7 +2,8 @@
 # Builds FRACTURE for macOS — Audio Unit (for Logic), VST3, and a standalone app —
 # and installs them where the hosts look. Run it from anywhere:
 #
-#   ./plugin/build-macos.sh
+#   ./plugin/build-macos.sh            build and install for yourself
+#   ./plugin/build-macos.sh --dmg      ... and pack a disk image to send people
 #
 # What you need first: Xcode command line tools (`xcode-select --install`) and
 # CMake (`brew install cmake`, or the CMake app plus "Install command line
@@ -55,6 +56,12 @@ echo
 echo "==> installed for this user"
 ls -d ~/Library/Audio/Plug-Ins/Components/FRACTURE.component 2>/dev/null || echo "   (no AU found — check the build output above)"
 ls -d ~/Library/Audio/Plug-Ins/VST3/FRACTURE.vst3 2>/dev/null || true
+
+if [[ "${1:-}" == "--dmg" ]]; then
+    echo
+    echo "==> packing a disk image"
+    "$here/packaging/make-dmg.sh"
+fi
 
 echo
 echo "==> validating the Audio Unit the way Logic will"
