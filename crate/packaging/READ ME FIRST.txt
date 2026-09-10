@@ -1,0 +1,77 @@
+CRATE — twelve-bit drum processor
+=================================
+
+A drum bus processor after the sound of the late-80s sampling boxes: a 26.04 kHz
+sample clock, companded twelve-bit conversion, a four-pole filter, the noise
+floor of the record it came off, and a swing section that moves the off-beats
+against the host grid.
+
+It installs as an Audio Unit (Logic, GarageBand, Live) and a VST3 (Live, Reaper,
+Cubase, Bitwig), and there is a standalone app for playing with it.
+
+
+INSTALLING
+----------
+
+1. Double-click "Install CRATE.command".
+
+2. macOS will probably refuse the first time — "cannot be opened because it is
+   from an unidentified developer". That is expected: this is a personal build,
+   not something bought from the App Store, so Apple has nothing to check it
+   against. Right-click the file, choose Open, then Open again in the dialog.
+
+3. Terminal opens, the installer copies the plugins into your own plug-in
+   folders, and then runs Apple's own validator on the Audio Unit. If it says
+   PASSED, you are done.
+
+Restart Logic afterwards. CRATE appears under Audio Units → Crate → Distortion.
+If it does not show up, quit Logic, open Terminal and run:
+
+    killall -9 AudioComponentRegistrar
+
+then start Logic again.
+
+
+TWO THINGS THAT WILL LOOK LIKE BUGS AND ARE NOT
+-----------------------------------------------
+
+SWING NEEDS THE TRANSPORT RUNNING. The grid comes from the host, so with the
+transport stopped the swing knob does nothing at all. The panel says so.
+
+IT REPORTS LATENCY, AND THAT IS DELIBERATE. The whole plugin sits behind a fixed
+delay so that push can pull hits EARLIER as well as later. Your DAW compensates
+for it automatically. If you have delay compensation switched off, everything
+through this plugin will sit late by about 120 ms.
+
+
+WHAT IT INSTALLS, AND WHERE
+---------------------------
+
+    ~/Library/Audio/Plug-Ins/Components/CRATE.component
+    ~/Library/Audio/Plug-Ins/VST3/CRATE.vst3
+
+Nothing else is touched, and the plugin makes no network connections of any
+kind. To uninstall, delete those two files.
+
+
+BEFORE YOU PUT IT ON SOMETHING THAT MATTERS
+-------------------------------------------
+
+This is an early build that has been measured, not listened to: the converter,
+the filter and the swing offsets are all verified against the numbers they claim
+on the panel, but nobody has yet sat and made a beat with it. That is the job.
+
+Save your project first, and leave Safety clip on to start with.
+
+
+WHAT WOULD BE USEFUL TO HEAR BACK
+---------------------------------
+
+  – does the swing feel like swing, or like a delay? Try it on a loop with a
+    long tail (a rhodes chord under the drums) where the smearing is worst
+  – does Tune do what you would expect a pitched-down sample to do?
+  – is Dust usable, or is it a novelty?
+  – does anything crackle or click when you move a knob while it plays?
+  – what is missing before you would reach for it instead of a stock plugin?
+
+Thanks for trying it.

@@ -1,0 +1,158 @@
+// CrateCore.h — the whole processor, with no dependency on JUCE, so it builds
+// and is measured with a bare compiler (crate/tests/test_core.cpp).
+//
+//   in ─ gain ─┬─ dry ────────────────────────────────────┐
+//              └─ + dust ─ converter ─ four-pole ─ wet ────┤
+//                                       mix ─ feel (swing, push) ─ out gain ─ clip
+//
+// Two ordering decisions worth knowing:
+//
+//   Dust goes in BEFORE the converter, because that is the order it happened in
+//   on the records this is after: someone sampled a noisy pressing, and the
+//   sampler crushed the noise along with the drums.
+//
+//   Feel goes AFTER the mix, not on the wet path. Swinging only the wet signal
+//   against an unmoved dry signal would flam every hit; the timing has to move
+//   the finished thing.
+#pragma once
+#include <vector>
+#include <cstdint>
+#include <algorithm>
+#include "ParamTable.h"
+#include "Converter.h"
+#include "Ladder.h"
+#include "Feel.h"
+#include "Dust.h"
+
+namespace crate {
+
+inline double dbToGain(double db){ return std::pow(10.0, db / 20.0); }
+
+// transparent below 0.7, saturating to exactly 1.0 above it, C1 at the knee
+inline double softLimit(double x){
+    const double t = 0.7, a = std::fabs(x);
+    if (a <= t) return x;
+    return (x < 0 ? -1.0 : 1.0) * (t + (1.0 - t) * std::tanh((a - t) / (1.0 - t)));
+}
+
+struct Ramp {
+    double cur = 0.0, inc = 0.0;
+    void target(double t, int n){ inc = (t - cur) / (n > 0 ? n : 1); }
+    void snap(double v){ cur = v; inc = 0.0; }
+    inline double next(){ cur += inc; return cur; }
+};
+
+class Engine {
+public:
+    static constexpr int maxChannels = 2;
+
+    void prepare(double sampleRate, int maxBlock){
+        sr_ = sampleRate;
+        juceUnused(maxBlock);
+        const Params& P = Params::get();
+        v_.assign(static_cast<size_t>(P.count()), 0.0f);
+        for (int i = 0; i < P.count(); ++i) v_[static_cast<size_t>(i)] = P[i].def;
+        conv_.prepare(sampleRate);
+        ladder_.prepare(sampleRate);
+        dust_.prepare(sampleRate);
+        feel_.prepare(sampleRate, 320.0);
+        feel_.setGrid(gridSteps(static_cast<int>(v_[static_cast<size_t>(Ids::get().grid)])));
+        reset();
+    }
+    void reset(){
+        conv_.reset(); ladder_.reset(); feel_.reset();
+        first_ = true;
+        inPeak = outPeak = 0.0f;
+    }
+
+    void setParam(int i, float value){ if (i >= 0 && i < static_cast<int>(v_.size())) v_[static_cast<size_t>(i)] = value; }
+    float getParam(int i) const { return v_[static_cast<size_t>(i)]; }
+    int latencySamples() const { return feel_.latencySamples(); }
+    void seedFrom(int64_t playheadSamples){ dust_.seedFrom(playheadSamples); }
+
+    // the transport, for the grid. With nothing playing, swing does nothing.
+    void setTransport(bool playing, double ppqAtBlockStart, double bpm){
+        playing_ = playing; ppq_ = ppqAtBlockStart; bpm_ = bpm;
+    }
+
+    float inPeak = 0.0f, outPeak = 0.0f;
+    double swingOffsetMs() const {                       // what the editor draws
+        return (feel_.currentDelaySamples() - feel_.latencySamples()) * 1000.0 / sr_;
+    }
+
+    void process(float* const* io, int numChannels, int n){
+        if (n <= 0) return;
+        const int nch = std::clamp(numChannels, 1, maxChannels);
+        const Ids& id = Ids::get();
+
+        const double tune = v_[static_cast<size_t>(id.tune)];
+        conv_.configure(v_[static_cast<size_t>(id.clock)] * std::pow(2.0, tune / 12.0),
+                        v_[static_cast<size_t>(id.aa)] / 100.0,
+                        v_[static_cast<size_t>(id.bits)],
+                        v_[static_cast<size_t>(id.compand)] / 100.0);
+        const double drive = v_[static_cast<size_t>(id.fltDrive)];
+        ladder_.configure(v_[static_cast<size_t>(id.fltFreq)],
+                          v_[static_cast<size_t>(id.fltReso)] / 100.0, drive);
+        dust_.configure(v_[static_cast<size_t>(id.dust)] / 100.0,
+                        v_[static_cast<size_t>(id.dustTone)]);
+        feel_.setGrid(gridSteps(static_cast<int>(v_[static_cast<size_t>(id.grid)])));
+        feel_.setSwing(v_[static_cast<size_t>(id.swing)]);
+        feel_.setPush(v_[static_cast<size_t>(id.push)]);
+        feel_.beginBlock(playing_, ppq_, bpm_);
+
+        auto setR = [&](Ramp& r, double t){ if (first_) r.snap(t); else r.target(t, n); };
+        setR(inG_, dbToGain(v_[static_cast<size_t>(id.inGain)]));
+        setR(outG_, dbToGain(v_[static_cast<size_t>(id.outGain)]));
+        setR(mix_, v_[static_cast<size_t>(id.mix)] / 100.0);
+        first_ = false;
+
+        const bool mono = v_[static_cast<size_t>(id.mono)] > 0.5f;
+        const bool safety = v_[static_cast<size_t>(id.safety)] > 0.5f;
+        const double driveComp = 1.0 / std::sqrt(drive);   // so Drive is character, not level
+
+        double inPk = 0.0, outPk = 0.0;
+        for (int i = 0; i < n; ++i){
+            const double gIn = inG_.next(), gOut = outG_.next(), m = mix_.next();
+            double dryIn[maxChannels];
+            for (int ch = 0; ch < nch; ++ch){
+                dryIn[ch] = static_cast<double>(io[ch][i]) * gIn;
+                inPk = std::max(inPk, std::fabs(dryIn[ch]));
+            }
+            if (mono && nch == 2){
+                const double s = (dryIn[0] + dryIn[1]) * 0.5;
+                dryIn[0] = dryIn[1] = s;
+            }
+            for (int ch = 0; ch < nch; ++ch){
+                const double dry = dryIn[ch];
+                double wet = dry + dust_.process(ch);
+                wet = conv_.process(ch, wet);
+                wet = ladder_.process(ch, wet) * driveComp;
+                feel_.write(ch, dry * (1.0 - m) + wet * m);
+            }
+            feel_.advance();
+            for (int ch = 0; ch < nch; ++ch){
+                double o = feel_.read(ch) * gOut;
+                if (safety) o = softLimit(o);
+                outPk = std::max(outPk, std::fabs(o));
+                io[ch][i] = static_cast<float>(o);
+            }
+            feel_.step();
+        }
+        inPeak = static_cast<float>(inPk);
+        outPeak = static_cast<float>(outPk);
+    }
+
+private:
+    static void juceUnused(int){}
+    double sr_ = 48000.0;
+    bool first_ = true, playing_ = false;
+    double ppq_ = 0.0, bpm_ = 120.0;
+    std::vector<float> v_;
+    Converter conv_;
+    Ladder ladder_;
+    Dust dust_;
+    Feel feel_;
+    Ramp inG_, outG_, mix_;
+};
+
+} // namespace crate
