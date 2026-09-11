@@ -8,10 +8,15 @@ the off-beats late against the host's grid.
 It is an insert effect, not a sampler. You keep your own drums and your own sequencer.
 
 ```
-./crate/build-macos.sh --dmg      # AU + VST3 + standalone, installed, then a disk image
+./build-macos-all.sh              # from the repo root: builds and installs BOTH plugins
+./crate/build-macos.sh --dmg      # or just this one, plus a disk image to send people
 npm run test:crate                # the measurement suite: compiler only, no JUCE
 cmake --build build --target host_smoke && ./build/host_smoke_artefacts/Release/host_smoke
 ```
+
+This branch carries both products — FRACTURE in `plugin/` and CRATE in `crate/` — so one
+checkout and one command installs the pair. JUCE is fetched once into `.juce/` and shared
+between the two builds.
 
 ## About the name
 

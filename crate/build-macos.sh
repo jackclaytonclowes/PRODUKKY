@@ -34,11 +34,23 @@ fi
 # and inside Rosetta hosts. Override with ARCHS=arm64 for a faster build.
 ARCHS="${ARCHS:-arm64;x86_64}"
 
-echo "==> configuring (fetching JUCE on the first run, this takes a few minutes)"
+# JUCE_PATH lets the top-level build-macos-all.sh hand both products the same
+# checkout, so JUCE is downloaded once rather than once per plugin. COMPANY puts
+# both plugins under one maker in Logic's Audio Units menu.
+extra=()
+if [[ -n "${JUCE_PATH:-}" ]]; then
+    extra+=(-DCRATE_JUCE_PATH="$JUCE_PATH")
+    echo "==> configuring (using the JUCE at $JUCE_PATH)"
+else
+    echo "==> configuring (fetching JUCE on the first run, this takes a few minutes)"
+fi
+[[ -n "${COMPANY:-}" ]] && extra+=(-DCRATE_COMPANY="$COMPANY")
+
 cmake -B build-macos \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_OSX_ARCHITECTURES="$ARCHS" \
-      -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+      -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOS_MIN:-10.13}" \
+      ${extra[@]+"${extra[@]}"}
 
 echo "==> building"
 cmake --build build-macos --config Release \
