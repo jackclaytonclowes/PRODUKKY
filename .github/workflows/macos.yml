@@ -1,75 +1,63 @@
-# Builds the macOS Audio Unit and VST3 on a GitHub runner and attaches them to
-# the run, so a built plugin can be downloaded without a local toolchain.
+# Builds BOTH plugins on a macOS runner and packs them into one disk image.
 #
-# Run it from the Actions tab ("Run workflow"), pick the branch, wait for it to
-# go green, then download the "FRACTURE-macOS" artifact from the run summary.
+# The file is still called plugin-macos.yml because that is the path GitHub has
+# registered for this repository: a workflow can only be dispatched by the path
+# it was first seen at, and this repository's default branch carries no
+# workflows at all, so renaming it would make it undispatchable.
 #
-# Note for a private repository: macOS runner minutes are billed at 10x, so this
-# ~10 minute build spends about 100 minutes of the account's quota each time.
-name: Build macOS plugin
+# Run it from the Actions tab ("Run workflow", pick the branch), or push a v* tag.
+# Download "Fracture-and-Crate-macOS" from the finished run.
+#
+# On a private repository macOS runner minutes bill at 10x, so a ~12 minute run
+# spends about 120 minutes of the account's quota. That is why this builds both
+# products in one run rather than two.
+name: Build both plugins for macOS
 
 on:
   workflow_dispatch:
   push:
     tags:
       - 'v*'
-    paths:
-      - 'plugin/**'
-      - '.github/workflows/plugin-macos.yml'
 
 jobs:
   build:
-    runs-on: macos-14          # Apple Silicon runner
+    runs-on: macos-14          # Apple Silicon; the build is universal anyway
     steps:
       - uses: actions/checkout@v4
 
       - name: Cache JUCE
         uses: actions/cache@v4
         with:
-          path: plugin/build-macos/_deps
-          key: juce-${{ runner.os }}-${{ hashFiles('plugin/CMakeLists.txt') }}
+          path: .juce
+          key: juce-8.0.15
 
-      - name: Configure
+      # the measurements first: they need no toolchain beyond a compiler and
+      # they fail in seconds rather than after a twelve minute build
+      - name: DSP measurements
         run: |
-          cmake -B plugin/build-macos -S plugin \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
+          node plugin/tests/run.mjs
+          node crate/tests/run.mjs
 
-      - name: Build the DSP tests and run them
-        run: |
-          cmake --build plugin/build-macos --target test_core -j 3
-          ./plugin/build-macos/test_core plugin/tests/shaper_reference.csv plugin/tests/presets.json
+      # the same script the user runs on their own laptop, so a green run here
+      # means that script works
+      - name: Build, install and validate both
+        run: ./build-macos-all.sh
 
-      - name: Build AU, VST3 and standalone
-        run: |
-          cmake --build plugin/build-macos --config Release \
-            --target Fracture_AU Fracture_VST3 Fracture_Standalone -j 3
-
-      - name: Validate the Audio Unit
-        run: |
-          # auval needs the component registered, and the runner's copy lands in
-          # the user plug-in folder because COPY_PLUGIN_AFTER_BUILD is on
-          killall -9 AudioComponentRegistrar || true
-          auval -v aufx Frcd Frct
-
-      - name: Build the disk image
-        run: ./plugin/packaging/make-dmg.sh
+      - name: Disk image
+        run: ./packaging/make-dmg.sh
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FRACTURE-macOS-dmg
-          path: plugin/dist/*.dmg
+          name: Fracture-and-Crate-macOS
+          path: dist/*.dmg
           retention-days: 30
 
-      # a tag push also cuts a release, so there is a stable link to send people
-      # (a private repository still asks them to sign in — see plugin/README.md)
       - name: Attach to a release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" plugin/dist/*.dmg \
-            --title "FRACTURE ${GITHUB_REF_NAME}" \
-            --notes "Unsigned build. Open the disk image, right-click 'Install FRACTURE.command' and choose Open." \
-            || gh release upload "${GITHUB_REF_NAME}" plugin/dist/*.dmg --clobber
+          gh release create "${GITHUB_REF_NAME}" dist/*.dmg \
+            --title "FRACTURE and CRATE ${GITHUB_REF_NAME}" \
+            --notes "Unsigned build. Open the disk image, right-click 'Install both plugins.command' and choose Open." \
+            || gh release upload "${GITHUB_REF_NAME}" dist/*.dmg --clobber

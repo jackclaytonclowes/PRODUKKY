@@ -1,0 +1,75 @@
+FRACTURE and CRATE
+==================
+
+Two audio plugins, in one disk image.
+
+FRACTURE — multi-band multi-fx distortion. Three bands, two serial drive stages
+each with fourteen shaper modes, a bit crusher, a feedback loop, a resonant
+filter, two LFOs and an envelope follower into a six-slot modulation matrix.
+
+CRATE — twelve-bit drum processor. A 26.04 kHz sample clock, companded twelve-bit
+conversion, a four-pole filter, the noise floor of the record the break came off,
+and a swing section that pulls the off-beats late against the host's grid.
+
+Both install as Audio Units (Logic, GarageBand, Live) and VST3 (Live, Reaper,
+Cubase, Bitwig). Standalone apps are in the "Standalone apps" folder if you want
+to play without opening a DAW.
+
+
+INSTALLING
+----------
+
+1. Double-click "Install both plugins.command".
+
+2. macOS will probably refuse the first time — "cannot be opened because it is
+   from an unidentified developer". That is expected: these are personal builds,
+   not something bought from the App Store, so Apple has nothing to check them
+   against. Right-click the file, choose Open, then Open again in the dialog.
+
+3. Terminal opens, the installer copies both plugins into your own plug-in
+   folders, and then runs Apple's own validator on each Audio Unit. Two passes
+   and you are done.
+
+Restart Logic afterwards. They appear under Audio Units → Fracture → Distortion
+and Audio Units → Crate → Distortion. If they do not show up, quit Logic, open
+Terminal and run:
+
+    killall -9 AudioComponentRegistrar
+
+then start Logic again.
+
+
+TWO THINGS ABOUT CRATE THAT LOOK LIKE BUGS AND ARE NOT
+-------------------------------------------------------
+
+SWING NEEDS THE TRANSPORT RUNNING. The grid comes from the host, so with
+playback stopped the swing knob does nothing at all.
+
+IT REPORTS LATENCY ON PURPOSE. The whole plugin sits behind a fixed delay (about
+120 ms) so Push can pull hits EARLIER as well as later. Your DAW compensates for
+it automatically — unless you have delay compensation switched off, in which case
+everything through it will sit late.
+
+
+WHAT GETS INSTALLED, AND WHERE
+------------------------------
+
+    ~/Library/Audio/Plug-Ins/Components/FRACTURE.component
+    ~/Library/Audio/Plug-Ins/Components/CRATE.component
+    ~/Library/Audio/Plug-Ins/VST3/FRACTURE.vst3
+    ~/Library/Audio/Plug-Ins/VST3/CRATE.vst3
+
+Nothing else is touched. No background processes, no login items, and neither
+plugin opens a network connection of any kind. To uninstall, delete those four.
+
+
+BEFORE YOU PUT THEM ON SOMETHING THAT MATTERS
+----------------------------------------------
+
+Both are early builds that have been measured rather than listened to. The
+converter, the filter and the swing offsets are all verified against the numbers
+printed on the panels, and neither plugin can produce silence, NaNs or runaway
+levels — but nobody has sat and made a record with either yet.
+
+Save your project first. Leave Safety clip on to start with; it hard-limits the
+output on both.
