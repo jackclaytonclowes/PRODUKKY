@@ -8,7 +8,7 @@ destructive digital modes, feedback, a resonant filter after the drive, and modu
 patched to anything).
 
 ```
-npm run test:fx          # headless smoke test, 48 assertions
+npm run test:fx          # headless smoke test, 59 assertions
 npm run test:fx:head     # same, in a visible browser
 open fx/fracture.html    # or just double-click it
 ```
@@ -22,7 +22,7 @@ in ─ input gain ─┬─ dry ────────────────
                                     └─ stage A ─ tone ─ stage B ─ wet ─ level ─┤
                        bands summed ─┬─ crush/decimate ─ filter ─ wet ─────────┤
                                      └─ feedback: delay ─ tone ─ saturator ────┘
-                 dry/wet mix ─ width (M/S) ─ output gain ─ safety clip ─ out
+                 dry/wet mix ─ width (M/S) ─ tremolo ─ output gain ─ safety ─ out
 ```
 
 Per band: two serial drive stages, each with its own mode and drive, a post-drive tilt
@@ -48,7 +48,7 @@ given drive setting does not jump in level. **Harmonics** is the one deliberate 
 
 Béton clair: Corbusier primaries on concrete, ported from the design canvas in `design/`.
 Flat colour, zero radius, no shadows and no gradients except the dials' own arcs — the
-concrete greys are the only texture, and the section bars are numbered 01–08.
+concrete greys are the only texture, and the section bars are numbered 01–09.
 
 Colour is functional, never decorative, and each panel sets a `--fill` its dials inherit:
 
@@ -68,6 +68,37 @@ in grayscale, which a glow does not.
 
 Type is a heavy grotesque from the system stack (`Arial Black` / Helvetica / Arial), not the
 Archivo the mockups use: the page makes no requests, and that promise outranks the typeface.
+
+## The filter, and the tremolo
+
+The post filter has a **Circuit** control. `Clean` is the pair of biquads it has always
+been. `Analogue` and `Vintage` are a four-pole ladder in an AudioWorklet: zero-delay
+feedback, saturation *inside* the loop, and a cutoff that drifts a few per cent per
+channel. Saturation in the loop is what makes resonance squelch against a loud signal
+instead of ringing through it, and what keeps self-oscillation at a usable level rather
+than a divergence; `Vintage` saturates asymmetrically, for even harmonics, and loses the
+top octave. **Drive** pushes the input stage with most of the level taken back out again,
+and **Slope** picks 12 or 24 dB — every response is mixed from the same four taps, so
+changing type or slope never re-tunes the resonance.
+
+The mark on **Cutoff** is the pole corner: where the resonance sings, which is the only
+calibration that lets a resonant sweep be played in tune. A four-pole is 3 dB down at
+0.435 of that, so at the same number the ladder is darker than the biquad — the character
+of a four-pole, not an error.
+
+**Tremolo** (panel 09) is last in the chain, after the dry/wet, because an insert tremolo
+modulates everything. **Shape** morphs continuously from sine through triangle to a hard
+chop, **Duty** decides how much of the cycle is the loud half, **Edge** is a real slew on
+the result (a square wave with instant edges is a click, and no hardware tremolo switched
+that fast), and **Spread** offsets the right channel — 180° is auto-pan. It is also a
+modulation source, so the rhythm chopping the level can sweep the filter at the same time.
+The panel draws one cycle of the curve as it will actually sound, from the same arithmetic
+the worklet runs.
+
+**Sync** on the tremolo and on both LFOs is one list whose first entry is `Free`, rather
+than a toggle and a division that can disagree with each other. A page has no transport to
+ask, so the tempo comes from the **Tempo** box next to the transport; in the plugin it
+comes from the host, and there a division takes its phase from the song position.
 
 ## Modulation
 
@@ -90,8 +121,10 @@ move under modulation.
   filters ring), which defeats the point of a last-stage limiter. The safety stage is a
   plain tanh with a -0.9 dBFS ceiling, so the output is genuinely bounded. The test
   asserts it.
-- **The bit-crusher worklet loads from a `data:` URL.** Chrome refuses to load an
-  `AudioWorklet` module from a `blob:` URL on a `file://` page, and double-clicking the
+- **The worklet loads from a `data:` URL.** It carries the bit crusher, the ladder and
+  the tremolo, because none of the three is expressible as a graph of built-in nodes, and
+  from a `data:` URL because Chrome refuses to load an `AudioWorklet` module from a
+  `blob:` URL on a `file://` page, and double-clicking the
   file is exactly how this gets used. A `data:` URL is not a network fetch, so the page
   still makes no requests; `blob:` remains as a fallback.
 - **The feedback loop has a saturator in it.** Delay → damping filter → tanh → amount.
@@ -108,7 +141,11 @@ shaper or feedback path that produces `NaN`/`Inf` (which silently kills the whol
 graph for the rest of the session), and a chain that runs away in level. So `tests/fx.mjs`
 builds the real graph in an `OfflineAudioContext`, renders noise through it, and asserts
 the output is finite, audible and bounded — for all 14 modes at +32 dB through both
-stages, with feedback at 85%, for every preset, and with the modulation matrix live. It
+stages, with feedback at 85%, for every preset, and with the modulation matrix live. The
+ladder and the tremolo are measured the same way, from the audio: that the ladder is
+audibly not the biquad, that a self-oscillating one stays inside the rails, that full
+depth chops the level and 180° of spread anticorrelates the two channels, and that a
+synced division counts the tempo in the box. It
 also checks every preset only references real parameters with in-range values, and takes a
 screenshot to `tests/screenshots/fx-fracture.png`, because layout regressions do not fail
 assertions.
@@ -116,7 +153,7 @@ assertions.
 ## The plugin
 
 `../plugin` is a native port of this file: same signal path, same shapers, same parameter
-ids, same presets, built as a VST3 / AU with JUCE. The DSP there has no dependency on JUCE
+ids, same presets, same ladder and tremolo, built as a VST3 / AU with JUCE. The DSP there has no dependency on JUCE
 and is checked against *this* file's arithmetic — `npm run test:core` compares all fourteen
 shapers against 9,114 points generated from `fracture.html` itself, so the two cannot drift
 apart. `plugin/README.md` lists what the port deliberately changed and why.

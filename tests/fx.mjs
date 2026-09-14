@@ -61,6 +61,50 @@ const RENDER = `async (patch, seconds) => {
   return { peak, bad, rms: Math.sqrt(sum/Math.max(1,n)), crush: eng.crushAvailable };
 }`;
 
+/* The same graph, but reporting a per-channel envelope rather than one number:
+   a tremolo is only doing its job if the level moves, and only auto-panning if
+   the two channels move in opposite directions. */
+const ENVELOPE = `async (patch, seconds) => {
+  const sr = 44100;
+  const ctx = new OfflineAudioContext(2, Math.round(sr*seconds), sr);
+  const eng = window.FX.createEngine(ctx);
+  await eng.initWorklet();
+  window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+  const len = Math.round(sr*seconds);
+  const buf = ctx.createBuffer(2, len, sr);
+  for (let c = 0; c < 2; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < len; i++) d[i] = (Math.random()*2-1)*0.5;
+  }
+  const s = ctx.createBufferSource();
+  s.buffer = buf; s.connect(eng.input); s.start();
+  const r = await ctx.startRendering();
+  const win = Math.round(sr*0.005), skip = Math.round(sr*0.08);
+  const env = [[], []];
+  for (let c = 0; c < 2; c++) {
+    const d = r.getChannelData(c);
+    for (let i = skip; i + win < d.length; i += win) {
+      let sum = 0;
+      for (let j = 0; j < win; j++) sum += d[i+j]*d[i+j];
+      env[c].push(Math.sqrt(sum/win));
+    }
+  }
+  return { L: env[0], R: env[1], worklet: eng.crushAvailable };
+}`;
+
+const stats = a => {
+  const mean = a.reduce((x, y) => x + y, 0)/a.length;
+  return { mean, min: Math.min(...a), max: Math.max(...a) };
+};
+const correlation = (a, b) => {
+  const ma = stats(a).mean, mb = stats(b).mean;
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < a.length; i++) {
+    num += (a[i]-ma)*(b[i]-mb); da += (a[i]-ma)**2; db += (b[i]-mb)**2;
+  }
+  return num/Math.sqrt(da*db);
+};
+
 async function main() {
   if (!fs.existsSync(APP)) { console.error('Missing ' + APP); process.exit(1); }
   fs.mkdirSync(SHOTS, { recursive: true });
@@ -79,6 +123,8 @@ async function main() {
 
   const render = (patch = {}, seconds = 0.3) =>
     page.evaluate(`(${RENDER})(${JSON.stringify(patch)}, ${seconds})`);
+  const envelope = (patch = {}, seconds = 0.8) =>
+    page.evaluate(`(${ENVELOPE})(${JSON.stringify(patch)}, ${seconds})`);
 
   console.log('\nPage');
   check('loads without script errors', pageErrors.length === 0, pageErrors.join(' | '));
@@ -171,6 +217,47 @@ async function main() {
   check('every modulatable parameter is a matrix target', modUi.options === modUi.dests + 1,
     JSON.stringify(modUi));
 
+  console.log('\nLadder and tremolo');
+  {
+    const base = { bands: '1', mx0: 0, fltType: 'lp', fltFreq: 900, fltQ: 6 };
+    const clean = await render({ ...base, fltCirc: 'clean' }, 0.4);
+    const analog = await render({ ...base, fltCirc: 'analog' }, 0.4);
+    const vintage = await render({ ...base, fltCirc: 'vintage', fltDrive: 6 }, 0.4);
+    check('the ladder is in circuit and is not the biquad',
+      analog.bad === 0 && analog.rms > 0.002 && Math.abs(analog.rms - clean.rms)/clean.rms > 0.05,
+      `clean ${clean.rms.toFixed(4)} analogue ${analog.rms.toFixed(4)}`);
+    check('the vintage circuit is different again and still bounded',
+      vintage.bad === 0 && vintage.peak <= 0.95 && Math.abs(vintage.rms - analog.rms)/analog.rms > 0.02,
+      `analogue ${analog.rms.toFixed(4)} vintage ${vintage.rms.toFixed(4)}`);
+    const singing = await render({ ...base, fltCirc: 'analog', fltQ: 18, fltDrive: 12 }, 0.5);
+    check('a self-oscillating ladder stays inside the rails',
+      singing.bad === 0 && singing.peak <= 0.95, `peak ${singing.peak.toFixed(3)}`);
+  }
+  {
+    const off = await envelope({ bands: '1', mx0: 0, trOn: false });
+    const on = await envelope({ bands: '1', mx0: 0, trOn: true, trDiv: 'free', trRate: 6,
+                                trDepth: 100, trShape: 100, trEdge: 90 });
+    const a = stats(off.L), b = stats(on.L);
+    check('the worklet carries the tremolo as well as the crusher', on.worklet === true);
+    check('a tremolo at full depth chops the level',
+      b.min/b.max < 0.2 && a.min/a.max > 0.4,
+      `off ${(a.min/a.max).toFixed(3)} on ${(b.min/b.max).toFixed(3)}`);
+    const panned = await envelope({ bands: '1', mx0: 0, trOn: true, trDiv: 'free', trRate: 5,
+                                    trDepth: 100, trShape: 0, trSpread: 180, width: 100 });
+    check('180 degrees of spread is auto-pan',
+      correlation(panned.L, panned.R) < -0.7,
+      `correlation ${correlation(panned.L, panned.R).toFixed(3)}`);
+    const quarter = await envelope({ bands: '1', mx0: 0, trOn: true, trDiv: '1/4',
+                                     trDepth: 100, trShape: 100, trEdge: 90 }, 1.0);
+    // 120 BPM is the page default: a quarter is 2 a second, so ~2 dips a second
+    let dips = 0;
+    const q = stats(quarter.L);
+    for (let i = 1; i < quarter.L.length; i++)
+      if (quarter.L[i-1] > q.mean && quarter.L[i] <= q.mean) dips++;
+    check('a synced tremolo counts the page tempo',
+      dips >= 1 && dips <= 3, `${dips} dips in ${(quarter.L.length*0.005).toFixed(2)} s`);
+  }
+
   console.log('\nPresets');
   const presetProblems = await page.evaluate(() => {
     const bad = [];
@@ -187,7 +274,8 @@ async function main() {
   });
   check('every preset value is a real parameter in range', presetProblems.length === 0, presetProblems.join(' | '));
 
-  for (let i = 0; i < 9; i++) {
+  const presetCount = await page.evaluate(() => window.FX.PRESETS.length);
+  for (let i = 0; i < presetCount; i++) {
     const pr = await page.evaluate(i => window.FX.PRESETS[i], i);
     const r = await render(pr.v, 0.35);
     check(`preset "${pr.name}"`, r.bad === 0 && r.peak <= 0.95 && r.rms > 0.002,

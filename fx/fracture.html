@@ -78,6 +78,8 @@ select{font:500 12px/1.2 var(--grot);color:var(--ink);background-color:var(--fac
   background-position:calc(100% - 14px) 55%,calc(100% - 9px) 55%;
   background-size:5px 5px;background-repeat:no-repeat}
 select:hover{background-color:var(--ground)}
+input[type=number]{font:500 12px/1.2 var(--grot);color:var(--ink);background:var(--face);
+  border:1.5px solid var(--ink);border-radius:0;padding:7px 9px;width:88px}
 
 /* ---------- panels ---------- */
 .grid{display:grid;gap:14px;grid-template-columns:repeat(12,1fr)}
@@ -224,8 +226,12 @@ kbd{background:var(--face);border:1.5px solid var(--ink);border-radius:0;
         </select></div>
       <div class="field"><label for="loopChk">Loop</label>
         <button class="sm tgl on" id="loopChk">Loop</button></div>
+      <div class="field"><label for="bpmBox">Tempo</label>
+        <input type="number" id="bpmBox" min="40" max="240" step="0.5" value="120"></div>
     </div>
     <div class="note" id="srcNote">No file loaded — pink noise, tone and pluck loop are generated locally.</div>
+    <div class="note">Tempo is set here because a web page has no transport to ask; in the plugin the
+      synced divisions come from the host.</div>
   </div>
 
   <main class="grid">
@@ -238,9 +244,9 @@ kbd{background:var(--face);border:1.5px solid var(--ink);border-radius:0;
       <div id="bandPanes"></div>
     </div>
 
-    <div class="panel col-5" data-hue="crush"><h2 data-no="04">Crush &amp; feedback</h2><div class="row" id="secCrush"></div>
+    <div class="panel col-4" data-hue="crush"><h2 data-no="04">Crush &amp; feedback</h2><div class="row" id="secCrush"></div>
       <div class="warnline hidden" id="crushWarn"></div></div>
-    <div class="panel col-4" data-hue="shape"><h2 data-no="05">Filter</h2><div class="row" id="secFilter"></div></div>
+    <div class="panel col-5" data-hue="shape"><h2 data-no="05">Filter</h2><div class="row" id="secFilter"></div></div>
     <div class="panel col-3"><h2 data-no="06">Output</h2><div class="row" id="secOut"></div></div>
 
     <div class="panel col-7" data-hue="shape"><h2 data-no="07">Modulation</h2>
@@ -260,6 +266,12 @@ kbd{background:var(--face);border:1.5px solid var(--ink);border-radius:0;
         </div>
         <div class="meters" id="meters"></div>
       </div>
+    </div>
+
+    <div class="panel col-12" data-hue="shape"><h2 data-no="09">Tremolo</h2>
+      <div class="row" id="secTrem"></div>
+      <div style="height:14px"></div>
+      <canvas id="cvTrem" height="150"></canvas>
     </div>
   </main>
 
@@ -395,6 +407,170 @@ class Crush extends AudioWorkletProcessor {
 registerProcessor('crush', Crush);
 `;
 
+/* ------------------------------------------------- the ladder and the tremolo
+   Both are ports of plugin/core/AnalogFilter.h and plugin/core/Tremolo.h, and
+   the arithmetic is line for line the same — the plugin's test suite measures
+   these curves, and a second version that drifted from them would make a patch
+   mean two different things. They need a worklet for the same reason the
+   crusher does: neither is expressible as a graph of built-in nodes.       */
+const LADDER_WORKLET = `
+const satSoft = x => {
+  if (x <= -3) return -1;
+  if (x >=  3) return  1;
+  const x2 = x*x;
+  return x*(27 + x2)/(27 + 9*x2);
+};
+const SAT_OFF = 0.18, SAT_BASE = satSoft(0.18);
+const satAsym = x => satSoft(x + SAT_OFF) - SAT_BASE;
+
+class Ladder extends AudioWorkletProcessor {
+  static get parameterDescriptors(){
+    return [
+      {name:'freq',    defaultValue:1200, minValue:20,  maxValue:20000, automationRate:'k-rate'},
+      {name:'reso',    defaultValue:0.7,  minValue:0.3, maxValue:18,    automationRate:'k-rate'},
+      {name:'drive',   defaultValue:1,    minValue:0.1, maxValue:24,    automationRate:'k-rate'},
+      {name:'drift',   defaultValue:0,    minValue:0,   maxValue:1,     automationRate:'k-rate'},
+      {name:'type',    defaultValue:0,    minValue:0,   maxValue:5,     automationRate:'k-rate'},
+      {name:'poles',   defaultValue:4,    minValue:2,   maxValue:4,     automationRate:'k-rate'},
+      {name:'circuit', defaultValue:0,    minValue:0,   maxValue:2,     automationRate:'k-rate'}
+    ];
+  }
+  constructor(){
+    super();
+    this.z = [[0,0,0,0],[0,0,0,0]];
+    this.hf = [0,0];
+    this.drift = [0,0]; this.target = [0,0]; this.count = [0,0];
+    this.rng = [22222, 88888];
+  }
+  wander(c){
+    if (--this.count[c] <= 0){
+      this.rng[c] = (Math.imul(this.rng[c], 1664525) + 1013904223) >>> 0;
+      this.target[c] = (this.rng[c] >>> 8)/8388608 - 1;
+      this.count[c] = 24 + ((this.rng[c] >>> 5) & 31);
+    }
+    this.drift[c] += (this.target[c] - this.drift[c])*0.06;
+    return this.drift[c];
+  }
+  process(inputs, outputs, p){
+    const inp = inputs[0], out = outputs[0];
+    if (!inp || !inp.length){ for (const ch of out) ch.fill(0); return true; }
+    const circuit = Math.round(p.circuit[0]), type = Math.round(p.type[0]);
+    if (circuit === 0 || type === 0){                     // the biquads have it
+      for (let c = 0; c < out.length; c++){
+        const src = inp[Math.min(c, inp.length-1)];
+        if (src) out[c].set(src); else out[c].fill(0);
+      }
+      return true;
+    }
+    const four = Math.round(p.poles[0]) >= 4;
+    const t = Math.log(Math.min(18, Math.max(0.3, p.reso[0]))/0.3)/Math.log(18/0.3);
+    const k = 4.35*Math.pow(t, 1.25);
+    const drive = Math.min(24, Math.max(0.1, p.drive[0]));
+    const trim = Math.pow(drive, -0.8);
+    const bass = type === 1 ? 1 + 0.42*k : 1;
+    const driftAmt = Math.min(1, Math.max(0, p.drift[0]));
+    // mode mixing: every response comes off the same four taps
+    let a0 = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0;
+    if (type === 1){ if (four) a4 = 1; else a2 = 1; }
+    else if (type === 2){ if (four){ a0=1; a1=-4; a2=6; a3=-4; a4=1; } else { a0=1; a1=-2; a2=1; } }
+    else if (type === 3){ if (four){ a2=4; a3=-8; a4=4; } else { a1=2; a2=-2; } }
+    else if (type === 4){ a0=1; a1=-2; a2=2; }
+    else { a0=1; a1=4; a2=-4; }
+    const hfK = 1 - Math.exp(-2*Math.PI*13500/sampleRate);
+
+    for (let c = 0; c < out.length; c++){
+      const src = inp[Math.min(c, inp.length-1)], dst = out[c];
+      const z = this.z[c] || (this.z[c] = [0,0,0,0]);
+      const wobble = this.wander(c);
+      const extra = circuit === 2 ? 0.075 : 0.035;
+      const f = Math.min(sampleRate*0.46, Math.max(16, p.freq[0]*(1 + driftAmt*extra*wobble)));
+      const g = Math.tan(Math.PI*f/sampleRate);
+      const G = g/(1+g), omG = 1 - G, G4 = G*G*G*G;
+      const kn = Math.max(0, k*(1 + driftAmt*0.09*wobble));
+      let hf = this.hf[c] || 0;
+      for (let i = 0; i < dst.length; i++){
+        const x = src ? src[i] : 0;
+        const s1 = z[0], s2 = z[1], s3 = z[2], s4 = z[3];
+        const b1 = s1*omG, b2 = s2*omG, b3 = s3*omG, b4 = s4*omG;
+        const sFb = G*G*G*b1 + G*G*b2 + G*b3 + b4;
+        let u = (x*drive*bass - kn*satSoft(sFb))/(1 + kn*G4);
+        u = circuit === 2 ? satAsym(u) : satSoft(u);
+        const y1 = G*u  + b1; z[0] = 2*y1 - s1;
+        const y2 = G*y1 + b2; z[1] = 2*y2 - s2;
+        const y3 = G*y2 + b3; z[2] = 2*y3 - s3;
+        const y4 = G*y3 + b4; z[3] = 2*y4 - s4;
+        let v = a0*u + a1*y1 + a2*y2 + a3*y3 + a4*y4;
+        if (circuit === 2){ hf += (v - hf)*hfK; v = hf; }
+        dst[i] = v*trim;
+      }
+      this.hf[c] = hf;
+    }
+    return true;
+  }
+}
+registerProcessor('ladder', Ladder);
+`;
+
+const TREM_WORKLET = `
+class Trem extends AudioWorkletProcessor {
+  static get parameterDescriptors(){
+    return [
+      {name:'on',     defaultValue:0,   minValue:0,    maxValue:1,  automationRate:'k-rate'},
+      {name:'rate',   defaultValue:5,   minValue:0.02, maxValue:24, automationRate:'k-rate'},
+      {name:'depth',  defaultValue:0,   minValue:0,    maxValue:1,  automationRate:'k-rate'},
+      {name:'shape',  defaultValue:0,   minValue:0,    maxValue:1,  automationRate:'k-rate'},
+      {name:'edge',   defaultValue:0.5, minValue:0,    maxValue:1,  automationRate:'k-rate'},
+      {name:'duty',   defaultValue:0.5, minValue:0.05, maxValue:0.95, automationRate:'k-rate'},
+      {name:'spread', defaultValue:0,   minValue:0,    maxValue:0.5,  automationRate:'k-rate'}
+    ];
+  }
+  constructor(){
+    super();
+    this.phase = 0; this.smooth = [1,1]; this.depth = 0; this.first = true; this.tick = 0;
+  }
+  process(inputs, outputs, p){
+    const inp = inputs[0], out = outputs[0];
+    if (!inp || !inp.length){ for (const ch of out) ch.fill(0); return true; }
+    const on = p.on[0] > 0.5;
+    const target = p.depth[0], shape = p.shape[0], duty = p.duty[0], spread = p.spread[0];
+    if (this.first){ this.depth = target; this.first = false; }
+    const edge = p.edge[0];
+    const tau = 0.00035 + 0.0157*(1-edge)*(1-edge);
+    const slew = 1 - Math.exp(-1/(tau*sampleRate));
+    const depthK = 1 - Math.exp(-1/(0.02*sampleRate));
+    const inc = p.rate[0]/sampleRate;
+    const wave = ph => {
+      const w = ph < duty ? 0.5*ph/duty : 0.5 + 0.5*(ph - duty)/(1 - duty);
+      const sine = 0.5 + 0.5*Math.cos(2*Math.PI*w);
+      const tri  = w < 0.5 ? 1 - 2*w : 2*w - 1;
+      const sqr  = w < 0.5 ? 1 : 0;
+      return shape <= 0.5 ? sine + (tri - sine)*(shape*2) : tri + (sqr - tri)*((shape-0.5)*2);
+    };
+    const n = out[0].length;
+    for (let i = 0; i < n; i++){
+      for (let c = 0; c < out.length; c++){
+        const src = inp[Math.min(c, inp.length-1)];
+        const x = src ? src[i] : 0;
+        if (!on){ out[c][i] = x; continue; }
+        let ph = this.phase + (c === 1 ? spread : 0);
+        ph -= Math.floor(ph);
+        const s = this.smooth[c] += (wave(ph) - this.smooth[c])*slew;
+        out[c][i] = x*(1 - this.depth + this.depth*s);
+      }
+      this.depth += (target - this.depth)*depthK;
+      this.phase += inc;
+      if (this.phase >= 1) this.phase -= Math.floor(this.phase);
+    }
+    // the UI needs it as a modulation source; once every four quanta is plenty
+    if (((this.tick++) & 3) === 0) this.port.postMessage(on ? this.smooth[0]*2 - 1 : 0);
+    return true;
+  }
+}
+registerProcessor('trem', Trem);
+`;
+
+const WORKLET_SRC = CRUSH_WORKLET + LADDER_WORKLET + TREM_WORKLET;
+
 /* ------------------------------------------------------------------- engine */
 function createEngine(ctx){
   const g  = (v=1) => { const n = ctx.createGain(); n.gain.value = v; return n; };
@@ -470,6 +646,15 @@ function createEngine(ctx){
   e.flt  = bq('lowpass', 18000, 0.7071);
   e.flt2 = bq('lowpass', 18000, 0.7071);
   e.fltType = 'off';
+  e.fltCirc = 'clean';
+  // the ladder sits after the biquads and passes through unless the Circuit
+  // control asks for it, at which point the biquads step out of the way
+  e.ladderIn = g(1); e.ladderOut = g(1);
+  e.ladderIn.connect(e.ladderOut);
+  // and the tremolo sits at the very end, after the width stage
+  e.tremIn = g(1); e.tremOut = g(1);
+  e.tremIn.connect(e.tremOut);
+  e.tremValue = 0;
   e.wet  = g(1);
   e.mixBus = g(1);
 
@@ -498,7 +683,7 @@ function createEngine(ctx){
   e.final   = g(1);
   e.byp     = g(0);
 
-  merge.connect(e.outGain);
+  merge.connect(e.tremIn); e.tremOut.connect(e.outGain);
   e.outGain.connect(e.safeOn); e.safeOn.connect(e.safety); e.safety.connect(e.final);
   e.outGain.connect(e.safeOff); e.safeOff.connect(e.final);
   e.input.connect(e.byp); e.byp.connect(e.final);
@@ -510,7 +695,8 @@ function createEngine(ctx){
   e.inGain.connect(e.preHP); e.preHP.connect(e.preLP);
   e.sum.connect(e.postIn);
   e.postIn.connect(e.crushIn);
-  e.crushOut.connect(e.flt); e.flt.connect(e.flt2); e.flt2.connect(e.wet);
+  e.crushOut.connect(e.flt); e.flt.connect(e.flt2);
+  e.flt2.connect(e.ladderIn); e.ladderOut.connect(e.wet);
   e.wet.connect(e.mixBus);
 
   /* ---- routing that changes with band count ---- */
@@ -564,13 +750,57 @@ function createEngine(ctx){
       e.set(b.out.gain, audible ? dB(b.level) : 0);
     }
   };
-  e.setFilterType = id => {
-    e.fltType = id;
-    const map = { off:'allpass', lp:'lowpass', hp:'highpass', bp:'bandpass', notch:'notch', peak:'peaking' };
-    const t = map[id] || 'allpass';
+  const FLT_INDEX = { off:0, lp:1, hp:2, bp:3, notch:4, peak:5 };
+  const BQ_TYPE = { off:'allpass', lp:'lowpass', hp:'highpass', bp:'bandpass',
+                    notch:'notch', peak:'peaking' };
+  // Everything about the post filter in one place, because only one of the two
+  // circuits is ever in the signal path: the biquads park at 20 kHz when the
+  // ladder has the job, and the ladder passes through when they do. A 12 dB
+  // slope on the clean circuit is the pair with its second half parked.
+  e.flt$ = { type:'off', circ:'clean', poles:'24', freq:1200, q:0.7, drive:1, drift:0.35 };
+  e.applyFilter = () => {
+    const f = e.flt$;
+    e.fltType = f.type;
+    e.fltCirc = f.circ;
+    const analog = f.circ !== 'clean' && f.type !== 'off';
+    const t = analog ? 'allpass' : (BQ_TYPE[f.type] || 'allpass');
     e.flt.type = t; e.flt2.type = t;
-    if (id === 'off'){ e.flt.frequency.value = 20000; e.flt2.frequency.value = 20000; }
+    const park = analog || f.type === 'off';
+    e.set(e.flt.frequency, park ? 20000 : f.freq);
+    e.set(e.flt2.frequency, (park || f.poles === '12') ? 20000 : f.freq);
+    e.set(e.flt.Q, f.q); e.set(e.flt2.Q, f.q);
+    const lp = n => e.lp(n);
+    if (lp('type')){
+      lp('type').value = analog ? (FLT_INDEX[f.type] || 0) : 0;
+      lp('circuit').value = f.circ === 'vintage' ? 2 : (f.circ === 'analog' ? 1 : 0);
+      lp('poles').value = f.poles === '12' ? 2 : 4;
+      e.set(lp('freq'), f.freq);
+      e.set(lp('reso'), f.q);
+      e.set(lp('drive'), f.drive);
+      lp('drift').value = f.drift;
+    }
   };
+  e.setFilter = (key, v) => { e.flt$[key] = v; e.applyFilter(); };
+
+  // the tremolo's rate comes from the page's own tempo when a division is set,
+  // since a web page has no transport to ask
+  e.trem$ = { on:false, div:'1/8', rate:5, depth:60, shape:0, edge:50, duty:50, spread:0, bpm:songBpm };
+  e.applyTrem = () => {
+    const t = e.trem$;
+    const beats = DIV_BEATS[t.div] || 0;
+    const hz = beats > 0 ? (t.bpm/60)/beats : t.rate;
+    const tp = n => e.tp(n);
+    if (!tp('on')) return;
+    tp('on').value = t.on ? 1 : 0;
+    e.set(tp('rate'), Math.min(24, Math.max(0.02, hz)));
+    e.set(tp('depth'), t.depth/100);
+    e.set(tp('shape'), t.shape/100);
+    e.set(tp('edge'), t.edge/100);
+    e.set(tp('duty'), Math.min(0.95, Math.max(0.05, t.duty/100)));
+    e.set(tp('spread'), t.spread/360);
+  };
+  e.setTrem = (key, v) => { e.trem$[key] = v; e.applyTrem(); };
+
   e.setAutoGain = on => {
     e.autoGain = on;
     for (let i = 0; i < 3; i++) for (let s = 0; s < 2; s++)
@@ -585,19 +815,28 @@ function createEngine(ctx){
   e.initWorklet = async () => {
     if (!ctx.audioWorklet) return false;
     const urls = [
-      'data:application/javascript,' + encodeURIComponent(CRUSH_WORKLET),
-      () => URL.createObjectURL(new Blob([CRUSH_WORKLET], { type:'application/javascript' }))
+      'data:application/javascript,' + encodeURIComponent(WORKLET_SRC),
+      () => URL.createObjectURL(new Blob([WORKLET_SRC], { type:'application/javascript' }))
     ];
     for (const u of urls){
       let url = null;
       try {
         url = typeof u === 'function' ? u() : u;
         await ctx.audioWorklet.addModule(url);
-        const node = new AudioWorkletNode(ctx, 'crush',
-          { numberOfInputs:1, numberOfOutputs:1, outputChannelCount:[2] });
+        const opts = { numberOfInputs:1, numberOfOutputs:1, outputChannelCount:[2] };
+        const node = new AudioWorkletNode(ctx, 'crush', opts);
         e.crushIn.disconnect(e.crushOut);
         e.crushIn.connect(node); node.connect(e.crushOut);
         e.worklet = node;
+        const lad = new AudioWorkletNode(ctx, 'ladder', opts);
+        e.ladderIn.disconnect(e.ladderOut);
+        e.ladderIn.connect(lad); lad.connect(e.ladderOut);
+        e.ladderNode = lad;
+        const trem = new AudioWorkletNode(ctx, 'trem', opts);
+        e.tremIn.disconnect(e.tremOut);
+        e.tremIn.connect(trem); trem.connect(e.tremOut);
+        e.tremNode = trem;
+        trem.port.onmessage = ev => { e.tremValue = ev.data; };
         e.crushAvailable = true;
         return true;
       } catch (err){
@@ -610,10 +849,25 @@ function createEngine(ctx){
     return false;
   };
   e.wp = name => e.worklet ? e.worklet.parameters.get(name) : null;
+  e.lp = name => e.ladderNode ? e.ladderNode.parameters.get(name) : null;
+  e.tp = name => e.tremNode ? e.tremNode.parameters.get(name) : null;
 
   e.route(3);
   return e;
 }
+
+/* ---- note divisions, shared by the tremolo and the two LFOs. The first entry
+   is "Free" rather than a separate sync switch: a toggle and a division can
+   disagree with each other, and a single list cannot. A page has no transport
+   to ask, so the tempo comes from the BPM box above the panels. ---- */
+const DIVS = [['free','Free'],['8b','8 bars'],['4b','4 bars'],['2b','2 bars'],['1b','1 bar'],
+              ['1/2','1/2'],['1/4d','1/4 dot'],['1/4','1/4'],['1/4t','1/4 trip'],
+              ['1/8d','1/8 dot'],['1/8','1/8'],['1/8t','1/8 trip'],
+              ['1/16','1/16'],['1/16t','1/16 trip'],['1/32','1/32']];
+const DIV_BEATS = { free:0, '8b':32, '4b':16, '2b':8, '1b':4, '1/2':2, '1/4d':1.5, '1/4':1,
+                    '1/4t':2/3, '1/8d':0.75, '1/8':0.5, '1/8t':1/3, '1/16':0.25,
+                    '1/16t':1/6, '1/32':0.125 };
+let songBpm = 120;
 
 /* --------------------------------------------------------- parameter table */
 const P = {}, PLIST = [];
@@ -691,14 +945,24 @@ p({ id:'fbTime', label:'FB time', min:1, max:250, def:55, taper:'log', fmt:fmtMs
 p({ id:'fbTone', label:'FB tone', min:300, max:14000, def:3500, taper:'log', fmt:fmtHz, mod:true,
     apply:(e,v) => e.set(e.fbTone.frequency, v) });
 
-/* post filter */
+/* post filter — two circuits, the clean biquad pair and the nonlinear ladder */
 p({ id:'fltType', label:'Type', type:'sel', def:'off',
     opts:[['off','Off'],['lp','Low pass'],['hp','High pass'],['bp','Band pass'],['notch','Notch'],['peak','Peak']],
-    apply:(e,v) => e.setFilterType(v) });
+    apply:(e,v) => e.setFilter('type', v) });
+p({ id:'fltCirc', label:'Circuit', type:'sel', def:'clean', needsWorklet:true,
+    opts:[['clean','Clean'],['analog','Analogue'],['vintage','Vintage']],
+    apply:(e,v) => e.setFilter('circ', v) });
+p({ id:'fltPoles', label:'Slope', type:'sel', def:'24',
+    opts:[['12','12 dB'],['24','24 dB']],
+    apply:(e,v) => e.setFilter('poles', v) });
 p({ id:'fltFreq', label:'Cutoff', min:30, max:18000, def:1200, taper:'log', fmt:fmtHz, mod:true,
-    apply:(e,v) => { if (e.fltType !== 'off'){ e.set(e.flt.frequency, v); e.set(e.flt2.frequency, v); } } });
+    apply:(e,v) => e.setFilter('freq', v) });
 p({ id:'fltQ', label:'Reso', min:0.3, max:18, def:0.7, taper:'log', fmt:v => v.toFixed(2), mod:true,
-    apply:(e,v) => { e.set(e.flt.Q, v); e.set(e.flt2.Q, v); } });
+    apply:(e,v) => e.setFilter('q', v) });
+p({ id:'fltDrive', label:'Drive', min:1, max:16, def:1, taper:'log', fmt:v => v.toFixed(1)+'x',
+    mod:true, needsWorklet:true, apply:(e,v) => e.setFilter('drive', v) });
+p({ id:'fltDrift', label:'Drift', min:0, max:100, def:35, fmt:fmtPc, needsWorklet:true,
+    apply:(e,v) => e.setFilter('drift', v/100) });
 
 /* output */
 p({ id:'mix', label:'Dry/wet', min:0, max:100, def:100, fmt:fmtPc, mod:true,
@@ -711,12 +975,32 @@ p({ id:'autoGain', label:'Auto gain', type:'tgl', def:true, apply:(e,v) => e.set
 p({ id:'safety', label:'Safety clip', type:'tgl', def:true,
     apply:(e,v) => { e.set(e.safeOn.gain, v?1:0); e.set(e.safeOff.gain, v?0:1); } });
 
+/* tremolo — last in the chain, after the dry/wet, as an insert tremolo is */
+p({ id:'trOn', label:'Tremolo', type:'tgl', def:false, needsWorklet:true,
+    apply:(e,v) => e.setTrem('on', v) });
+p({ id:'trDiv', label:'Sync', type:'sel', def:'1/8', needsWorklet:true,
+    opts:DIVS, apply:(e,v) => e.setTrem('div', v) });
+p({ id:'trRate', label:'Rate', min:0.05, max:20, def:5, taper:'log', unit:'Hz', mod:true,
+    fmt:v => v < 1 ? v.toFixed(2) : v.toFixed(1), needsWorklet:true,
+    apply:(e,v) => e.setTrem('rate', v) });
+p({ id:'trDepth', label:'Depth', min:0, max:100, def:60, fmt:fmtPc, mod:true, needsWorklet:true,
+    apply:(e,v) => e.setTrem('depth', v) });
+p({ id:'trShape', label:'Shape', min:0, max:100, def:0, fmt:fmtPc, mod:true, needsWorklet:true,
+    apply:(e,v) => e.setTrem('shape', v) });
+p({ id:'trEdge', label:'Edge', min:0, max:100, def:50, fmt:fmtPc, mod:true, needsWorklet:true,
+    apply:(e,v) => e.setTrem('edge', v) });
+p({ id:'trDuty', label:'Duty', min:5, max:95, def:50, fmt:fmtPc, mod:true, needsWorklet:true,
+    apply:(e,v) => e.setTrem('duty', v) });
+p({ id:'trSpread', label:'Spread', min:0, max:180, def:0, fmt:v => v.toFixed(0)+'°', mod:true,
+    needsWorklet:true, apply:(e,v) => e.setTrem('spread', v) });
+
 /* modulation sources */
 const SHAPES = [['sin','Sine'],['tri','Triangle'],['saw','Saw up'],['ramp','Saw down'],
                 ['sqr','Square'],['sh','Random S&H'],['smooth','Random smooth']];
 for (const n of [1,2]){
   p({ id:`l${n}Rate`, label:'Rate', min:0.02, max:20, def:n===1?0.5:3, taper:'log',
       fmt:v => v < 1 ? v.toFixed(2) : v.toFixed(1), unit:'Hz', apply:()=>{} });
+  p({ id:`l${n}Div`, label:'Sync', type:'sel', def:'free', opts:DIVS, apply:()=>{} });
   p({ id:`l${n}Shape`, label:'Shape', type:'sel', def:'sin', opts:SHAPES, apply:()=>{} });
   p({ id:`l${n}Depth`, label:'Depth', min:0, max:100, def:100, fmt:fmtPc, apply:()=>{} });
 }
@@ -725,7 +1009,8 @@ p({ id:'envRel',  label:'Release', min:20, max:1200, def:220, taper:'log', fmt:f
 p({ id:'envSens', label:'Sens', min:0, max:100, def:60, fmt:fmtPc, apply:()=>{} });
 
 /* mod matrix */
-const MOD_SOURCES = [['','—'],['lfo1','LFO 1'],['lfo2','LFO 2'],['env','Envelope'],['env-','Envelope inv']];
+const MOD_SOURCES = [['','—'],['lfo1','LFO 1'],['lfo2','LFO 2'],['env','Envelope'],
+                    ['env-','Envelope inv'],['trem','Tremolo']];
 const MOD_DESTS = [['','—'], ...PLIST.filter(d => d.mod).map(d => {
   const pre = d.band !== undefined ? `B${d.band+1} ` : '';
   return [d.id, pre + d.label];
@@ -766,7 +1051,23 @@ const PRESETS = [
   { name:'Total collapse',
     v:{ bands:'2', x1:600, d0a:30, m0a:'wrap', d1a:26, m1a:'rect', sb0:true, d0b:12, m0b:'bits',
         bits:3, redux:12, crMix:100, fbAmt:55, fbTime:22, fltType:'lp', fltFreq:5200, fltQ:1.4,
-        width:140, outGain:-9 } }
+        width:140, outGain:-9 } },
+  { name:'Ladder sweep, on the half note',
+    v:{ bands:'1', d0a:5, m0a:'tube', mx0:100, fltType:'lp', fltCirc:'analog', fltPoles:'24',
+        fltFreq:600, fltQ:7, fltDrive:3, fltDrift:45,
+        mS0:'lfo1', mD0:'fltFreq', mA0:55, l1Div:'1/2', l1Shape:'tri', outGain:-2 } },
+  { name:'Squelch — vintage, a turn from singing',
+    v:{ bands:'1', d0a:3, m0a:'warm', fltType:'lp', fltCirc:'vintage', fltFreq:320, fltQ:13,
+        fltDrive:6, fltDrift:70, mS0:'env', mD0:'fltFreq', mA0:45, envAtk:6, envRel:160,
+        outGain:-4 } },
+  { name:'Chop — eighths with the edges left on',
+    v:{ bands:'1', d0a:2, m0a:'soft', trOn:true, trDiv:'1/8', trDepth:100, trShape:100,
+        trEdge:85, trDuty:45 } },
+  { name:'Harmonic pan — the tremolo across the image',
+    v:{ bands:'2', x1:500, d0a:4, m0a:'tape', d1a:6, m1a:'tube',
+        fltType:'bp', fltCirc:'analog', fltFreq:1200, fltQ:2.5, fltDrive:2,
+        trOn:true, trDiv:'1/4', trDepth:70, trShape:20, trEdge:35, trSpread:180,
+        mS0:'trem', mD0:'fltFreq', mA0:25, outGain:-2 } }
 ];
 
 /* -------------------------------------------------------------------- state */
@@ -805,7 +1106,9 @@ function lfoShape(shape, l){
 }
 function tickSources(dt){
   for (let i = 0; i < 2; i++){
-    const l = lfo[i], rate = state[`l${i+1}Rate`], shape = state[`l${i+1}Shape`];
+    const l = lfo[i], shape = state[`l${i+1}Shape`];
+    const beats = DIV_BEATS[state[`l${i+1}Div`]] || 0;
+    const rate = beats > 0 ? (songBpm/60)/beats : state[`l${i+1}Rate`];
     l.ph += dt*rate;
     if (l.ph >= 1){
       l.ph %= 1;
@@ -826,6 +1129,7 @@ function tickSources(dt){
   }
   mod.env  =  envVal * state.envSens/100;
   mod['env-'] = -mod.env;
+  mod.trem = engine ? engine.tremValue : 0;      // posted back by the worklet
 }
 function modOffsets(){
   const off = new Map();
@@ -1017,7 +1321,7 @@ function buildMatrix(){
   }
   paintMatrixHues();
   const meters = document.getElementById('modMeters');
-  for (const [id, nm] of [['lfo1','LFO 1'],['lfo2','LFO 2'],['env','ENV']]){
+  for (const [id, nm] of [['lfo1','LFO 1'],['lfo2','LFO 2'],['env','ENV'],['trem','TREM']]){
     const r = document.createElement('div');
     r.className = 'modrow';
     r.innerHTML = `<div class="nm">${nm}</div><div class="srcbar"><i></i></div>`;
@@ -1051,7 +1355,9 @@ function buildMeters(){
 
 /* ------------------------------------------------------------------ visuals */
 const cvSpec = document.getElementById('cvSpec'), cvCurve = document.getElementById('cvCurve');
+const cvTrem = document.getElementById('cvTrem');
 const gSpec = cvSpec.getContext('2d'), gCurve = cvCurve.getContext('2d');
+const gTrem = cvTrem.getContext('2d');
 let freqBuf = new Uint8Array(1024);
 
 function fit(cv){
@@ -1135,6 +1441,57 @@ function drawCurve(){
   gCurve.font = Math.round(10*dpr)+'px ui-monospace,Menlo,monospace';
   gCurve.fillText(BAND_NAMES[curBand].toLowerCase() + ' band · transfer curve', 9*dpr, 18*dpr);
 }
+// One cycle of the tremolo as it will actually sound, from the same arithmetic
+// the worklet runs, with a marker showing where the modulation is now.
+function drawTrem(){
+  const { w, h, dpr } = fit(cvTrem);
+  gTrem.clearRect(0, 0, w, h);
+  gTrem.fillStyle = C.face; gTrem.fillRect(0, 0, w, h);
+  const on = state.trOn, depth = state.trDepth/100, shape = state.trShape/100;
+  const duty = clamp(state.trDuty/100, 0.05, 0.95), edge = state.trEdge/100;
+  const pad = 10*dpr;
+  gTrem.strokeStyle = C.track; gTrem.lineWidth = 1*dpr;
+  for (const f of [0.25, 0.5, 0.75]){
+    const x = Math.round(pad + f*(w - 2*pad)) + 0.5;
+    gTrem.beginPath(); gTrem.moveTo(x, pad); gTrem.lineTo(x, h - pad); gTrem.stroke();
+  }
+  const wave = ph => {
+    const q = ph < duty ? 0.5*ph/duty : 0.5 + 0.5*(ph - duty)/(1 - duty);
+    const sine = 0.5 + 0.5*Math.cos(2*Math.PI*q);
+    const tri  = q < 0.5 ? 1 - 2*q : 2*q - 1;
+    const sqr  = q < 0.5 ? 1 : 0;
+    return shape <= 0.5 ? sine + (tri - sine)*(shape*2) : tri + (sqr - tri)*((shape-0.5)*2);
+  };
+  const k = clamp(0.04 + 0.96*edge*edge, 0.02, 1);
+  let sm = wave(0);
+  gTrem.strokeStyle = on ? C.blue : C.dim2;
+  gTrem.lineWidth = 3*dpr;
+  gTrem.beginPath();
+  const steps = Math.max(16, Math.round(w/dpr));
+  for (let i = 0; i <= steps; i++){
+    const ph = i/steps;
+    sm += (wave(ph) - sm)*k;
+    const gain = 1 - depth + depth*sm;
+    const x = pad + ph*(w - 2*pad);
+    const y = (h - pad) - gain*(h - 2*pad);
+    i ? gTrem.lineTo(x, y) : gTrem.moveTo(x, y);
+  }
+  gTrem.stroke();
+  if (on && engine){
+    const now = (mod.trem + 1)/2;
+    const gain = 1 - depth + depth*now;
+    const y = (h - pad) - gain*(h - 2*pad);
+    gTrem.fillStyle = C.red;
+    gTrem.fillRect(w - pad - 16*dpr, y - 1.5*dpr, 16*dpr, 3*dpr);
+  }
+  gTrem.fillStyle = C.dim;
+  gTrem.font = Math.round(10*dpr)+'px ui-monospace,Menlo,monospace';
+  const beats = DIV_BEATS[state.trDiv] || 0;
+  const label = beats > 0 ? state.trDiv + ' at ' + songBpm.toFixed(1) + ' BPM · '
+                              + ((songBpm/60)/beats).toFixed(2) + ' Hz'
+                          : state.trRate.toFixed(2) + ' Hz free';
+  gTrem.fillText((on ? '' : 'off · ') + label, 10*dpr, h - 8*dpr);
+}
 function peakDb(an, buf){
   an.getFloatTimeDomainData(buf);
   let pk = 0;
@@ -1151,7 +1508,7 @@ function drawMeters(){
     m.over.style.height = Math.max(0, h - 90).toFixed(1)+'%';   // last 6 dB in red
     m.num.textContent = d === -Infinity ? '-∞' : d.toFixed(1);
   }
-  for (const s of ['lfo1','lfo2','env']){
+  for (const s of ['lfo1','lfo2','env','trem']){
     const bar = els['__'+s];
     const v = clamp(mod[s], -1, 1);
     const c = 50 + v*50;
@@ -1182,7 +1539,7 @@ function frame(){
     }
   }
   prevMod = new Set(off.keys());
-  drawSpec(); drawCurve(); drawMeters();
+  drawSpec(); drawCurve(); drawTrem(); drawMeters();
   requestAnimationFrame(frame);
 }
 
@@ -1237,7 +1594,8 @@ async function ensureCtx(){
     applyAll(true);
     if (!engine.crushAvailable){
       const warn = document.getElementById('crushWarn');
-      warn.textContent = 'Bit crusher unavailable in this browser (no AudioWorklet) — crush controls disabled.';
+      warn.textContent = 'No AudioWorklet in this browser — the crusher, the analogue filter '
+                       + 'and the tremolo are unavailable and their controls are disabled.';
       warn.classList.remove('hidden');
       document.querySelectorAll('[data-worklet]').forEach(el => el.classList.add('dis'));
     }
@@ -1326,10 +1684,11 @@ function randomise(){
 mount('secIn',     ['inGain','preHP','preLP']);
 mount('secSplit',  ['bands','x1','x2']);
 mount('secCrush',  ['bits','redux','crMix','fbAmt','fbTime','fbTone']);
-mount('secFilter', ['fltType','fltFreq','fltQ']);
+mount('secFilter', ['fltType','fltCirc','fltPoles','fltFreq','fltQ','fltDrive','fltDrift']);
 mount('secOut',    ['mix','width','outGain','autoGain','safety']);
-group('secMod', 'LFO 1', ['l1Rate','l1Shape','l1Depth']);
-group('secMod', 'LFO 2', ['l2Rate','l2Shape','l2Depth']);
+mount('secTrem',   ['trOn','trDiv','trRate','trDepth','trShape','trEdge','trDuty','trSpread']);
+group('secMod', 'LFO 1', ['l1Rate','l1Div','l1Shape','l1Depth']);
+group('secMod', 'LFO 2', ['l2Rate','l2Div','l2Shape','l2Depth']);
 group('secMod', 'Envelope follower', ['envAtk','envRel','envSens']);
 buildBands();
 buildMatrix();
@@ -1404,6 +1763,13 @@ window.addEventListener('keydown', ev => {
 
 readTokens();
 refreshBandTabs();
+const bpmBox = document.getElementById('bpmBox');
+bpmBox.addEventListener('change', () => {
+  songBpm = clamp(parseFloat(bpmBox.value) || 120, 40, 240);
+  bpmBox.value = songBpm;
+  if (engine) engine.setTrem('bpm', songBpm);
+});
+
 requestAnimationFrame(frame);
 
 /* Exposed for the smoke test in tests/fx.mjs: it builds the same graph in an

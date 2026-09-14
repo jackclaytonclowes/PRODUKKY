@@ -26,7 +26,9 @@ KnobBox::KnobBox(FractureProcessor& p, const juce::String& paramId, juce::Colour
       isSmall(small), showCaption(withCaption)
 {
     caption = info.id == "redux" ? "Downs." : juce::String(info.name);
-    for (const char* prefix : { "B1 ", "B2 ", "B3 ", "LFO 1 ", "LFO 2 ", "Env " })
+    // the panel already says which section this is, so the caption need not
+    for (const char* prefix : { "B1 ", "B2 ", "B3 ", "LFO 1 ", "LFO 2 ", "Env ",
+                                "Filter ", "Trem " })
         if (caption.startsWith(prefix)) caption = caption.substring(static_cast<int>(std::strlen(prefix)));
     slider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
     slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -242,14 +244,74 @@ void Meters::paint(juce::Graphics& g){
     }
 }
 
+TremStrip::TremStrip(FractureProcessor& p) : proc(p){ startTimerHz(30); }
+void TremStrip::paint(juce::Graphics& g){
+    auto area = getLocalBounds().reduced(1);
+    g.setColour(face); g.fillRect(area);
+    g.setColour(ink);  g.drawRect(area, 2);
+    auto plot = area.reduced(6, 5);
+
+    const auto get = [&](const char* id){
+        return proc.apvts.getRawParameterValue(id)->load();
+    };
+    const bool on = get("trOn") > 0.5f;
+    const double depth = get("trDepth") / 100.0;
+    const double shape = get("trShape") / 100.0;
+    const double duty  = juce::jlimit(0.05, 0.95, static_cast<double>(get("trDuty")) / 100.0);
+    const double edge  = get("trEdge") / 100.0;
+    const int div = static_cast<int>(get("trDiv"));
+
+    // the same arithmetic the DSP uses, so the picture is the sound
+    const auto wave = [&](double p){
+        const double w = p < duty ? 0.5 * p / duty : 0.5 + 0.5 * (p - duty) / (1.0 - duty);
+        const double sine = 0.5 + 0.5 * std::cos(2.0 * juce::MathConstants<double>::pi * w);
+        const double tri  = w < 0.5 ? 1.0 - 2.0 * w : 2.0 * w - 1.0;
+        const double sqr  = w < 0.5 ? 1.0 : 0.0;
+        return shape <= 0.5 ? sine + (tri - sine) * (shape * 2.0)
+                            : tri + (sqr - tri) * ((shape - 0.5) * 2.0);
+    };
+    // edge as the eye sees it: a slew over a fraction of the cycle
+    const double k = juce::jlimit(0.02, 1.0, 0.04 + 0.96 * edge * edge);
+
+    juce::Path path;
+    double sm = wave(0.0);
+    const int steps = juce::jmax(8, plot.getWidth());
+    for (int i = 0; i <= steps; ++i){
+        const double p = static_cast<double>(i) / steps;
+        sm += (wave(p) - sm) * k;
+        const double gain = 1.0 - depth + depth * sm;
+        const float x = plot.getX() + static_cast<float>(p) * plot.getWidth();
+        const float y = plot.getBottom() - static_cast<float>(gain) * plot.getHeight();
+        if (i == 0) path.startNewSubPath(x, y); else path.lineTo(x, y);
+    }
+    g.setColour(on ? blue : dim.withAlpha(0.5f));
+    g.strokePath(path, juce::PathStrokeType(2.0f));
+
+    // where the modulation is right now, on the same scale as the curve
+    if (on){
+        const float now = (proc.tremOut.load() + 1.0f) * 0.5f;
+        const float gain = static_cast<float>(1.0 - depth) + static_cast<float>(depth) * now;
+        const float y = plot.getBottom() - gain * plot.getHeight();
+        g.setColour(red);
+        g.fillRect(static_cast<float>(plot.getRight() - 10), y - 1.0f, 10.0f, 2.0f);
+    }
+
+    const float bpm = proc.hostBpm.load();
+    juce::String label = div > 0 ? juce::String(divNames[div]) + "  at  " + juce::String(bpm, 1) + " BPM"
+                                 : juce::String(get("trRate"), 2) + " Hz  free";
+    if (!on) label = "off  -  " + label;
+    drawTracked(g, label, plot.removeFromBottom(11), 8.0f, 1.4f, juce::Justification::left, dim);
+}
+
 ModSources::ModSources(FractureProcessor& p) : proc(p){ startTimerHz(30); }
 void ModSources::paint(juce::Graphics& g){
-    const char* names[] = { "LFO 1", "LFO 2", "ENV" };
-    const float vals[] = { proc.lfo1.load(), proc.lfo2.load(), proc.envOut.load() };
-    const juce::Colour hues[] = { blue, blue, red };
+    const char* names[] = { "LFO 1", "LFO 2", "ENV", "TREM" };
+    const float vals[] = { proc.lfo1.load(), proc.lfo2.load(), proc.envOut.load(),
+                           proc.tremOut.load() };
+    const juce::Colour hues[] = { blue, blue, red, blue };
     auto area = getLocalBounds();
-    const int rowH = area.getHeight() / 3;
-    for (int i = 0; i < 3; ++i){
+    const int rowH = area.getHeight() / 4;
+    for (int i = 0; i < 4; ++i){
         auto row = area.removeFromTop(rowH);
         drawTracked(g, names[i], row.removeFromLeft(46), 9.0f, 1.8f, juce::Justification::left, ink);
         auto bar = row.reduced(0, rowH / 2 - 5);
@@ -340,7 +402,8 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     pOut    = make<Panel>(6, "Output", ink);
     pMod    = make<Panel>(7, "Modulation", blue);
     pScope  = make<Panel>(8, "Scope", ink);
-    panels = { pIn, pSplit, pDrive, pCrush, pFilter, pOut, pMod, pScope };
+    pTrem   = make<Panel>(9, "Tremolo", blue);
+    panels = { pIn, pSplit, pDrive, pCrush, pFilter, pOut, pMod, pScope, pTrem };
 
     auto knob = [&](juce::Component* parent, const char* id, juce::Colour hue, bool small = false){
         auto* k = new KnobBox(proc, id, hue, small);
@@ -374,11 +437,21 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     crushRow = { knob(pCrush, "bits", red), knob(pCrush, "redux", red), knob(pCrush, "crMix", red),
                  divider(pCrush),
                  knob(pCrush, "fbAmt", red), knob(pCrush, "fbTime", red), knob(pCrush, "fbTone", red) };
-    filterRow = { choice(pFilter, "fltType", "Type", 116), knob(pFilter, "fltFreq", blue),
-                  knob(pFilter, "fltQ", blue) };
+    filterTypeRow = { choice(pFilter, "fltType", "Type", 116),
+                      choice(pFilter, "fltCirc", "Circuit", 116),
+                      choice(pFilter, "fltPoles", "Slope", 96) };
+    filterKnobRow = { knob(pFilter, "fltFreq", blue), knob(pFilter, "fltQ", blue),
+                      knob(pFilter, "fltDrive", blue), knob(pFilter, "fltDrift", blue) };
     outRow   = { knob(pOut, "mix", ink), knob(pOut, "width", ink), knob(pOut, "outGain", ink) };
     outRow.push_back(toggle(pOut, "autoGain", yellow, 92));
     outRow.push_back(toggle(pOut, "safety", red, 92));
+
+    tremHeadRow = { toggle(pTrem, "trOn", blue, 96), choice(pTrem, "trDiv", "Sync", 116) };
+    tremKnobRow = { knob(pTrem, "trRate", blue), knob(pTrem, "trDepth", blue),
+                    knob(pTrem, "trShape", blue), knob(pTrem, "trEdge", blue),
+                    knob(pTrem, "trDuty", blue), knob(pTrem, "trSpread", blue) };
+    tremStrip = make<TremStrip>(proc);
+    pTrem->addAndMakeVisible(tremStrip);
 
     // ---- band tabs and panes
     for (int b = 0; b < 3; ++b){
@@ -399,7 +472,8 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     for (int i = 0; i < 2; ++i){
         const juce::String n = juce::String(i + 1);
         lfoRow[i] = { knob(pMod, ("l" + n + "Rate").toRawUTF8(), blue, true),
-                      choice(pMod, ("l" + n + "Shape").toRawUTF8(), "Shape", 120),
+                      choice(pMod, ("l" + n + "Div").toRawUTF8(), "Sync", 100),
+                      choice(pMod, ("l" + n + "Shape").toRawUTF8(), "Shape", 100),
                       knob(pMod, ("l" + n + "Depth").toRawUTF8(), blue, true) };
     }
     envRow = { knob(pMod, "envAtk", red, true), knob(pMod, "envRel", red, true),
@@ -621,7 +695,12 @@ void FractureEditor::layoutDesign(){
     rowC.removeFromLeft(gap);
     pOut->setBounds(rowC.removeFromLeft(cols(3)));
     layoutRow(pCrush->content().withHeight(KnobBox::h), crushRow);
-    layoutRow(pFilter->content().withHeight(KnobBox::h), filterRow);
+    {   // the filter carries its circuit above its knobs
+        auto inner = pFilter->content();
+        layoutRow(inner.removeFromTop(44), filterTypeRow, 8);
+        inner.removeFromTop(10);
+        layoutRow(inner.withHeight(KnobBox::h), filterKnobRow, 8);
+    }
     {
         auto inner = pOut->content();
         auto knobsRow = inner.removeFromTop(KnobBox::h);
@@ -634,7 +713,18 @@ void FractureEditor::layoutDesign(){
     auto rowD = area;
     pMod->setBounds(rowD.removeFromLeft(cols(7)));
     rowD.removeFromLeft(gap);
-    pScope->setBounds(rowD.removeFromLeft(cols(5)));
+    auto rightCol = rowD.removeFromLeft(cols(5));
+    pTrem->setBounds(rightCol.removeFromBottom(220));
+    rightCol.removeFromBottom(gap);
+    pScope->setBounds(rightCol);
+    {
+        auto inner = pTrem->content();
+        layoutRow(inner.removeFromTop(44), tremHeadRow, 10);
+        inner.removeFromTop(10);
+        layoutRow(inner.removeFromTop(KnobBox::h), tremKnobRow, 8);
+        inner.removeFromTop(8);
+        tremStrip->setBounds(inner);
+    }
     {
         auto inner = pMod->content();
         auto lfos = inner.removeFromTop(14 + KnobBox::hSmall + 6);
@@ -642,8 +732,8 @@ void FractureEditor::layoutDesign(){
         auto right = lfos.withTrimmedLeft(16);
         lfoCaption[0]->setBounds(left.removeFromTop(14));
         lfoCaption[1]->setBounds(right.removeFromTop(14));
-        layoutRow(left.withHeight(KnobBox::hSmall), lfoRow[0], 10);
-        layoutRow(right.withHeight(KnobBox::hSmall), lfoRow[1], 10);
+        layoutRow(left.withHeight(KnobBox::hSmall), lfoRow[0], 8);
+        layoutRow(right.withHeight(KnobBox::hSmall), lfoRow[1], 8);
         envCaption->setBounds(inner.removeFromTop(14));
         layoutRow(inner.removeFromTop(KnobBox::hSmall), envRow, 10);
         inner.removeFromTop(8);

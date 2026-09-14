@@ -9,6 +9,7 @@
 #include <cmath>
 #include <algorithm>
 #include "ParamTable.h"
+#include "Sync.h"
 
 namespace fracture {
 
@@ -34,15 +35,27 @@ public:
 
     // one call per block: n samples of time, the block's input RMS, and the
     // (unmodulated) parameter values that control the sources themselves
-    void update(int n, double inputRms, const float* v){
+    void update(int n, double inputRms, const float* v, const Transport& t = {}){
         const Ids& id = Ids::get();
         const double dt = static_cast<double>(n) / sr_;
         for (int i = 0; i < 2; ++i){
-            const double rate = i == 0 ? v[id.l1Rate] : v[id.l2Rate];
             const int shape   = static_cast<int>(i == 0 ? v[id.l1Shape] : v[id.l2Shape]);
             const double dep  = (i == 0 ? v[id.l1Depth] : v[id.l2Depth]) / 100.0;
-            ph_[i] += dt * rate;
-            while (ph_[i] >= 1.0){ ph_[i] -= 1.0; advanceRandom(i); }
+            const int div     = static_cast<int>(i == 0 ? v[id.l1Div] : v[id.l2Div]);
+            const double beats = beatsForDiv(div);
+            if (beats > 0.0 && t.valid && t.playing){
+                // taken from the song position rather than integrated, so the
+                // sweep is on the same beat wherever you drop the playhead
+                const double cycles = t.ppq / beats;
+                const double p = cycles - std::floor(cycles);
+                if (p < ph_[i]) advanceRandom(i);          // the cycle turned over
+                ph_[i] = p;
+            } else {
+                const double rate = beats > 0.0 ? hzForDiv(div, t.valid ? t.bpm : 120.0)
+                                                : (i == 0 ? v[id.l1Rate] : v[id.l2Rate]);
+                ph_[i] += dt * rate;
+                while (ph_[i] >= 1.0){ ph_[i] -= 1.0; advanceRandom(i); }
+            }
             out_[i] = shapeOf(shape, i) * dep;
         }
         const double target = std::clamp(inputRms * 3.2, 0.0, 1.0);
@@ -53,13 +66,18 @@ public:
         envOut_ = env_ * v[id.envSens] / 100.0;
     }
 
-    // matrix source index: 0 none, 1 lfo1, 2 lfo2, 3 env, 4 env inverted
+    // the tremolo lives outside this class but is a source like any other; it
+    // hands over its value once a block, which is the rate the matrix runs at
+    void setTrem(double v){ trem_ = v; }
+
+    // matrix source index: 0 none, 1 lfo1, 2 lfo2, 3 env, 4 env inverted, 5 tremolo
     double source(int i) const {
         switch (i){
         case 1: return out_[0];
         case 2: return out_[1];
         case 3: return envOut_;
         case 4: return -envOut_;
+        case 5: return trem_;
         default: return 0.0;
         }
     }
@@ -86,7 +104,7 @@ private:
     }
     double sr_ = 44100.0;
     double ph_[2] = { 0, 0 }, last_[2] = { 0, 0 }, next_[2] = { 0, 0 }, out_[2] = { 0, 0 };
-    double env_ = 0.0, envOut_ = 0.0;
+    double env_ = 0.0, envOut_ = 0.0, trem_ = 0.0;
     uint64_t rng_ = 0x9E3779B97F4A7C15ull;
 };
 

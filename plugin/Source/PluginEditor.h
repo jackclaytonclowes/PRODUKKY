@@ -79,6 +79,17 @@ private:
     float inDb = -60.0f, outDb = -60.0f;
 };
 
+// one cycle of the tremolo as it will actually sound: shape, duty, edge and
+// depth, with a marker where the modulation currently is
+class TremStrip : public juce::Component, private juce::Timer {
+public:
+    explicit TremStrip(FractureProcessor&);
+    void paint(juce::Graphics&) override;
+private:
+    void timerCallback() override { repaint(); }
+    FractureProcessor& proc;
+};
+
 class ModSources : public juce::Component, private juce::Timer {
 public:
     explicit ModSources(FractureProcessor&);
@@ -105,7 +116,7 @@ private:
     FractureProcessor& proc;
     bauhaus::Look look;
 
-    static constexpr int designW = 1180, designH = 1190;
+    static constexpr int designW = 1320, designH = 1190;
     bauhaus::Canvas canvas { designW, designH };       // everything is drawn on this
 
     void paintDesign(juce::Graphics&);                 // both work in design coordinates
@@ -118,9 +129,11 @@ private:
 
     Panel* pIn = nullptr; Panel* pSplit = nullptr; Panel* pDrive = nullptr;
     Panel* pCrush = nullptr; Panel* pFilter = nullptr; Panel* pOut = nullptr;
-    Panel* pMod = nullptr; Panel* pScope = nullptr;
+    Panel* pTrem = nullptr; Panel* pMod = nullptr; Panel* pScope = nullptr;
 
-    std::vector<juce::Component*> inRow, splitRow, crushRow, filterRow, outRow;
+    std::vector<juce::Component*> inRow, splitRow, crushRow, outRow;
+    std::vector<juce::Component*> filterTypeRow, filterKnobRow;
+    std::vector<juce::Component*> tremHeadRow, tremKnobRow;
     std::vector<juce::Component*> bandRow[3];
     std::vector<juce::Component*> lfoRow[2], envRow;
     std::vector<juce::Component*> matrixRow[6];
@@ -133,6 +146,7 @@ private:
 
     Caption* lfoCaption[2] {}; Caption* envCaption = nullptr; Caption* matrixCaption = nullptr;
     Scope* scope = nullptr;
+    TremStrip* tremStrip = nullptr;
     Meters* meters = nullptr;
     ModSources* modSources = nullptr;
 

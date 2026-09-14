@@ -13,6 +13,7 @@
 #include <vector>
 #include <random>
 #include <map>
+#include <tuple>
 
 using namespace fracture;
 
@@ -79,6 +80,50 @@ static Result render(const Patch& patch, double seconds = 0.3, double sr = 48000
 }
 
 // ------------------------------------------------------- shaper parity vs JS
+static double db(double gain){ return 20.0 * std::log10(std::max(gain, 1.0e-12)); }
+
+// A render the caller supplies the input for, with a transport, for the things
+// that cannot be measured from noise: an impulse into a self-oscillating
+// filter, a flat level through a tremolo, an LFO locked to a tempo.
+struct Take { std::vector<float> L, R; };
+static Take renderWith(const Patch& patch, const std::vector<float>& in, double sr, int block,
+                       bool playing, double bpm, double startPpq){
+    Engine e;
+    e.prepare(sr, block);
+    applyPatch(e, patch);
+    e.seedFrom(0);
+    Take t; t.L = in; t.R = in;
+    const double beatsPerSample = bpm / 60.0 / sr;
+    double ppq = startPpq;
+    for (size_t i = 0; i < in.size(); i += static_cast<size_t>(block)){
+        const int m = static_cast<int>(std::min(static_cast<size_t>(block), in.size() - i));
+        Transport tr; tr.bpm = bpm; tr.ppq = ppq; tr.playing = playing; tr.valid = true;
+        e.setTransport(tr);
+        float* io[2] = { t.L.data() + i, t.R.data() + i };
+        e.process(io, 2, m);
+        ppq += beatsPerSample * m;
+    }
+    return t;
+}
+
+// The frequency of anything periodic, from the time between its first and last
+// upward crossing of its own mean — counting crossings alone is only good to
+// plus or minus one cycle, which is a 5% error over a couple of seconds.
+static double freqOf(const std::vector<float>& v, size_t from, size_t to, double sr){
+    double mean = 0.0;
+    for (size_t i = from; i < to; ++i) mean += v[i];
+    mean /= static_cast<double>(to - from);
+    const double hyst = 0.02 * std::fabs(mean) + 1.0e-9;    // ignore ripple at the top
+    long n = 0; size_t first = 0, last = 0;
+    bool above = v[from] > mean;
+    for (size_t i = from + 1; i < to; ++i){
+        if (!above && v[i] > mean + hyst){ if (n == 0) first = i; last = i; ++n; above = true; }
+        else if (above && v[i] < mean - hyst) above = false;
+    }
+    if (n < 2 || last == first) return 0.0;
+    return static_cast<double>(n - 1) * sr / static_cast<double>(last - first);
+}
+
 static void testShaperParity(const char* csvPath){
     std::ifstream in(csvPath);
     if (!in){ check("shaper reference table found", false, csvPath); return; }
@@ -328,10 +373,343 @@ int main(int argc, char** argv){
                 ++count;
                 pos = braceClose;
             }
-            check("all nine browser presets load and render", count == 9 && rendered == 9,
+            check("all thirteen browser presets load and render", count == 13 && rendered == 13,
                   std::to_string(rendered) + "/" + std::to_string(count));
             check("every value in every browser patch maps to a plugin parameter",
                   unknown == 0, unknownIds);
+        }
+    }
+
+    // ------------------------------------------------------------- the ladder
+    // A filter that is a nonlinear feedback loop cannot be checked by reading
+    // the coefficients back; everything here is measured from rendered audio.
+    std::printf("\nAnalogue filter\n");
+    {
+        // a patch that puts the filter on its own: one band, passed through
+        // dry, no oversampling filters in the way
+        auto fltPatch = [](int circuit, int type, int poles, double freq, double q,
+                           double drive = 1.0, double drift = 0.0){
+            Patch p; p.v = { {"bands", 0}, {"mx0", 0}, {"osFactor", 0},
+                             {"fltType", static_cast<float>(type)},
+                             {"fltFreq", static_cast<float>(freq)},
+                             {"fltQ", static_cast<float>(q)},
+                             {"fltCirc", static_cast<float>(circuit)},
+                             {"fltPoles", static_cast<float>(poles)},
+                             {"fltDrive", static_cast<float>(drive)},
+                             {"fltDrift", static_cast<float>(drift)} };
+            return p;
+        };
+        auto gainAt = [&](const Patch& p, double freq, double sr = 48000.0){
+            Engine e; e.prepare(sr, 128); applyPatch(e, p); e.seedFrom(0);
+            return sineAmplitude(e, freq, sr);
+        };
+
+        const double cleanPass = gainAt(fltPatch(0, 1, 1, 1000, 0.3), 100.0);
+        const double analogPass = gainAt(fltPatch(1, 1, 1, 1000, 0.3), 100.0);
+        check("clean and analogue agree in the passband",
+              std::fabs(db(analogPass) - db(cleanPass)) < 1.5,
+              f2s(db(analogPass), 2) + " dB vs " + f2s(db(cleanPass), 2) + " dB");
+
+        // The mark is the corner, not the -3 dB point: a four-pole is 3 dB down
+        // at 0.435 of its corner, which is why it is darker than the biquad at
+        // the same number. Measured, so the number in the comment stays true.
+        const double at435 = db(gainAt(fltPatch(1, 1, 1, 1000, 0.3), 435.0)) - db(analogPass);
+        check("a four-pole is 3 dB down at 0.435 of its mark", std::fabs(at435 + 3.0) < 1.2,
+              f2s(at435, 2) + " dB at 435 Hz");
+
+        // slope, measured over the octave from 4 to 8 kHz with the corner at
+        // 500 Hz, where both are well into their rolloff
+        const double two = db(gainAt(fltPatch(1, 1, 0, 500, 0.3), 8000.0))
+                         - db(gainAt(fltPatch(1, 1, 0, 500, 0.3), 4000.0));
+        const double four = db(gainAt(fltPatch(1, 1, 1, 500, 0.3), 8000.0))
+                          - db(gainAt(fltPatch(1, 1, 1, 500, 0.3), 4000.0));
+        check("12 dB an octave really is 12 dB an octave", std::fabs(two + 12.0) < 2.5,
+              f2s(two, 2) + " dB");
+        check("and 24 dB an octave really is 24", std::fabs(four + 24.0) < 3.5,
+              f2s(four, 2) + " dB");
+
+        // resonance that sings: kick it once and listen to what is left
+        {
+            const double sr = 48000.0, cutoff = 400.0;
+            std::vector<float> in(static_cast<size_t>(sr * 1.5), 0.0f);
+            in[64] = 0.6f;
+            const Take t = renderWith(fltPatch(1, 1, 1, cutoff, 18.0), in, sr, 128, false, 120.0, 0.0);
+            const size_t from = static_cast<size_t>(sr * 1.0);
+            double rms = 0.0, peak = 0.0;
+            for (size_t i = from; i < t.L.size(); ++i){
+                rms += static_cast<double>(t.L[i]) * t.L[i];
+                peak = std::max(peak, std::fabs(static_cast<double>(t.L[i])));
+            }
+            rms = std::sqrt(rms / static_cast<double>(t.L.size() - from));
+            const double hz = freqOf(t.L, from, t.L.size(), sr);
+            check("resonance sings, and sings where the knob points",
+                  rms > 0.02 && std::fabs(hz - cutoff) < cutoff * 0.12,
+                  "rms " + f2s(rms, 4) + " at " + f2s(hz, 1) + " Hz");
+            check("self-oscillation stays inside the rails", peak < 1.01,
+                  "peak " + f2s(peak, 3));
+        }
+
+        // drive is drive, not volume: harmonics go up, level barely moves
+        {
+            const double sr = 48000.0, f0 = 220.0;
+            auto thd = [&](double drive){
+                Patch p = fltPatch(1, 1, 1, 3000, 0.7, drive);
+                const int n = static_cast<int>(sr * 0.5);
+                std::vector<float> in(static_cast<size_t>(n));
+                for (int i = 0; i < n; ++i)
+                    in[static_cast<size_t>(i)] =
+                        static_cast<float>(0.3 * std::sin(2.0 * M_PI * f0 * i / sr));
+                const Take t = renderWith(p, in, sr, 128, false, 120.0, 0.0);
+                const size_t skip = static_cast<size_t>(sr * 0.1);
+                double total = 0.0, fund = 0.0, re = 0.0, im = 0.0;
+                for (size_t i = skip; i < t.L.size(); ++i){
+                    const double x = t.L[i];
+                    total += x * x;
+                    const double ph = 2.0 * M_PI * f0 * static_cast<double>(i) / sr;
+                    re += x * std::cos(ph); im += x * std::sin(ph);
+                }
+                const double n2 = static_cast<double>(t.L.size() - skip);
+                fund = 2.0 * std::sqrt(re * re + im * im) / n2;       // amplitude at f0
+                const double rest = std::max(0.0, total / n2 - fund * fund * 0.5);
+                return std::make_pair(std::sqrt(rest) / (fund * 0.7071), fund);
+            };
+            const auto clean = thd(1.0), hot = thd(10.0);
+            check("filter drive adds harmonics", clean.first < 0.03 && hot.first > 0.10,
+                  f2s(clean.first * 100, 1) + "% at 1x, " + f2s(hot.first * 100, 1) + "% at 10x");
+            check("filter drive is not a volume knob",
+                  std::fabs(db(hot.second / clean.second)) < 5.0,
+                  f2s(db(hot.second / clean.second), 2) + " dB louder at 10x");
+        }
+
+        // drift is the whole reason the two channels are not the same channel
+        {
+            const double sr = 48000.0;
+            const int n = static_cast<int>(sr * 0.6);
+            std::vector<float> in(static_cast<size_t>(n));
+            std::mt19937 rng(7);
+            std::uniform_real_distribution<float> d(-0.4f, 0.4f);
+            for (int i = 0; i < n; ++i) in[static_cast<size_t>(i)] = d(rng);
+            auto spread = [&](double drift){
+                const Take t = renderWith(fltPatch(1, 1, 1, 900, 6.0, 1.0, drift),
+                                          in, sr, 128, false, 120.0, 0.0);
+                double worst = 0.0;
+                for (size_t i = static_cast<size_t>(sr * 0.1); i < t.L.size(); ++i)
+                    worst = std::max(worst, std::fabs(static_cast<double>(t.L[i]) - t.R[i]));
+                return worst;
+            };
+            const double off = spread(0.0), on = spread(100.0);
+            check("drift pulls the two channels apart, and off means off",
+                  off == 0.0 && on > 0.002,
+                  "L-R " + f2s(off, 6) + " off, " + f2s(on, 6) + " on");
+        }
+
+        // the vintage circuit is asymmetric, which is what even harmonics are
+        {
+            const double sr = 48000.0, f0 = 150.0;
+            auto secondHarmonic = [&](int circuit){
+                const int n = static_cast<int>(sr * 0.4);
+                std::vector<float> in(static_cast<size_t>(n));
+                for (int i = 0; i < n; ++i)
+                    in[static_cast<size_t>(i)] =
+                        static_cast<float>(0.4 * std::sin(2.0 * M_PI * f0 * i / sr));
+                const Take t = renderWith(fltPatch(circuit, 1, 1, 4000, 0.7, 6.0), in, sr, 128,
+                                          false, 120.0, 0.0);
+                const size_t skip = static_cast<size_t>(sr * 0.1);
+                double re = 0.0, im = 0.0;
+                for (size_t i = skip; i < t.L.size(); ++i){
+                    const double ph = 2.0 * M_PI * 2.0 * f0 * static_cast<double>(i) / sr;
+                    re += t.L[i] * std::cos(ph); im += t.L[i] * std::sin(ph);
+                }
+                const double n2 = static_cast<double>(t.L.size() - skip);
+                return 2.0 * std::sqrt(re * re + im * im) / n2;
+            };
+            const double sym = secondHarmonic(1), asym = secondHarmonic(2);
+            check("the vintage circuit adds even harmonics the clean one does not",
+                  asym > sym * 3.0, f2s(sym, 5) + " against " + f2s(asym, 5) + " at 2f");
+        }
+    }
+
+    {   // everything at once: a self-oscillating filter inside the feedback
+        // loop, with the tremolo chopping the result
+        Patch p; p.v = { {"bands", 2}, {"d0a", 20}, {"sb0", 1}, {"crMix", 70}, {"fbAmt", 60},
+                         {"fltType", 1}, {"fltCirc", 2}, {"fltPoles", 1}, {"fltFreq", 800},
+                         {"fltQ", 16}, {"fltDrive", 12}, {"fltDrift", 100},
+                         {"trOn", 1}, {"trDepth", 100}, {"trShape", 100}, {"trDiv", 12},
+                         {"trSpread", 120} };
+        const Result r = render(p, 0.5);
+        check("the ladder, the tremolo and the feedback loop all at once",
+              r.bad == 0 && r.peak <= 1.0 && r.rms > 0.002,
+              "peak " + f2s(r.peak, 3) + " rms " + f2s(r.rms));
+    }
+
+    // ------------------------------------------------------------- the tremolo
+    // The tremolo is the last thing in the chain, so with dry/wet at 0 the
+    // output IS its gain curve: everything below measures that curve directly.
+    std::printf("\nTremolo\n");
+    {
+        auto tremPatch = [](int div, double rate, double depth, double shape,
+                            double edge, double duty, double spread){
+            Patch p; p.v = { {"mix", 0}, {"osFactor", 0}, {"trOn", 1},
+                             {"trDiv", static_cast<float>(div)},
+                             {"trRate", static_cast<float>(rate)},
+                             {"trDepth", static_cast<float>(depth)},
+                             {"trShape", static_cast<float>(shape)},
+                             {"trEdge", static_cast<float>(edge)},
+                             {"trDuty", static_cast<float>(duty)},
+                             {"trSpread", static_cast<float>(spread)} };
+            return p;
+        };
+        const double sr = 48000.0;
+        const double level = 0.4;
+        std::vector<float> flat(static_cast<size_t>(sr * 2.0), static_cast<float>(level));
+        const size_t skip = static_cast<size_t>(sr * 0.15);   // the depth ramp
+
+        {   // free-running: the rate knob is in Hz and means it
+            const Take t = renderWith(tremPatch(0, 5.0, 100, 0, 100, 50, 0), flat, sr,
+                                      128, false, 120.0, 0.0);
+            const double hz = freqOf(t.L, skip, t.L.size(), sr);
+            check("a free tremolo runs at the rate it says",
+                  std::fabs(hz - 5.0) < 0.2,
+                  f2s(hz, 3) + " Hz");
+        }
+        {   // synced: 1/8 at 120 BPM is four a second, and the beat is loud
+            const Take t = renderWith(tremPatch(10, 5.0, 100, 100, 100, 50, 0), flat, sr,
+                                      128, true, 120.0, 0.0);
+            const double hz = freqOf(t.L, skip, t.L.size(), sr);
+            check("a synced tremolo counts the host's eighths",
+                  std::fabs(hz - 4.0) < 0.15,
+                  f2s(hz, 3) + " a second at 120 BPM");
+            // ppq 0 is the top of the shape, not the bottom: the beat is loud
+            check("the beat lands on the loud half", t.L[8] > static_cast<float>(level * 0.9),
+                  f2s(t.L[8], 4) + " against " + f2s(level, 4));
+        }
+        {   // and it is a property of the song position, not of when play began:
+            // the same bar played from bar 1 and from bar 3 is the same audio.
+            // A rounded shape, because a hard edge lands a sample either side
+            // depending on where the phase accumulator started and that is not
+            // something floating point can be held to.
+            const Take a = renderWith(tremPatch(7, 5.0, 100, 0, 80, 50, 0), flat, sr,
+                                      128, true, 120.0, 0.0);
+            const Take b = renderWith(tremPatch(7, 5.0, 100, 0, 80, 50, 0), flat, sr,
+                                      128, true, 120.0, 8.0);      // two bars later
+            double worst = 0.0;
+            for (size_t i = skip; i < a.L.size(); ++i)
+                worst = std::max(worst, std::fabs(static_cast<double>(a.L[i]) - b.L[i]));
+            check("dropping the playhead two bars on lands in the same place",
+                  worst < 1.0e-6, "worst " + f2s(worst, 9));
+        }
+        {   // depth, measured rather than asserted
+            auto extremes = [&](double depth){
+                const Take t = renderWith(tremPatch(0, 8.0, depth, 100, 100, 50, 0), flat, sr,
+                                          128, false, 120.0, 0.0);
+                double lo = 1.0, hi = 0.0, sum = 0.0;
+                for (size_t i = skip; i < t.L.size(); ++i){
+                    lo = std::min(lo, static_cast<double>(t.L[i]));
+                    hi = std::max(hi, static_cast<double>(t.L[i]));
+                    sum += t.L[i];
+                }
+                return std::make_tuple(lo / level, hi / level,
+                                       sum / static_cast<double>(t.L.size() - skip) / level);
+            };
+            const auto full = extremes(100.0), half = extremes(50.0);
+            check("full depth chops to silence and back to unity",
+                  std::get<0>(full) < 0.02 && std::get<1>(full) > 0.98,
+                  f2s(std::get<0>(full), 4) + " to " + f2s(std::get<1>(full), 4));
+            check("half depth chops half as far",
+                  std::fabs(std::get<0>(half) - 0.5) < 0.03,
+                  "floor " + f2s(std::get<0>(half), 4));
+            check("a square at 50% duty spends half the bar loud",
+                  std::fabs(std::get<2>(full) - 0.5) < 0.03,
+                  "mean " + f2s(std::get<2>(full), 4));
+        }
+        {   // duty moves where the dip falls
+            const Take t = renderWith(tremPatch(0, 8.0, 100, 100, 100, 25, 0), flat, sr,
+                                      128, false, 120.0, 0.0);
+            long loud = 0, total = 0;
+            for (size_t i = skip; i < t.L.size(); ++i){
+                ++total;
+                if (t.L[i] > static_cast<float>(level * 0.5)) ++loud;
+            }
+            const double fraction = static_cast<double>(loud) / static_cast<double>(total);
+            check("duty decides how much of the cycle is loud",
+                  std::fabs(fraction - 0.25) < 0.03, f2s(fraction, 4) + " of the cycle");
+        }
+        {   // edge: the same square, with and without its corners
+            auto worstStep = [&](double edge){
+                const Take t = renderWith(tremPatch(0, 4.0, 100, 100, edge, 50, 0), flat, sr,
+                                          128, false, 120.0, 0.0);
+                double worst = 0.0;
+                for (size_t i = skip + 1; i < t.L.size(); ++i)
+                    worst = std::max(worst, std::fabs(static_cast<double>(t.L[i]) - t.L[i - 1]));
+                return worst / level;
+            };
+            const double hard = worstStep(100.0), soft = worstStep(0.0);
+            check("edge is a real slew, not a label", soft < hard * 0.25,
+                  "step " + f2s(hard, 5) + " hard, " + f2s(soft, 5) + " soft");
+        }
+        {   // 180 degrees of spread is auto-pan
+            const Take t = renderWith(tremPatch(0, 6.0, 100, 0, 100, 50, 180), flat, sr,
+                                      128, false, 120.0, 0.0);
+            double sumL = 0, sumR = 0, cross = 0, varL = 0, varR = 0;
+            const double n2 = static_cast<double>(t.L.size() - skip);
+            for (size_t i = skip; i < t.L.size(); ++i){ sumL += t.L[i]; sumR += t.R[i]; }
+            const double mL = sumL / n2, mR = sumR / n2;
+            for (size_t i = skip; i < t.L.size(); ++i){
+                const double a = t.L[i] - mL, b = t.R[i] - mR;
+                cross += a * b; varL += a * a; varR += b * b;
+            }
+            const double corr = cross / std::sqrt(varL * varR);
+            check("180 degrees of spread is auto-pan", corr < -0.97, "correlation " + f2s(corr, 4));
+        }
+        {   // off is off, to the sample
+            Patch on = tremPatch(0, 6.0, 0, 0, 100, 50, 0);       // on, but no depth
+            Patch off = tremPatch(0, 6.0, 60, 0, 100, 50, 0); off.v["trOn"] = 0;
+            const Take a = renderWith(on, flat, sr, 128, false, 120.0, 0.0);
+            const Take b = renderWith(off, flat, sr, 128, false, 120.0, 0.0);
+            double worst = 0.0;
+            for (size_t i = 0; i < a.L.size(); ++i)
+                worst = std::max(worst, std::fabs(static_cast<double>(a.L[i]) - b.L[i]));
+            check("a tremolo at zero depth is the bypassed signal", worst < 1.0e-7,
+                  "worst " + f2s(worst, 9));
+        }
+    }
+
+    // --------------------------------------------------------- the synced LFOs
+    std::printf("\nTempo sync\n");
+    {
+        // an LFO on the output gain, with a flat input: the output is the LFO
+        auto lfoPatch = [&](int div, double rate){
+            Patch p; p.v = { {"mix", 0}, {"osFactor", 0}, {"l1Rate", static_cast<float>(rate)},
+                             {"l1Div", static_cast<float>(div)}, {"l1Shape", 0},
+                             {"mS0", 1}, {"mA0", 60} };
+            const auto& dd = P.dests();
+            for (size_t i = 0; i < dd.size(); ++i)
+                if (P[dd[i]].id == "outGain") p.v["mD0"] = static_cast<float>(i) + 1;
+            return p;
+        };
+        const double sr = 48000.0;
+        std::vector<float> flat(static_cast<size_t>(sr * 2.0), 0.25f);
+        const size_t skip = static_cast<size_t>(sr * 0.2);
+        {
+            const Take t = renderWith(lfoPatch(7, 0.5), flat, sr, 128, true, 120.0, 0.0);
+            const double hz = freqOf(t.L, skip, t.L.size(), sr);
+            check("a synced LFO counts the host's quarters",
+                  std::fabs(hz - 2.0) < 0.1,
+                  f2s(hz, 3) + " a second at 120 BPM");
+        }
+        {
+            const Take t = renderWith(lfoPatch(0, 3.0), flat, sr, 128, true, 120.0, 0.0);
+            const double hz = freqOf(t.L, skip, t.L.size(), sr);
+            check("Free leaves the rate knob in charge",
+                  std::fabs(hz - 3.0) < 0.15,
+                  f2s(hz, 3) + " Hz");
+        }
+        {   // stopped, but still moving: a synced LFO at the host's tempo
+            const Take t = renderWith(lfoPatch(7, 0.5), flat, sr, 128, false, 120.0, 0.0);
+            const double hz = freqOf(t.L, skip, t.L.size(), sr);
+            check("a synced LFO keeps moving while the transport is stopped",
+                  std::fabs(hz - 2.0) < 0.15,
+                  f2s(hz, 3) + " a second, stopped");
         }
     }
 

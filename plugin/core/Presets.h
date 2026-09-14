@@ -22,6 +22,10 @@ inline const std::vector<Preset>& presets(){
         { "Sub warmer, top untouched", R"JSON({"bands":"3","x1":120,"x2":1800,"d0a":12,"m0a":"warm","mx0":60,"d1a":2,"mx1":20,"d2a":1,"mx2":0,"t0":4,"outGain":-1})JSON" },
         { "Motion — LFO across the mids", R"JSON({"bands":"3","x1":240,"x2":3200,"d1a":16,"m1a":"harm","mx1":90,"d0a":4,"d2a":6,"m2a":"tape","mS0":"lfo1","mD0":"d1a","mA0":60,"l1Rate":0.22,"mS1":"lfo2","mD1":"mx1","mA1":-30,"l2Rate":5.5,"mS2":"env","mD2":"t1","mA2":35,"mix":95,"outGain":-2})JSON" },
         { "Total collapse", R"JSON({"bands":"2","x1":600,"d0a":30,"m0a":"wrap","d1a":26,"m1a":"rect","sb0":true,"d0b":12,"m0b":"bits","bits":3,"redux":12,"crMix":100,"fbAmt":55,"fbTime":22,"fltType":"lp","fltFreq":5200,"fltQ":1.4,"width":140,"outGain":-9})JSON" },
+        { "Ladder sweep, on the half note", R"JSON({"bands":"1","d0a":5,"m0a":"tube","mx0":100,"fltType":"lp","fltCirc":"analog","fltPoles":"24","fltFreq":600,"fltQ":7,"fltDrive":3,"fltDrift":45,"mS0":"lfo1","mD0":"fltFreq","mA0":55,"l1Div":"1/2","l1Shape":"tri","outGain":-2})JSON" },
+        { "Squelch — vintage, a turn from singing", R"JSON({"bands":"1","d0a":3,"m0a":"warm","fltType":"lp","fltCirc":"vintage","fltFreq":320,"fltQ":13,"fltDrive":6,"fltDrift":70,"mS0":"env","mD0":"fltFreq","mA0":45,"envAtk":6,"envRel":160,"outGain":-4})JSON" },
+        { "Chop — eighths with the edges left on", R"JSON({"bands":"1","d0a":2,"m0a":"soft","trOn":true,"trDiv":"1/8","trDepth":100,"trShape":100,"trEdge":85,"trDuty":45})JSON" },
+        { "Harmonic pan — the tremolo across the image", R"JSON({"bands":"2","x1":500,"d0a":4,"m0a":"tape","d1a":6,"m1a":"tube","fltType":"bp","fltCirc":"analog","fltFreq":1200,"fltQ":2.5,"fltDrive":2,"trOn":true,"trDiv":"1/4","trDepth":70,"trShape":20,"trEdge":35,"trSpread":180,"mS0":"trem","mD0":"fltFreq","mA0":25,"outGain":-2})JSON" },
     };
     return all;
 }

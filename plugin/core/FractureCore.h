@@ -12,7 +12,11 @@
 //                                   └────────────────────────────────────────┘ │
 //                          summed ─┬─ crush ─ post filter ─ wet ───────────────┤
 //                                  └─ feedback: delay ─ tone ─ saturator ──────┘
-//                    dry/wet ─ width (M/S) ─ output gain ─ safety clip ─ out
+//                    dry/wet ─ width (M/S) ─ tremolo ─ output gain ─ safety ─ out
+//
+// The post filter is either the clean biquad pair or the nonlinear ladder in
+// AnalogFilter.h, decided by the Circuit control; the tremolo is last, after
+// the dry/wet, because an insert tremolo modulates the whole track.
 //
 // Differences from the browser version, all deliberate:
 //   * drive evaluates f(x * drive) per sample instead of indexing a fixed curve
@@ -36,6 +40,9 @@
 #include "Crusher.h"
 #include "ParamTable.h"
 #include "Modulation.h"
+#include "AnalogFilter.h"
+#include "Tremolo.h"
+#include "Sync.h"
 
 namespace fracture {
 
@@ -71,7 +78,11 @@ public:
         for (int i = 0; i < P.count(); ++i) base_[i] = P[i].def;
 
         mod_.prepare(sampleRate);
+        trem_.prepare(sampleRate);
         for (int ch = 0; ch < maxChannels; ++ch){
+            // a different seed per channel, or both channels drift in step and
+            // the whole point of the drift is lost
+            ladder_[ch].prepare(sampleRate, 0x9E3779B9u + 0x7F4A7C15u * static_cast<uint32_t>(ch + 1));
             fb_[ch].prepare(sampleRate, 300.0);
             dry_[ch].prepare(static_cast<int>(sampleRate * 0.05) + 8);
         }
@@ -93,9 +104,11 @@ public:
                 f->reset();
             fb_[ch].reset();
             dry_[ch].reset();
+            ladder_[ch].reset();
         }
         crusher_.reset();
         mod_.reset();
+        trem_.reset();
         first_ = true;
         inPeak = outPeak = 0.0f;
     }
@@ -115,12 +128,15 @@ public:
     }
     int latencySamples() const { return latency_; }
     void seedFrom(int64_t playheadSamples){ mod_.seedFrom(playheadSamples); }
+    // the host's clock, for the synced LFOs and the tremolo
+    void setTransport(const Transport& t){ transport_ = t; }
 
     // meters and modulation readouts, for the editor
     float inPeak = 0.0f, outPeak = 0.0f;
     float lfo1() const { return static_cast<float>(mod_.lfo(0)); }
     float lfo2() const { return static_cast<float>(mod_.lfo(1)); }
     float envOut() const { return static_cast<float>(mod_.env()); }
+    float tremOut() const { return static_cast<float>(trem_.value()); }
 
     void process(float* const* io, int numChannels, int n){
         if (n <= 0) return;
@@ -132,7 +148,8 @@ public:
         for (int ch = 0; ch < nch; ++ch)
             for (int i = 0; i < n; ++i) rms += static_cast<double>(io[ch][i]) * io[ch][i];
         rms = std::sqrt(rms / static_cast<double>(n * nch));
-        mod_.update(n, rms * dbToGain(base_[id.inGain]), base_.data());
+        mod_.setTrem(trem_.value());               // the tremolo is a matrix source too
+        mod_.update(n, rms * dbToGain(base_[id.inGain]), base_.data(), transport_);
         applyMatrix(mod_, base_.data(), mv_.data());
 
         setOversampling(static_cast<int>(mv_[id.osFactor]));
@@ -155,10 +172,17 @@ public:
             fbHP_[ch].set(Biquad::HighPass, 40.0, sr_);
             const int ft = static_cast<int>(mv_[id.fltType]);
             if (ft > 0){
-                static const Biquad::Type map[] = { Biquad::AllPass, Biquad::LowPass, Biquad::HighPass,
-                                                    Biquad::BandPass, Biquad::Notch, Biquad::Peaking };
-                fltA_[ch].set(map[ft], mv_[id.fltFreq], sr_, mv_[id.fltQ], 9.0);
-                fltB_[ch].copyCoeffs(fltA_[ch]);
+                if (static_cast<int>(mv_[id.fltCirc]) == Ladder::Clean){
+                    static const Biquad::Type map[] = { Biquad::AllPass, Biquad::LowPass, Biquad::HighPass,
+                                                        Biquad::BandPass, Biquad::Notch, Biquad::Peaking };
+                    fltA_[ch].set(map[ft], mv_[id.fltFreq], sr_, mv_[id.fltQ], 9.0);
+                    fltB_[ch].copyCoeffs(fltA_[ch]);
+                } else {
+                    ladder_[ch].set(ft, mv_[id.fltPoles] > 0.5f ? 4 : 2,
+                                    static_cast<int>(mv_[id.fltCirc]),
+                                    mv_[id.fltFreq], mv_[id.fltQ],
+                                    mv_[id.fltDrive], mv_[id.fltDrift] / 100.0);
+                }
             }
             for (int b = 0; b < numBands; ++b){
                 Band& bd = bands_[b];
@@ -207,6 +231,12 @@ public:
         const int redux = std::max(1, static_cast<int>(std::lround(mv_[id.redux])));
         const bool safety = mv_[id.safety] > 0.5f;
         const int ft = static_cast<int>(mv_[id.fltType]);
+        const int circuit = static_cast<int>(mv_[id.fltCirc]);
+        const bool twoPole = mv_[id.fltPoles] < 0.5f;      // the clean pair is 24 dB; one of it is 12
+        trem_.configure(mv_[id.trOn] > 0.5f, mv_[id.trRate], static_cast<int>(mv_[id.trDiv]),
+                        mv_[id.trDepth], mv_[id.trShape], mv_[id.trEdge],
+                        mv_[id.trDuty], mv_[id.trSpread], transport_);
+        const bool tremOn = trem_.active();
 
         // ---- per sample
         double inPk = 0.0, outPk = 0.0;
@@ -269,13 +299,22 @@ public:
                 fb_[ch].write(softLimit(fbHP_[ch].process(fbTone_[ch].process(node))));
 
                 double v = crusher_.process(ch, node, bits, redux, cm);
-                if (ft > 0) v = fltB_[ch].process(fltA_[ch].process(v));
+                if (ft > 0){
+                    if (circuit == Ladder::Clean)
+                        v = twoPole ? fltA_[ch].process(v) : fltB_[ch].process(fltA_[ch].process(v));
+                    else
+                        v = ladder_[ch].process(v);
+                }
                 y[ch] = dryS * (1.0 - w) + v * w;
             }
             if (nch == 2){                                   // mid/side width
                 const double m = (y[0] + y[1]) * 0.5, s = (y[0] - y[1]) * 0.5 * width;
                 y[0] = m + s; y[1] = m - s;
             }
+            if (tremOn){
+                for (int ch = 0; ch < nch; ++ch) y[ch] *= trem_.gain(ch);
+            }
+            trem_.advance();                                 // free-running, so it stays in phase
             for (int ch = 0; ch < nch; ++ch){
                 double o = y[ch] * gOut;
                 if (safety) o = softLimit(o);
@@ -307,8 +346,11 @@ private:
     Biquad fltA_[maxChannels], fltB_[maxChannels], fbTone_[maxChannels], fbHP_[maxChannels];
     FracDelay fb_[maxChannels];
     DelayLine dry_[maxChannels];
+    Ladder ladder_[maxChannels];
     Crusher crusher_;
     ModEngine mod_;
+    Tremolo trem_;
+    Transport transport_;
     Ramp inG_, outG_, wet_, widthR_, fbAmt_, crMix_;
 };
 

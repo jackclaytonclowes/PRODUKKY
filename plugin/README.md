@@ -1,8 +1,8 @@
 # FRACTURE — VST3 / AU plugin
 
 A native port of `../fx/fracture.html`. Same signal path, same fourteen shapers, same
-parameter ids, same nine presets — so a patch copied out of the browser version loads here
-and means the same thing.
+parameter ids, same thirteen presets — so a patch copied out of the browser version loads
+here and means the same thing.
 
 ## Getting an Audio Unit for Logic
 
@@ -83,6 +83,9 @@ core/               the DSP. No JUCE, no dependencies, no allocation in the audi
   Oversampler.h     2x/4x linear-phase FIR, plus the delay lines
   Crusher.h         bit depth and decimation, a port of the AudioWorklet
   Modulation.h      two LFOs, envelope follower, the six-slot matrix
+  AnalogFilter.h    the nonlinear ladder: zero-delay feedback, saturation, drift
+  Tremolo.h         shape, duty, edge and spread, locked to the host's bar
+  Sync.h            the transport, and the note divisions that read from it
   ParamTable.h      ONE parameter table — the DSP, the host and patch import share it
   Presets.h         generated from the browser presets; do not edit
   FractureCore.h    the whole processor
@@ -128,9 +131,45 @@ animation-frame rate, and the random LFO shapes are seeded from the transport po
 two bounces of the same bar are identical. `test_core` renders the same passage twice and
 requires the samples to match bit for bit.
 
+## The filter, and the tremolo
+
+Two sections do more than the browser's Web Audio nodes could, and both are off by
+default so that every patch made before they existed still sounds the same.
+
+**Circuit** turns the post filter from a pair of biquads into a four-pole ladder.
+`Clean` is the biquad pair, unchanged. `Analogue` and `Vintage` are a zero-delay-feedback
+ladder (`core/AnalogFilter.h`) with saturation *inside* the loop, which is what makes
+resonance squelch against a loud signal rather than ring through it, and what keeps
+self-oscillation at a usable level instead of a divergence. `Vintage` saturates
+asymmetrically — even harmonics, not just odd — and loses the top octave the way a real
+one does. Every response is mixed from the same four taps, so changing Type or Slope
+never re-tunes the resonance.
+
+- **Drive** is a gain into the input stage, with most of it taken back out again, so it
+  is audible as drive and not as level.
+- **Drift** wanders the cutoff and resonance slowly and independently per channel. It is
+  a few per cent, and it is the difference between two channels and one channel twice.
+- The mark on **Cutoff** is the pole corner: it is where the resonance sings, which is the
+  only calibration that lets a resonant sweep be played in tune. A four-pole is 3 dB down
+  at 0.435 of that, so at the same number the ladder is darker than the biquad. That is
+  the character of a four-pole and not an error.
+
+**Tremolo** (`core/Tremolo.h`) is last in the chain, after the dry/wet, because an insert
+tremolo modulates everything on the track. Shape morphs continuously from sine through
+triangle to a hard chop; Duty decides how much of the cycle is the loud half; Edge is a
+real slew on the result, because a square wave with instant edges is a click and no
+hardware tremolo has ever switched that fast; Spread offsets the right channel, and at
+180° it is auto-pan. It is also a modulation source, so the same rhythm that chops the
+level can sweep the filter.
+
+**Sync** appears on the tremolo and on both LFOs as one list whose first entry is `Free`,
+rather than a toggle plus a division that can disagree with each other. A division takes
+its phase from the host's song position, so the same bar sounds the same wherever you drop
+the playhead, and keeps running at the host's tempo while the transport is stopped.
+
 ## What is verified, and where
 
-`npm run test:core` — 50 assertions, no JUCE needed:
+`npm run test:core` — 79 assertions, no JUCE needed:
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
   half-steps where JS and C round differently. `tools/make-reference.mjs` pulls the
@@ -142,11 +181,28 @@ requires the samples to match bit for bit.
 - one, two and three bands audible; muting every band silences the wet path; solo works
 - reported latency is the measured latency; the three bands sum flat
 - a seeded render is bit-identical twice over
-- all nine browser presets load and render, and every value in every browser patch maps to
-  a plugin parameter
+- all thirteen browser presets load and render, and every value in every browser patch
+  maps to a plugin parameter
 - 44.1 / 48 / 96 kHz, and block sizes from 16 to 1024
 
-`host_smoke` — 25 assertions at the host level: parameters exposed, latency reported,
+and, for the ladder and the tremolo, measured from rendered audio rather than read back
+from the coefficients, because a nonlinear feedback loop has no coefficients to read:
+
+- the analogue circuit agrees with the clean one in the passband, is 3 dB down at 0.435 of
+  its mark (a four-pole's own character), and rolls off at 12 and 24 dB an octave
+- resonance self-oscillates **at the frequency the knob points at**, and stays inside the
+  rails while it does
+- filter drive adds harmonics (under 3% at 1x, over 10% at 10x) without being a volume
+  knob, and the vintage circuit puts three times the second harmonic of the clean one
+- drift moves the two channels apart, and at zero they are sample-identical
+- a free tremolo runs at the rate it says; a synced one counts the host's eighths, lands
+  its loud half on the beat, and renders the same bar identically from two bars later
+- depth, duty and edge each do the thing they are named after, 180° of spread is auto-pan,
+  and zero depth is the bypassed signal to within 1e-7
+- a synced LFO follows the host's quarters, keeps moving while the transport is stopped,
+  and hands control back to the rate knob on Free
+
+`host_smoke` — 29 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
 and comes back out unchanged, a half-size editor still draws its bottom-right corner, and
 **the editor renders to a PNG** at both sizes so the interface can be looked at without
@@ -161,7 +217,11 @@ opening a DAW.
 - The oversampler is correct but not cheap — around 780 multiply-adds per sample per band
   per channel at 4x. If CPU matters, swap `Oversampler` for `juce::dsp::Oversampling`,
   which is polyphase; the interface is a drop-in.
-- No tempo sync yet. The host tempo is available now, so LFO-per-beat is a small addition.
+- The tremolo and the LFOs sync to the host, but nothing else does: there is no
+  tempo-locked feedback time, which is the obvious next one.
+- The tremolo's shape is drawn on the panel from the same arithmetic the DSP uses, but the
+  drawing does not know about modulation of depth or duty, so a heavily modulated tremolo
+  is shown at its unmodulated shape.
 - GUI resizing is uniform scaling only: the interface is laid out once at 1180 x 1190 and
   the whole canvas is scaled to the window, so nothing is ever cropped, but nothing
   reflows either. The aspect ratio is fixed and the window opens smaller than the design

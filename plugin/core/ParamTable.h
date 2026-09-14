@@ -12,6 +12,7 @@
 #include <cmath>
 #include <algorithm>
 #include "Shapers.h"
+#include "Sync.h"
 
 namespace fracture {
 
@@ -35,7 +36,11 @@ inline const char* const lfoShapeNames[] = { "Sine","Triangle","Saw up","Saw dow
                                              "Random S&H","Random smooth" };
 inline const char* const filterTypeIds[] = { "off","lp","hp","bp","notch","peak" };
 inline const char* const filterTypeNames[] = { "Off","Low pass","High pass","Band pass","Notch","Peak" };
-inline const char* const modSourceNames[] = { "—","LFO 1","LFO 2","Envelope","Envelope inv" };
+inline const char* const modSourceNames[] = { "—","LFO 1","LFO 2","Envelope","Envelope inv","Tremolo" };
+inline const char* const circuitIds[]   = { "clean","analog","vintage" };
+inline const char* const circuitNames[] = { "Clean","Analogue","Vintage" };
+inline const char* const slopeIds[]     = { "12","24" };
+inline const char* const slopeNames[]   = { "12 dB","24 dB" };
 
 inline constexpr int numBands = 3;
 inline constexpr int numSlots = 6;          // modulation matrix slots
@@ -125,9 +130,11 @@ private:
           c("osFactor", "Oversampling", n, 3, 2, -1, j); }
         // modulation sources
         f("l1Rate", "LFO 1 rate", 0.02f, 20, 0.5f, true, false, "Hz");
+        c("l1Div", "LFO 1 division", divNames, numDivs, 0, -1, divIds);
         c("l1Shape", "LFO 1 shape", lfoShapeNames, 7, 0, -1, lfoShapeIds);
         f("l1Depth", "LFO 1 depth", 0, 100, 100, false, false, "%");
         f("l2Rate", "LFO 2 rate", 0.02f, 20, 3, true, false, "Hz");
+        c("l2Div", "LFO 2 division", divNames, numDivs, 0, -1, divIds);
         c("l2Shape", "LFO 2 shape", lfoShapeNames, 7, 0, -1, lfoShapeIds);
         f("l2Depth", "LFO 2 depth", 0, 100, 100, false, false, "%");
         f("envAtk",  "Env attack",  1, 300, 12, true, false, "ms");
@@ -153,6 +160,29 @@ private:
             b("mu" + s, pre + "Mute", false, i);
             b("so" + s, pre + "Solo", false, i);
         }
+        // ---- added after the first release, and deliberately at the end.
+        // The matrix stores its destination as an index into the list of
+        // modulatable parameters, so a NEW MODULATABLE PARAMETER has to be
+        // added here rather than next to its neighbours: inserting one higher
+        // up would silently re-point the matrix of every session already
+        // saved. Choices and toggles are not destinations and are free to sit
+        // wherever they read best.
+        //
+        // the ladder: circuit, slope, and the two controls only it has
+        c("fltCirc",  "Filter circuit", circuitNames, 3, 0, -1, circuitIds);
+        c("fltPoles", "Filter slope",   slopeNames,   2, 1, -1, slopeIds);
+        f("fltDrive", "Filter drive", 1, 16, 1, true, true, "x");
+        f("fltDrift", "Filter drift", 0, 100, 35, false, false, "%");
+        // tremolo, at the very end of the chain
+        b("trOn",     "Tremolo", false);
+        c("trDiv",    "Trem division", divNames, numDivs, 10, -1, divIds);
+        f("trRate",   "Trem rate",   0.05f, 20, 5, true, true, "Hz");
+        f("trDepth",  "Trem depth",  0, 100, 60, false, true, "%");
+        f("trShape",  "Trem shape",  0, 100, 0, false, true, "%");
+        f("trEdge",   "Trem edge",   0, 100, 50, false, true, "%");
+        f("trDuty",   "Trem duty",   5, 95, 50, false, true, "%");
+        f("trSpread", "Trem spread", 0, 180, 0, false, true, "deg");
+
         // the matrix destination list is every modulatable parameter above
         for (size_t i = 0; i < info_.size(); ++i)
             if (info_[i].mod) dests_.push_back(static_cast<int>(i));
@@ -164,10 +194,10 @@ private:
         std::vector<const char*> destPtrs, destIdPtrs;
         for (auto& s : destNames) destPtrs.push_back(s.c_str());
         for (auto& s : destIds) destIdPtrs.push_back(s.c_str());
-        static const char* const srcIds[] = { "", "lfo1", "lfo2", "env", "env-" };
+        static const char* const srcIds[] = { "", "lfo1", "lfo2", "env", "env-", "trem" };
         for (int k = 0; k < numSlots; ++k){
             const std::string s = std::to_string(k);
-            c("mS" + s, "Mod " + std::to_string(k + 1) + " source", modSourceNames, 5, 0, -1, srcIds);
+                c("mS" + s, "Mod " + std::to_string(k + 1) + " source", modSourceNames, 6, 0, -1, srcIds);
             c("mD" + s, "Mod " + std::to_string(k + 1) + " target",
               destPtrs.data(), static_cast<int>(destPtrs.size()), 0, -1, destIdPtrs.data());
             f("mA" + s, "Mod " + std::to_string(k + 1) + " amount", -100, 100, 0, false, false, "%");
@@ -207,9 +237,11 @@ struct Ids {
     static const Ids& get(){ static Ids i; return i; }
     int inGain, preHP, preLP, bands, x1, x2;
     int bits, redux, crMix, fbAmt, fbTime, fbTone;
-    int fltType, fltFreq, fltQ;
+    int fltType, fltFreq, fltQ, fltCirc, fltPoles, fltDrive, fltDrift;
+    int trOn, trDiv, trRate, trDepth, trShape, trEdge, trDuty, trSpread;
     int mix, width, outGain, autoGain, safety, osFactor;
-    int l1Rate, l1Shape, l1Depth, l2Rate, l2Shape, l2Depth, envAtk, envRel, envSens;
+    int l1Rate, l1Div, l1Shape, l1Depth, l2Rate, l2Div, l2Shape, l2Depth;
+    int envAtk, envRel, envSens;
     int bandDriveA[numBands], bandModeA[numBands], bandStageB[numBands], bandDriveB[numBands],
         bandModeB[numBands], bandTone[numBands], bandMix[numBands], bandLevel[numBands],
         bandMute[numBands], bandSolo[numBands];
@@ -223,10 +255,14 @@ private:
         bits = I("bits"); redux = I("redux"); crMix = I("crMix");
         fbAmt = I("fbAmt"); fbTime = I("fbTime"); fbTone = I("fbTone");
         fltType = I("fltType"); fltFreq = I("fltFreq"); fltQ = I("fltQ");
+        fltCirc = I("fltCirc"); fltPoles = I("fltPoles");
+        fltDrive = I("fltDrive"); fltDrift = I("fltDrift");
+        trOn = I("trOn"); trDiv = I("trDiv"); trRate = I("trRate"); trDepth = I("trDepth");
+        trShape = I("trShape"); trEdge = I("trEdge"); trDuty = I("trDuty"); trSpread = I("trSpread");
         mix = I("mix"); width = I("width"); outGain = I("outGain");
         autoGain = I("autoGain"); safety = I("safety"); osFactor = I("osFactor");
-        l1Rate = I("l1Rate"); l1Shape = I("l1Shape"); l1Depth = I("l1Depth");
-        l2Rate = I("l2Rate"); l2Shape = I("l2Shape"); l2Depth = I("l2Depth");
+        l1Rate = I("l1Rate"); l1Div = I("l1Div"); l1Shape = I("l1Shape"); l1Depth = I("l1Depth");
+        l2Rate = I("l2Rate"); l2Div = I("l2Div"); l2Shape = I("l2Shape"); l2Depth = I("l2Depth");
         envAtk = I("envAtk"); envRel = I("envRel"); envSens = I("envSens");
         for (int i = 0; i < numBands; ++i){
             const std::string s = std::to_string(i);

@@ -173,5 +173,87 @@
    "width": 140,
    "outGain": -9
   }
+ },
+ {
+  "name": "Ladder sweep, on the half note",
+  "v": {
+   "bands": "1",
+   "d0a": 5,
+   "m0a": "tube",
+   "mx0": 100,
+   "fltType": "lp",
+   "fltCirc": "analog",
+   "fltPoles": "24",
+   "fltFreq": 600,
+   "fltQ": 7,
+   "fltDrive": 3,
+   "fltDrift": 45,
+   "mS0": "lfo1",
+   "mD0": "fltFreq",
+   "mA0": 55,
+   "l1Div": "1/2",
+   "l1Shape": "tri",
+   "outGain": -2
+  }
+ },
+ {
+  "name": "Squelch — vintage, a turn from singing",
+  "v": {
+   "bands": "1",
+   "d0a": 3,
+   "m0a": "warm",
+   "fltType": "lp",
+   "fltCirc": "vintage",
+   "fltFreq": 320,
+   "fltQ": 13,
+   "fltDrive": 6,
+   "fltDrift": 70,
+   "mS0": "env",
+   "mD0": "fltFreq",
+   "mA0": 45,
+   "envAtk": 6,
+   "envRel": 160,
+   "outGain": -4
+  }
+ },
+ {
+  "name": "Chop — eighths with the edges left on",
+  "v": {
+   "bands": "1",
+   "d0a": 2,
+   "m0a": "soft",
+   "trOn": true,
+   "trDiv": "1/8",
+   "trDepth": 100,
+   "trShape": 100,
+   "trEdge": 85,
+   "trDuty": 45
+  }
+ },
+ {
+  "name": "Harmonic pan — the tremolo across the image",
+  "v": {
+   "bands": "2",
+   "x1": 500,
+   "d0a": 4,
+   "m0a": "tape",
+   "d1a": 6,
+   "m1a": "tube",
+   "fltType": "bp",
+   "fltCirc": "analog",
+   "fltFreq": 1200,
+   "fltQ": 2.5,
+   "fltDrive": 2,
+   "trOn": true,
+   "trDiv": "1/4",
+   "trDepth": 70,
+   "trShape": 20,
+   "trEdge": 35,
+   "trSpread": 180,
+   "mS0": "trem",
+   "mD0": "fltFreq",
+   "mA0": 25,
+   "outGain": -2
+  }
  }
 ]

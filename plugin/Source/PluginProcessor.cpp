@@ -65,10 +65,16 @@ void FractureProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     const Params& P = Params::get();
     for (int i = 0; i < P.count(); ++i) engine.setParam(i, raw[static_cast<size_t>(i)]->load());
 
-    // reseed the random LFO shapes whenever the transport jumps, so a bounce of
-    // the same bar is the same audio every time
+    // the host's clock: tempo and song position for the synced LFOs and the
+    // tremolo, and a reseed of the random LFO shapes whenever the transport
+    // jumps, so a bounce of the same bar is the same audio every time
+    fracture::Transport transport;
     if (auto* ph = getPlayHead()){
         if (const auto pos = ph->getPosition()){
+            transport.valid = true;
+            transport.playing = pos->getIsPlaying();
+            if (const auto bpm = pos->getBpm()) transport.bpm = *bpm;
+            if (const auto ppq = pos->getPpqPosition()) transport.ppq = *ppq;
             if (const auto s = pos->getTimeInSamples()){
                 if (*s != lastPlayhead){
                     if (std::abs(*s - lastPlayhead) > buffer.getNumSamples() + 1) engine.seedFrom(*s);
@@ -77,6 +83,9 @@ void FractureProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
             }
         }
     }
+    engine.setTransport(transport);
+    hostBpm.store(static_cast<float>(transport.bpm));
+    hostPlaying.store(transport.valid && transport.playing);
 
     for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear(ch, 0, buffer.getNumSamples());
@@ -95,6 +104,7 @@ void FractureProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     lfo1.store(engine.lfo1());
     lfo2.store(engine.lfo2());
     envOut.store(engine.envOut());
+    tremOut.store(engine.tremOut());
     pushScopeSamples(buffer.getReadPointer(0), buffer.getNumSamples());
 }
 

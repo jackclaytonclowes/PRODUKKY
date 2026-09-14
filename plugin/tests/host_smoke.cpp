@@ -61,7 +61,7 @@ int main(int argc, char** argv){
     check("output stays inside full scale", peak <= 1.0, juce::String(peak, 3));
 
     std::printf("\nPresets\n");
-    check("nine factory presets", proc.getNumPrograms() == 9,
+    check("thirteen factory presets", proc.getNumPrograms() == 13,
           juce::String(proc.getNumPrograms()));
     for (int i = 0; i < proc.getNumPrograms(); ++i){
         proc.setCurrentProgram(i);
@@ -122,7 +122,7 @@ int main(int argc, char** argv){
             // bottom-right corner of the design has to still be drawn. Render at
             // half size and compare the far corner against a blank one.
             {
-                editor->setSize(590, 595);
+                editor->setSize(660, 595);
                 const int sw = editor->getWidth(), sh = editor->getHeight();
                 juce::Image small(juce::Image::ARGB, sw, sh, true);
                 {
@@ -152,8 +152,8 @@ int main(int argc, char** argv){
                     }
                 }
                 check("shrunk editor keeps the design proportions",
-                      std::abs(sw / (double) sh - (1180 / (double) 1190)) < 0.02,
-                      juce::String(sw / (double) sh, 3) + " vs " + juce::String((1180 / (double) 1190), 3));
+                      std::abs(sw / (double) sh - (1320 / (double) 1190)) < 0.02,
+                      juce::String(sw / (double) sh, 3) + " vs " + juce::String((1320 / (double) 1190), 3));
                 editor->setSize(w, h);
             }
 
