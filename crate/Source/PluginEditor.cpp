@@ -189,10 +189,14 @@ static void layoutRow(juce::Rectangle<int> area, const std::vector<juce::Compone
 CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), proc(p){
     setLookAndFeel(&look);
 
+    canvas.onPaint  = [this](juce::Graphics& g){ paintDesign(g); };
+    canvas.onLayout = [this]{ layoutDesign(); };
+    addAndMakeVisible(canvas);
+
     for (const auto& preset : presets()) presetBox.addItem(preset.name, presetBox.getNumItems() + 1);
     presetBox.setSelectedItemIndex(proc.getCurrentProgram(), juce::dontSendNotification);
     presetBox.onChange = [this]{ proc.setCurrentProgram(presetBox.getSelectedItemIndex()); };
-    addAndMakeVisible(presetBox);
+    canvas.addAndMakeVisible(presetBox);
 
     pIn     = make<Panel>(1, "Input", ink);
     pConv   = make<Panel>(2, "Converter", yellow);
@@ -237,9 +241,10 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     pOut->addAndMakeVisible(meters);
 
     setResizable(true, true);
-    setResizeLimits(designW / 2, designH / 2, designW * 2, designH * 2);
+    setResizeLimits(designW * 2 / 5, designH * 2 / 5, designW * 2, designH * 2);
     getConstrainer()->setFixedAspectRatio(static_cast<double>(designW) / designH);
-    setSize(designW, designH);
+    const auto open = bauhaus::Canvas::openingSize(designW, designH);
+    setSize(open.getWidth(), open.getHeight());
     startTimerHz(20);
 }
 CrateEditor::~CrateEditor(){ setLookAndFeel(nullptr); }
@@ -251,6 +256,10 @@ void CrateEditor::timerCallback(){
 }
 
 void CrateEditor::paint(juce::Graphics& g){
+    g.fillAll(ground);                                  // behind the canvas, if it is letterboxed
+}
+
+void CrateEditor::paintDesign(juce::Graphics& g){
     g.fillAll(ground);
     auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
     auto header = area.removeFromTop(44);
@@ -285,11 +294,10 @@ void CrateEditor::paint(juce::Graphics& g){
 }
 
 void CrateEditor::resized(){
-    if (getWidth() <= 0 || getHeight() <= 0) return;
-    const float scale = juce::jmin(getWidth() / static_cast<float>(designW),
-                                   getHeight() / static_cast<float>(designH));
-    setTransform(juce::AffineTransform::scale(scale));
+    canvas.fitInto(getLocalBounds());
+}
 
+void CrateEditor::layoutDesign(){
     auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
     auto header = area.removeFromTop(44);
     presetBox.setBounds(header.removeFromRight(260).withSizeKeepingCentre(260, 30));

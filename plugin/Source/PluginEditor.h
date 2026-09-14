@@ -106,6 +106,11 @@ private:
     bauhaus::Look look;
 
     static constexpr int designW = 1180, designH = 1190;
+    bauhaus::Canvas canvas { designW, designH };       // everything is drawn on this
+
+    void paintDesign(juce::Graphics&);                 // both work in design coordinates
+    void layoutDesign();
+    bool built = false;                                // layout runs once everything exists
 
     std::vector<std::unique_ptr<juce::Component>> owned;
     std::vector<KnobBox*> knobs;
@@ -135,7 +140,7 @@ private:
         auto p = std::make_unique<T>(std::forward<A>(args)...);
         T* raw = p.get();
         owned.push_back(std::move(p));
-        addAndMakeVisible(raw);
+        canvas.addAndMakeVisible(raw);
         return raw;
     }
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FractureEditor)

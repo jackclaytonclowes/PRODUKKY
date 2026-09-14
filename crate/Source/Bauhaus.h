@@ -167,4 +167,54 @@ public:
     }
 };
 
+// ---------------------------------------------------------------- the canvas
+// The interface is laid out once, at one fixed size, and then scaled to fit
+// whatever the host makes the window. Every control lives on this canvas rather
+// than on the editor, so making the window smaller shrinks the panels instead
+// of cropping the ones on the right and the bottom. Nothing downstream has to
+// know about the window size: layout and painting both work in design
+// coordinates, and the transform does the rest.
+class Canvas : public juce::Component {
+public:
+    Canvas(int designWidth, int designHeight) : dw(designWidth), dh(designHeight) {}
+
+    std::function<void(juce::Graphics&)> onPaint;
+    std::function<void()>                onLayout;
+
+    void paint(juce::Graphics& g) override { if (onPaint)  onPaint(g); }
+    void resized() override                { if (onLayout) onLayout(); }
+
+    // Fit the design rectangle inside the editor's bounds, centred. Called from
+    // the editor's resized(); the canvas keeps its design-sized bounds so the
+    // layout code above never sees the scale.
+    void fitInto(juce::Rectangle<int> outer){
+        if (outer.getWidth() <= 0 || outer.getHeight() <= 0) return;
+        const float scale = juce::jmin(outer.getWidth()  / static_cast<float>(dw),
+                                       outer.getHeight() / static_cast<float>(dh));
+        setBounds(outer.getX(), outer.getY(), dw, dh);
+        setTransform(juce::AffineTransform::scale(scale)
+                         .translated((outer.getWidth()  - dw * scale) * 0.5f,
+                                     (outer.getHeight() - dh * scale) * 0.5f));
+    }
+
+    // The size to open at: the design size, unless the screen is smaller than
+    // that, in which case as much of it as fits with room for the window frame.
+    // A window taller than the display is the same complaint as a cropped one.
+    static juce::Rectangle<int> openingSize(int dw, int dh){
+        double fit = 1.0;
+        if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()){
+            const auto area = display->userBounds;
+            if (area.getWidth() > 200 && area.getHeight() > 200)
+                fit = juce::jlimit(0.4, 1.0,
+                                   juce::jmin((area.getWidth()  - 80.0) / dw,
+                                              (area.getHeight() - 120.0) / dh));
+        }
+        return { juce::roundToInt(dw * fit), juce::roundToInt(dh * fit) };
+    }
+
+private:
+    const int dw, dh;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Canvas)
+};
+
 } // namespace bauhaus

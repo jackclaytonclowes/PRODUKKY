@@ -146,10 +146,11 @@ requires the samples to match bit for bit.
   a plugin parameter
 - 44.1 / 48 / 96 kHz, and block sizes from 16 to 1024
 
-`host_smoke` — 23 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 25 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
-and comes back out unchanged, and **the editor renders to a PNG** so the interface can be
-looked at without opening a DAW.
+and comes back out unchanged, a half-size editor still draws its bottom-right corner, and
+**the editor renders to a PNG** at both sizes so the interface can be looked at without
+opening a DAW.
 
 ## Honest gaps
 
@@ -161,7 +162,10 @@ looked at without opening a DAW.
   per channel at 4x. If CPU matters, swap `Oversampler` for `juce::dsp::Oversampling`,
   which is polyphase; the interface is a drop-in.
 - No tempo sync yet. The host tempo is available now, so LFO-per-beat is a small addition.
-- No GUI resizing beyond uniform scaling, and the editor is 1180 x 1190 by design.
+- GUI resizing is uniform scaling only: the interface is laid out once at 1180 x 1190 and
+  the whole canvas is scaled to the window, so nothing is ever cropped, but nothing
+  reflows either. The aspect ratio is fixed and the window opens smaller than the design
+  size on a screen that cannot fit it.
 - `pluginval` has not been run — do that before you trust it in a session.
 - The JUCE splash screen is left on, since disabling it needs a JUCE licence. `AGPL`/GPL
   or a paid licence also decides whether you can distribute a build; the VST3 SDK is

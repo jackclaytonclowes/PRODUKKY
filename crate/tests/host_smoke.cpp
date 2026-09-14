@@ -144,7 +144,7 @@ int main(int argc, char** argv){
         if (editor != nullptr){
             const int w = editor->getWidth(), h = editor->getHeight();
             std::printf("        editor size %d x %d\n", w, h);
-            check("editor comes up at its own design size", w >= 800 && h >= 500,
+            check("editor comes up big enough to work in", w >= 600 && h >= 340,
                   juce::String(w) + "x" + juce::String(h));
             juce::Image shot(juce::Image::ARGB, w, h, true);
             {
@@ -156,6 +156,46 @@ int main(int argc, char** argv){
                 for (int x = 0; x < shot.getWidth(); x += 4)
                     if (shot.getPixelAt(x, y).getBrightness() > 0.05f) ++lit;
             check("editor renders something", lit > 10000, juce::String(lit) + " lit samples");
+
+            // Shrinking the window must shrink the interface, not crop it: the
+            // bottom-right corner of the design has to still be drawn. Render at
+            // half size and compare the far corner against a blank one.
+            {
+                editor->setSize(540, 310);
+                const int sw = editor->getWidth(), sh = editor->getHeight();
+                juce::Image small(juce::Image::ARGB, sw, sh, true);
+                {
+                    juce::Graphics g(small);
+                    editor->paintEntireComponent(g, true);
+                }
+                auto inked = [&](juce::Rectangle<int> r){
+                    int n = 0;
+                    for (int y = r.getY(); y < r.getBottom(); ++y)
+                        for (int x = r.getX(); x < r.getRight(); ++x)
+                            if (small.getPixelAt(x, y).getBrightness() < 0.75f) ++n;
+                    return n;
+                };
+                const int corner = inked({ sw - sw / 4, sh - sh / 4, sw / 4, sh / 4 });
+                check("shrunk editor still draws its bottom-right corner", corner > 200,
+                      juce::String(sw) + "x" + juce::String(sh) + ", "
+                          + juce::String(corner) + " inked pixels in the corner");
+                {   // written next to the full-size shot: layout regressions do not
+                    // fail assertions, they have to be looked at
+                    juce::File half(juce::File::getCurrentWorkingDirectory()
+                                        .getChildFile(shotPath).withFileExtension("")
+                                        .getFullPathName() + "-small.png");
+                    half.deleteFile();
+                    if (auto stream = std::unique_ptr<juce::FileOutputStream>(half.createOutputStream())){
+                        juce::PNGImageFormat png;
+                        png.writeImageToStream(small, *stream);
+                    }
+                }
+                check("shrunk editor keeps the design proportions",
+                      std::abs(sw / (double) sh - (1080 / (double) 620)) < 0.02,
+                      juce::String(sw / (double) sh, 3) + " vs " + juce::String((1080 / (double) 620), 3));
+                editor->setSize(w, h);
+            }
+
             juce::File file(juce::File::getCurrentWorkingDirectory().getChildFile(shotPath));
             file.deleteFile();                            // createOutputStream appends
             if (auto stream = std::unique_ptr<juce::FileOutputStream>(file.createOutputStream())){

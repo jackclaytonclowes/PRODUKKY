@@ -307,11 +307,15 @@ FractureEditor::FractureEditor(FractureProcessor& p)
 {
     setLookAndFeel(&look);
 
+    canvas.onPaint  = [this](juce::Graphics& g){ paintDesign(g); };
+    canvas.onLayout = [this]{ layoutDesign(); };
+    addAndMakeVisible(canvas);
+
     // ---- header
     for (const auto& preset : presets()) presetBox.addItem(preset.name, presetBox.getNumItems() + 1);
     presetBox.setSelectedItemIndex(proc.getCurrentProgram(), juce::dontSendNotification);
     presetBox.onChange = [this]{ proc.setCurrentProgram(presetBox.getSelectedItemIndex()); };
-    addAndMakeVisible(presetBox);
+    canvas.addAndMakeVisible(presetBox);
 
     copyButton.onClick = [this]{
         juce::SystemClipboard::copyTextToClipboard(proc.saveBrowserPatch());
@@ -324,8 +328,8 @@ FractureEditor::FractureEditor(FractureProcessor& p)
                     .withTitle("FRACTURE").withMessage("That clipboard text is not a FRACTURE patch."),
                 nullptr);
     };
-    addAndMakeVisible(copyButton);
-    addAndMakeVisible(pasteButton);
+    canvas.addAndMakeVisible(copyButton);
+    canvas.addAndMakeVisible(pasteButton);
 
     // ---- panels
     pIn     = make<Panel>(1, "Input & pre-filter", ink);
@@ -428,9 +432,12 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     pScope->addAndMakeVisible(meters);
 
     setResizable(true, true);
-    setResizeLimits(designW / 2, designH / 2, designW * 2, designH * 2);
+    setResizeLimits(designW * 2 / 5, designH * 2 / 5, designW * 2, designH * 2);
     getConstrainer()->setFixedAspectRatio(static_cast<double>(designW) / designH);
-    setSize(designW, designH);
+    const auto open = bauhaus::Canvas::openingSize(designW, designH);
+    setSize(open.getWidth(), open.getHeight());
+    built = true;
+    layoutDesign();
     startTimerHz(24);
 }
 
@@ -484,7 +491,7 @@ void FractureEditor::selectBand(int band){
         bandPane[b]->setVisible(b == band);
     }
     if (scope) scope->getProperties().set("band", band);
-    resized();
+    layoutDesign();          // the canvas keeps its size, so lay out on it directly
 }
 
 void FractureEditor::timerCallback(){
@@ -517,6 +524,10 @@ void FractureEditor::updateTabs(){
 }
 
 void FractureEditor::paint(juce::Graphics& g){
+    g.fillAll(ground);                                 // behind the canvas, if it is letterboxed
+}
+
+void FractureEditor::paintDesign(juce::Graphics& g){
     g.fillAll(ground);
     auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
 
@@ -557,12 +568,11 @@ void FractureEditor::paint(juce::Graphics& g){
 }
 
 void FractureEditor::resized(){
-    if (getWidth() <= 0 || getHeight() <= 0) return;
-    // one fixed design, scaled to whatever size the host gives us
-    const float scale = juce::jmin(getWidth() / static_cast<float>(designW),
-                                   getHeight() / static_cast<float>(designH));
-    setTransform(juce::AffineTransform::scale(scale));
+    canvas.fitInto(getLocalBounds());                  // one fixed design, scaled to the window
+}
 
+void FractureEditor::layoutDesign(){
+    if (! built) return;                               // selectBand() runs before the panels do
     auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
     auto header = area.removeFromTop(46);
     auto right = header.removeFromRight(520);

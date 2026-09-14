@@ -101,9 +101,10 @@ tests, because nobody involved in building this has heard it:
 - dust is bit-identical across two renders of the same bar, and silent at zero
 - 44.1 / 48 / 96 kHz, block sizes 16 to 1024, and everything at once: finite and bounded
 
-`host_smoke` adds 21 more at the host level, including a synthetic transport: the plugin
+`host_smoke` adds 23 more at the host level, including a synthetic transport: the plugin
 sees the tempo, notices when playback stops, re-declares its latency when the grid changes,
-recalls all nine presets, round-trips its state, and paints its editor to a PNG.
+recalls all nine presets, round-trips its state, and paints its editor to a PNG — twice,
+the second time at half size, checking the corner panels are scaled rather than cropped.
 
 ## Honest gaps
 
