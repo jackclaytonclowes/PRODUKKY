@@ -123,7 +123,20 @@ void CrateProcessor::getStateInformation(juce::MemoryBlock& destData){
 void CrateProcessor::setStateInformation(const void* data, int sizeInBytes){
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
         if (xml->hasTagName(apvts.state.getType()))
+        {
             apvts.replaceState(juce::ValueTree::fromXml(*xml));
+            // replaceState skips a parameter whose stored value looks unchanged,
+            // and for a switch "unchanged" is judged after snapping: a toggle a
+            // host left at 0.21 reads as off, the state says off, so nothing is
+            // written and the parameter keeps reporting 0.21. pluginval caught
+            // it (on four switches in FRACTURE, and on CRATE's with other seeds).
+            // Writing every parameter back from the restored state makes the
+            // value the host reads the value that was saved.
+            for (auto* param : getParameters())
+                if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(param))
+                    rp->setValueNotifyingHost(rp->convertTo0to1(
+                        apvts.getRawParameterValue(rp->getParameterID())->load()));
+        }
 }
 
 juce::AudioProcessorEditor* CrateProcessor::createEditor(){ return new CrateEditor(*this); }

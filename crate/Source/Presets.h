@@ -15,8 +15,12 @@ struct Preset {
 inline const std::vector<Preset>& presets(){
     static const std::vector<Preset> all = {
         { "Init", {} },
-        { "Twelve bit, straight", {
-            { "compand", 0 }, { "aa", 25 }, { "mix", 100 } } },
+        // what the plugin defaulted to before it was corrected to linear: kept,
+        // because it is a sound, but named for what it is. (As "Twelve bit,
+        // straight" it had become identical to Init once linear was the default,
+        // which the audition renders showed.)
+        { "Twelve bit, companded", {
+            { "compand", 60 }, { "aa", 25 } } },
         // the record sped up about five semitones going in and tuned back down on
         // the machine: 45 rpm against 33 is a ratio of 1.35, 5.2 semitones
         { "SP, 45 on 33", {
@@ -53,7 +57,10 @@ inline const std::vector<Preset>& presets(){
             { "rhShape", 5 }, { "rhDiv", 11 }, { "rhDepth", 5 }, { "rhGlide", 5 }, { "rhGroove", 58 } } },
         { "Rhythm: swung band pass", {
             { "fltShape", 1 }, { "fltPoles", 1 }, { "fltFreq", 700 }, { "fltReso", 45 },
-            { "rhShape", 0 }, { "rhDiv", 6 }, { "rhDepth", 3 }, { "rhGroove", 62 } } },
+            { "rhShape", 0 }, { "rhDiv", 6 }, { "rhDepth", 3 }, { "rhGroove", 62 },
+            // a band pass on drums throws most of the kick away: the audition
+            // renders measured this 14.5 dB under the dry loop without it
+            { "outGain", 10 } } },
         { "Rhythm: notch through the bar", {
             { "fltShape", 3 }, { "fltPoles", 2 }, { "fltFreq", 400 },
             { "rhShape", 1 }, { "rhDiv", 3 }, { "rhDepth", 4 }, { "rhPhase", 90 } } },

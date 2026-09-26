@@ -320,7 +320,15 @@ opening a DAW.
   the whole canvas is scaled to the window, so nothing is ever cropped, but nothing
   reflows either. The aspect ratio is fixed and the window opens smaller than the design
   size on a screen that cannot fit it.
-- `pluginval` has not been run — do that before you trust it in a session.
+- `pluginval` passes at strictness 10 (its maximum, fuzzing included) on the Linux VST3
+  build, editor tests included under a virtual display, across six random seeds. The
+  first run failed: a switch restored from a saved state kept the fractional value a host
+  had left on it (0.21 instead of 0) because JUCE's `replaceState` skips a parameter whose
+  snapped value looks unchanged, so `setStateInformation` now writes every parameter back.
+  The AU still needs `auval` on a Mac (the build script runs it), and Steinberg's own VST3
+  validator has not been run.
+- `npm run audition` renders every preset over a loop (or your own WAV) with the real DSP,
+  so it can be heard without a DAW.
 - The JUCE splash screen is left on, since disabling it needs a JUCE licence. `AGPL`/GPL
   or a paid licence also decides whether you can distribute a build; the VST3 SDK is
   separately dual-licensed by Steinberg.

@@ -247,7 +247,15 @@ the second time at half size, checking the corner panels are scaled rather than 
 - Swing is grid-locked, so it moves everything sitting on an off-beat, not individual hits.
   Per-hit humanising needs transient detection and is a separate build.
 - No tempo-synced dust, no per-band anything, no MIDI.
-- `pluginval` has not been run. Do that before trusting it in a session.
+- `pluginval` passes at strictness 10 (its maximum, fuzzing included) on the Linux VST3
+  build, editor tests included under a virtual display, across six random seeds. The
+  first run failed: a switch restored from a saved state kept the fractional value a host
+  had left on it (0.21 instead of 0) because JUCE's `replaceState` skips a parameter whose
+  snapped value looks unchanged, so `setStateInformation` now writes every parameter back.
+  The AU still needs `auval` on a Mac (the build script runs it), and Steinberg's own VST3
+  validator has not been run.
+- `npm run audition` renders every preset over a loop (or your own WAV) with the real DSP,
+  so it can be heard without a DAW.
 - The JUCE splash screen is on, since turning it off needs a JUCE licence.
 
 ## Layout

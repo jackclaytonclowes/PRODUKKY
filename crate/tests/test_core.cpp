@@ -10,6 +10,7 @@
 //   npm run test:crate
 #include "CrateCore.h"
 #include "Relevance.h"
+#include "../Source/Presets.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -723,6 +724,30 @@ int main(){
         }
         check("every dimmed control really does nothing (" + std::to_string(claims) + " claims checked)",
               lies.empty(), lies.empty() ? "" : "audible:" + lies);
+    }
+
+    // ------------------------------------------------------------ the presets
+    std::printf("\nPresets\n");
+    {
+        // no two presets may sound the same: a preset that renders identically
+        // to another is a menu entry that lies about being a choice. Found by
+        // listening renders, after the linear default made "Twelve bit,
+        // straight" a copy of Init
+        const auto in = noise(0.3, 0.2, sr, 9);
+        std::vector<std::vector<float>> outs;
+        std::vector<std::string> names;
+        for (const auto& p : presets()){
+            Patch patch;
+            for (const auto& kv : p.values) patch[kv.first] = kv.second;
+            outs.push_back(run(patch, in, sr, 128, true, 90.0).l);
+            names.push_back(p.name);
+        }
+        std::string same;
+        for (size_t a = 0; a < outs.size(); ++a)
+            for (size_t b = a + 1; b < outs.size(); ++b)
+                if (outs[a] == outs[b]) same += " [" + names[a] + " = " + names[b] + "]";
+        check("every preset sounds different from every other (" + std::to_string(outs.size()) + ")",
+              same.empty(), same);
     }
 
     std::printf("\nFeel\n");
