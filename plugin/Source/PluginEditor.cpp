@@ -254,6 +254,60 @@ void Scope::paint(juce::Graphics& g){
         g.fillRect(inner.getX() + slot * i + 1.0f, inner.getBottom() - bh, slot - 2.0f, bh);
     }
 
+    // ---- the post filter's response over the spectrum, on the same log axis:
+    // computed from the filter's own coefficients (FilterResponse.h), live, so a
+    // notch sits where it is heard and moves when the rhythm or an LFO moves it
+    {
+        const auto st = proc.filterState();
+        const auto fr = specArea.reduced(3).toFloat();
+        const double srNow = proc.getSampleRate() > 0 ? proc.getSampleRate() : 48000.0;
+        const float top = 18.0f, bottom = -36.0f;                     // dB shown
+        auto yOf = [&](double dB){
+            const double t = (top - juce::jlimit(static_cast<double>(bottom), static_cast<double>(top), dB)) / (top - bottom);
+            return fr.getY() + static_cast<float>(t) * fr.getHeight();
+        };
+        auto xOf = [&](double f){ return fr.getX() + static_cast<float>(std::log(f / 20.0) / std::log(1000.0)) * fr.getWidth(); };
+        // 0 dB, and the frequency labels the grid lines already stand for
+        g.setColour(dim2);
+        {
+            juce::Path zero; zero.startNewSubPath(fr.getX(), yOf(0.0)); zero.lineTo(fr.getRight(), yOf(0.0));
+            const float dashes[] = { 3.0f, 4.0f }; juce::Path dashed;
+            juce::PathStrokeType(1.0f).createDashedStroke(dashed, zero, dashes, 2);
+            g.fillPath(dashed);
+        }
+        g.setFont(mono(9.0f));
+        for (const auto& [f, label] : { std::pair<double, const char*>{ 100.0, "100" }, { 1000.0, "1k" }, { 10000.0, "10k" } })
+            g.drawText(label, juce::Rectangle<float>(xOf(f) + 3.0f, fr.getBottom() - 12.0f, 30.0f, 11.0f), juce::Justification::left);
+        if (st.type > 0){
+            juce::Path curve, fill;
+            const int n = juce::roundToInt(fr.getWidth());
+            for (int px = 0; px <= n; ++px){
+                const double f = 20.0 * std::pow(1000.0, px / static_cast<double>(n));
+                const double dB = 20.0 * std::log10(std::max(1e-9, std::abs(filterResponse(st, f, srNow))));
+                const float x = fr.getX() + static_cast<float>(px), y = yOf(dB);
+                if (px == 0){ curve.startNewSubPath(x, y); fill.startNewSubPath(x, yOf(0.0)); }
+                else curve.lineTo(x, y);
+                fill.lineTo(x, y);
+            }
+            fill.lineTo(fr.getRight(), yOf(0.0)); fill.closeSubPath();
+            g.setColour(blue.withAlpha(0.14f)); g.fillPath(fill);
+            g.setColour(blue); g.strokePath(curve, juce::PathStrokeType(2.25f));
+            // the frequency the filter is set to, and what it is
+            const float cx = xOf(juce::jlimit(20.0, 20000.0, st.freq));
+            g.setColour(blue.withAlpha(0.6f));
+            g.fillRect(cx - 0.75f, fr.getY(), 1.5f, fr.getHeight());
+            const juce::String hz = st.freq >= 1000.0 ? juce::String(st.freq / 1000.0, st.freq < 10000.0 ? 2 : 1) + " kHz"
+                                                      : juce::String(juce::roundToInt(st.freq)) + " Hz";
+            const juce::String text = juce::String(filterTypeLabel(st.type)) + " · " + hz;
+            g.setFont(mono(11.0f));
+            const float tw = juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), text) + 12.0f;
+            auto tag = juce::Rectangle<float>(juce::jlimit(fr.getX(), fr.getRight() - tw, cx - tw * 0.5f), fr.getY() + 4.0f, tw, 17.0f);
+            g.setColour(face); g.fillRect(tag);
+            g.setColour(blue); g.drawRect(tag, 1.5f);
+            g.drawText(text, tag, juce::Justification::centred);
+        }
+    }
+
     // ---- transfer curve of the selected band, computed from the parameters
     g.setColour(face); g.fillRect(curveArea);
     g.setColour(ink);  g.drawRect(curveArea, 2);

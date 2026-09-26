@@ -102,6 +102,12 @@ void FractureProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     inPeak.store(engine.inPeak);
     outPeak.store(engine.outPeak);
     rhythmOut.store(engine.rhythmOut());
+    {
+        const auto st = engine.filterState();
+        fsType.store(st.type); fsCircuit.store(st.circuit); fsPoles.store(st.poles);
+        fsFreq.store(static_cast<float>(st.freq)); fsQ.store(static_cast<float>(st.q));
+        fsDrive.store(static_cast<float>(st.drive)); fsMix.store(static_cast<float>(st.mix));
+    }
     lfo1.store(engine.lfo1());
     lfo2.store(engine.lfo2());
     envOut.store(engine.envOut());

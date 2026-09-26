@@ -34,6 +34,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
+#include <complex>
 
 namespace fracture {
 
@@ -111,6 +112,45 @@ public:
     void retune(double freq){
         freq_ = poleFreq_ = std::clamp(freq, 20.0, sr_ * 0.45);
         coeffCount_ = 0;
+    }
+
+    // The small-signal response at `freqHz`, from the same coefficients the audio
+    // uses: what the panel draws. Below saturation the loop is linear, and the
+    // zero-delay ladder is an exact bilinear transform of the analogue one, so
+    // each stage is H1 = g(1 + z^-1) / ((1 + g) - (1 - g) z^-1), the loop closes
+    // as u = x * drive / (1 + k H1^4), and the output is the tap mix of that.
+    // Drift is left out (it is a few per cent and moves on its own); drive's
+    // saturation is left out because it depends on the signal, not the knobs.
+    // plugin/tests/test_core.cpp measures the real filter against this.
+    std::complex<double> response(double freqHz) const {
+        using C = std::complex<double>;
+        const double w = 2.0 * M_PI * std::clamp(freqHz, 1.0, sr_ * 0.499) / sr_;
+        const C z1 = std::polar(1.0, -w);
+        const double f = std::clamp(poleFreq_, 16.0, sr_ * 0.46);
+        const double g = std::tan(M_PI * f / sr_);
+        const C h1 = g * (1.0 + z1) / ((1.0 + g) - (1.0 - g) * z1);
+        const C h2 = h1 * h1, h3 = h2 * h1, h4 = h3 * h1;
+        // the Vintage input stage is offset, so its slope at rest is a little
+        // under 1, and inside a resonant loop that small difference shows
+        const double c = circuit_ == Vintage
+            ? (satAsym(1e-4) - satAsym(-1e-4)) / 2e-4 : 1.0;
+        const C u = c * drive_ * bassComp_ / (1.0 + c * k_ * h4);
+        C out = (a0_ + a1_ * h1 + a2_ * h2 + a3_ * h3 + a4_ * h4) * u;
+        const int extra = poles_ - 4;
+        if (extra > 0){
+            if (type_ == 1) out *= std::pow(h1, extra);
+            else if (type_ == 2) out *= std::pow(1.0 - h1, extra);
+            else {
+                C b = 4.0 * (h2 - 2.0 * h3 + h4) * u;
+                for (int k = 0; k < extra; k += 2) b *= 2.0 * h1 * (1.0 - h1);
+                out = type_ == 3 ? b : (type_ == 4 ? u - b : u + 2.0 * b);
+            }
+        }
+        if (circuit_ == Vintage){
+            const double hk = 1.0 - std::exp(-2.0 * M_PI * 13500.0 / sr_);
+            out *= hk / (1.0 - (1.0 - hk) * z1);
+        }
+        return out * trim_;
     }
 
     double process(double x){

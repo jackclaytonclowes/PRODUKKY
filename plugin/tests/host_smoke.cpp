@@ -174,6 +174,27 @@ int main(int argc, char** argv){
                 std::printf("  screenshot %s\n", file.getFullPathName().toRawUTF8());
             }
 
+            // the drawn filter: a resonant notch, processed once so the engine
+            // publishes it, painted to its own PNG to be looked at
+            {
+                for (auto [id, v] : { std::pair<const char*, float>{ "fltType", 4.0f }, { "fltFreq", 1400.0f },
+                                      { "fltQ", 2.0f }, { "fltCirc", 1.0f }, { "fltPoles", 2.0f } })
+                    if (auto* prm = proc.apvts.getParameter(id)) prm->setValueNotifyingHost(prm->convertTo0to1(v));
+                juce::AudioBuffer<float> buf(2, 512); buf.clear(); juce::MidiBuffer midi;
+                proc.processBlock(buf, midi);
+                const auto st = proc.filterState();
+                check("the editor is told the filter's live state", st.type == 4 && std::abs(st.freq - 1400.0) < 1.0,
+                      juce::String(st.type) + " at " + juce::String(st.freq));
+                juce::Image fshot(juce::Image::ARGB, w, h, true);
+                { juce::Graphics g(fshot); editor->paintEntireComponent(g, true); }
+                juce::File ffile(juce::File::getCurrentWorkingDirectory().getChildFile(shotPath)
+                                     .withFileExtension("").getFullPathName() + "-filter.png");
+                ffile.deleteFile();
+                if (auto stream = std::unique_ptr<juce::FileOutputStream>(ffile.createOutputStream())){
+                    juce::PNGImageFormat png; png.writeImageToStream(fshot, *stream);
+                }
+            }
+
             // the Tips switch and the built-in guide
             if (auto* fe = dynamic_cast<FractureEditor*>(editor.get())){
                 const bool was = fe->tipsOn();

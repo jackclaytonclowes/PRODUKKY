@@ -49,6 +49,7 @@
 #include "Tremolo.h"
 #include "Sync.h"
 #include "RhythmMod.h"
+#include "FilterResponse.h"
 
 namespace fracture {
 
@@ -148,6 +149,10 @@ public:
     float envOut() const { return static_cast<float>(mod_.env()); }
     float tremOut() const { return static_cast<float>(trem_.value()); }
     float rhythmOut() const { return static_cast<float>(rhythm_.value(0)); }
+    // the post filter as it is right now, cutoff modulation and rhythm included,
+    // for the panel to draw its response (FilterResponse.h). Written once a block
+    // on the audio thread; the processor copies it into atomics for the editor
+    FilterState filterState() const { return filterNow_; }
 
     void process(float* const* io, int numChannels, int n){
         if (n <= 0) return;
@@ -278,6 +283,13 @@ public:
                                transport_.valid ? transport_.bpm : 120.0);
         }
         const double cutoffBase = mv_[id.fltFreq];
+        filterNow_.type = ft;
+        filterNow_.circuit = circuit;
+        filterNow_.poles = polesFor(mv_[id.fltPoles]);
+        filterNow_.freq = rhythmOn ? cutoffBase * std::exp2(rhDepth * rhythm_.value(0)) : cutoffBase;
+        filterNow_.q = mv_[id.fltQ];
+        filterNow_.drive = mv_[id.fltDrive];
+        filterNow_.mix = fmix;
         trem_.configure(mv_[id.trOn] > 0.5f, mv_[id.trRate], static_cast<int>(mv_[id.trDiv]),
                         mv_[id.trDepth], mv_[id.trShape], mv_[id.trEdge],
                         mv_[id.trDuty], mv_[id.trSpread], transport_);
@@ -407,6 +419,7 @@ private:
     Biquad xAP_[maxChannels];
     Biquad flt_[maxChannels][4], fbTone_[maxChannels], fbHP_[maxChannels];
     RhythmMod rhythm_;
+    FilterState filterNow_;
     int fbModeWas_ = 0;
 
     // The delay, in samples, that makes the whole loop ring at `note`. The

@@ -981,6 +981,62 @@ int main(int argc, char** argv){
               fbDimmed && !driveDimmed, std::to_string(idleNow.size()) + " dimmed");
     }
 
+    // ------------------------------------------------ the drawn filter curve
+    std::printf("\nFilter display\n");
+    {
+        // The panel draws the post filter's response from FilterResponse.h.
+        // It must be the filter: every type, circuit and slope, resonant, is
+        // measured with sine tones through the real engine and compared.
+        auto measured = [&](int circuit, int type, int poles, double freq, double q, double mix){
+            Patch p; p.v = { {"bands", 0}, {"mx0", 0}, {"osFactor", 0}, {"fltDrift", 0},
+                             {"fltType", static_cast<float>(type)}, {"fltCirc", static_cast<float>(circuit)},
+                             {"fltPoles", static_cast<float>(poles)}, {"fltFreq", 1000}, {"fltQ", static_cast<float>(q)},
+                             {"fltMix", static_cast<float>(mix * 100.0)} };
+            Engine e; e.prepare(48000.0, 128); applyPatch(e, p); e.seedFrom(0);
+            // quiet enough that neither the ladder's saturation nor the safety
+            // clip is in the reading: a 48 dB resonant cascade peaks near +38 dB
+            const int n = 48000 / 4;
+            const double amp = 0.0005;
+            std::vector<float> L(n), R(n);
+            for (int i = 0; i < n; ++i) L[i] = R[i] = static_cast<float>(amp * std::sin(2.0 * M_PI * freq * i / 48000.0));
+            for (int i = 0; i < n; i += 128){ float* io[2] = { L.data() + i, R.data() + i }; e.process(io, 2, std::min(128, n - i)); }
+            std::complex<double> acc = 0.0;
+            const int from = n / 2;
+            for (int i = from; i < n; ++i) acc += static_cast<double>(L[i]) * std::polar(1.0, -2.0 * M_PI * freq * i / 48000.0);
+            return db(2.0 * std::abs(acc) / (n - from) / amp);
+        };
+        const char* circ[] = { "clean", "analogue", "vintage" };
+        std::string detail; double worstClean = 0, worstLadder = 0; int points = 0;
+        for (int circuit = 0; circuit < 3; ++circuit)
+            for (int type = 1; type <= 5; ++type)
+                for (int poles = 0; poles < 4; ++poles)
+                    for (double f : { 300.0, 700.0, 1000.0, 1400.0, 3000.0 }){
+                        FilterState st; st.type = type; st.circuit = circuit; st.poles = 2 * (poles + 1);
+                        st.freq = 1000.0; st.q = 3.0; st.drive = 1.0; st.mix = 1.0;
+                        const double want = db(std::abs(filterResponse(st, f, 48000.0)));
+                        if (want < -40.0) continue;          // deep in a stopband the reading is noise
+                        const double got = measured(circuit, type, poles, f, 3.0, 1.0);
+                        const double err = std::fabs(got - want);
+                        ++points;
+                        double& worst = circuit == 0 ? worstClean : worstLadder;
+                        if (err > worst){ worst = err;
+                            if (err > (circuit == 0 ? 0.1 : 0.5))
+                                detail += std::string(" [") + circ[circuit] + " " + filterTypeLabel(type) + " "
+                                        + std::to_string(st.poles * 6) + " dB at " + f2s(f, 0) + " Hz: drawn "
+                                        + f2s(want, 1) + ", measured " + f2s(got, 1) + "]"; }
+                    }
+        check("the drawn clean curve is the filter, to 0.1 dB", worstClean < 0.1,
+              "worst " + f2s(worstClean, 3) + " dB over " + std::to_string(points) + " points" + detail);
+        check("the drawn ladder curve is the filter, to 0.5 dB", worstLadder < 0.5,
+              "worst " + f2s(worstLadder, 3) + " dB" + detail);
+        // and the filter's mix is in the drawing: a notch at half mix is half deep
+        FilterState half; half.type = 4; half.circuit = 0; half.poles = 4; half.freq = 1000; half.q = 3; half.mix = 0.5;
+        const double drawn = db(std::abs(filterResponse(half, 1000.0, 48000.0)));
+        const double heard = measured(0, 4, 1, 1000.0, 3.0, 0.5);
+        check("a notch at half mix is drawn as deep as it measures", std::fabs(drawn - heard) < 0.2,
+              "drawn " + f2s(drawn, 2) + " dB, measured " + f2s(heard, 2) + " dB");
+    }
+
     // ------------------------------------------------------- macros and XY
     std::printf("\nMacros and XY pad\n");
     {

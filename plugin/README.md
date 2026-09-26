@@ -92,6 +92,7 @@ core/               the DSP. No JUCE, no dependencies, no allocation in the audi
   Sync.h            the transport, and the note divisions that read from it
   Relevance.h       which controls do nothing right now, and why: the panel dims them
   RhythmMod.h       the filter's rhythm: shapes, steps, groove, phase, glide
+  FilterResponse.h  the post filter's response, as the panel draws it
   ParamTable.h      ONE parameter table — the DSP, the host and patch import share it
   Presets.h         generated from the browser presets; do not edit
   FactoryPresets.h  the menu: the browser's presets, then the ones only the plugin can play
@@ -224,6 +225,22 @@ the phase of a low note's partials apart; in Time mode it is where it always was
 rather than a toggle plus a division that can disagree with each other. A division takes
 its phase from the host's song position, so the same bar sounds the same wherever you drop
 the playhead, and keeps running at the host's tempo while the transport is stopped.
+
+## Seeing the filter
+
+The Scope draws the post filter's frequency response over the live spectrum, on the same
+log axis, with a tag naming the type and where it sits ("Notch · 1.40 kHz"). It follows the
+cutoff as it is right now, so a rhythm or an LFO sweep is visible as it happens, and it
+includes the filter's own mix, so a notch at half mix is drawn half as deep.
+
+The curve is computed from the filter's own coefficients (`core/FilterResponse.h`), not
+sketched: the clean cascade exactly, and the ladder as its small-signal response, including
+the slightly-under-unity slope of the Vintage circuit's offset input stage, which was the
+only thing a first version missed. The test suite renders tones through the real engine at
+every type, circuit and slope, resonant, and requires the measured level to match the drawn
+one: it does to under 0.001 dB at 269 points, and fails by 7.5 dB if the ladder's feedback
+is left out of the model. What the curve does not show is drive's saturation and the
+channel drift, which depend on the signal rather than the knobs.
 
 ## Playing it: the XY pad and the macros
 

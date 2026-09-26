@@ -74,7 +74,9 @@ The panel reads in the order the sound flows: top row first, left to right, then
 
 ## 08 Scope
 
-- The top shows the sound's spectrum. The bottom shows the current band's distortion curve: flat is clean, bent is distorted.
+- The top shows the sound's spectrum, with the post filter's response drawn over it in blue, on the same frequency scale. A notch shows as a dip at its frequency, a band pass as a hump, a resonant low pass as a peak before the drop, and the label says the type and where it is (for example "Notch · 1.40 kHz").
+- The curve is live: when the filter rhythm or an LFO moves the cutoff, it moves too, so you can see where a sweep is.
+- The bottom shows the current band's distortion curve: flat is clean, bent is distorted.
 
 ## 09 Perform
 
