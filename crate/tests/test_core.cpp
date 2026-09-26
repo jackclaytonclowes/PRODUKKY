@@ -156,7 +156,7 @@ int main(){
     const Params& P = Params::get();
 
     std::printf("\nParameters\n");
-    check("the table is complete", P.count() == 22, std::to_string(P.count()) + " parameters");
+    check("the table is complete", P.count() == 40, std::to_string(P.count()) + " parameters");
     check("the clock defaults to the rate the hardware ran at",
           std::fabs(P[P.index("clock")].def - 26040.0f) < 1.0f);
     check("twelve bits by default", std::fabs(P[P.index("bits")].def - 12.0f) < 0.01f);
@@ -328,6 +328,200 @@ int main(){
     }
 
     // ----------------------------------------------------------------- the feel
+    // ------------------------------------------------------ shape and poles
+    std::printf("\nShape and poles\n");
+    {
+        // every combination, on the filter alone at the rate it really runs at
+        // (the host rate times four), low enough that the saturation is out of it
+        const double osr = sr * 4.0;
+        auto at = [&](int shape, int poles, double f){
+            Ladder l; l.prepare(osr); l.configure(1000.0, 0.0, 1.0, shape, poles);
+            auto in = sine(f, 0.02, 0.4, osr);
+            for (auto& v : in) v = static_cast<float>(l.process(0, v));
+            return dBOf(goertzel(in, f, osr, static_cast<int>(osr * 0.15)) / 0.02);
+        };
+        const char* nm[] = { "LP", "BP", "HP", "BR" };
+        double worstMark = 0.0, worstSlope = 0.0, worstNotch = -999.0, worstPeak = 0.0;
+        std::string slopeDetail;
+        for (int shape = 0; shape < 4; ++shape) for (int poles = 2; poles <= 8; poles += 2){
+            const double mark = at(shape, poles, 1000);
+            if (shape == Ladder::LP || shape == Ladder::HP){
+                worstMark = std::max(worstMark, std::fabs(mark + 3.0));
+                // far enough out that N poles have reached their asymptote
+                const double a = at(shape, poles, shape == Ladder::LP ? 16000 : 62.5);
+                const double b = at(shape, poles, shape == Ladder::LP ? 32000 : 31.25);
+                const double err = std::fabs((a - b) - 6.0 * poles) / (6.0 * poles);
+                if (err > worstSlope){ worstSlope = err;
+                    slopeDetail = std::string(nm[shape]) + std::to_string(poles) + " " + f2s(a - b) + " dB/oct"; }
+            } else if (shape == Ladder::BP){
+                worstPeak = std::max(worstPeak, std::fabs(mark));
+            } else {
+                worstNotch = std::max(worstNotch, mark);
+            }
+        }
+        check("low and high pass are 3 dB down on the mark, at every slope",
+              worstMark < 0.3, "worst " + f2s(worstMark) + " dB off");
+        check("and fall at 6 dB an octave per pole",
+              worstSlope < 0.12, "worst " + slopeDetail);
+        check("band pass peaks on the mark at unity", worstPeak < 0.3, "worst " + f2s(worstPeak) + " dB");
+        check("band reject is a real notch on the mark", worstNotch < -60.0,
+              "shallowest " + f2s(worstNotch) + " dB");
+        // and it must still be the old filter at the old settings
+        check("four-pole low pass is still the default", P[P.index("fltShape")].def == 0.0f
+              && P[P.index("fltPoles")].def == 1.0f && P[P.index("fltMix")].def == 100.0f);
+    }
+    {
+        // Filter mix at 0 takes the four-pole out completely: a closed filter
+        // and an open one must then give the same output
+        const auto in = noise(0.3, 0.3, sr);
+        const auto a = run({ {"fltFreq", 200}, {"fltMix", 0} }, in);
+        const auto b = run({ {"fltFreq", 18000}, {"fltMix", 0}, {"fltReso", 80} }, in);
+        double worst = 0.0;
+        for (size_t k = 0; k < a.l.size(); ++k) worst = std::max(worst, static_cast<double>(std::fabs(a.l[k] - b.l[k])));
+        check("filter mix at zero takes the filter out", worst < 1e-6, f2s(worst, 9));
+    }
+
+    // ------------------------------------------------------------ the rhythm
+    std::printf("\nRhythm\n");
+    auto rhythmTrace = [&](const Patch& patch, double seconds, bool playing, double startPpq,
+                           double bpm, int ch = 0){
+        Engine e; e.prepare(sr, 64); applyPatch(e, patch);
+        const int n = static_cast<int>(seconds * sr);
+        std::vector<float> l(static_cast<size_t>(n), 0.0f), r = l, trace;
+        double ppq = startPpq;
+        for (int i = 0; i < n; i += 64){
+            const int m = std::min(64, n - i);
+            e.setTransport(playing, ppq, bpm);
+            float* io[2] = { l.data() + i, r.data() + i };
+            e.process(io, 2, m);
+            trace.push_back(static_cast<float>(e.rhythmValue(ch)));   // one value a block
+            if (playing) ppq += m / sr * bpm / 60.0;
+        }
+        return trace;
+    };
+    const double blockSec = 64.0 / sr;
+    {
+        // square on 1/4 at 120 BPM: half a second a cycle, high for the first half
+        const Patch sq = { {"rhShape", 4}, {"rhDiv", 6}, {"rhGlide", 0} };
+        const auto t = rhythmTrace(sq, 2.0, true, 0.0, 120.0);
+        int rises = 0; double firstRise = -1;
+        for (size_t k = 1; k < t.size(); ++k)
+            if (t[k - 1] < 0.5f && t[k] >= 0.5f){ ++rises; if (firstRise < 0 && k > 2) firstRise = k * blockSec; }
+        check("a synced square on 1/4 at 120 BPM rises every half second",
+              rises >= 3 && rises <= 4 && std::fabs(firstRise - 0.5) < 0.004,
+              std::to_string(rises) + " rises, first at " + f2s(firstRise, 4) + " s");
+        // the same bar from a different start: position, not integration
+        const auto u = rhythmTrace(sq, 1.0, true, 8.0, 120.0);    // two bars later
+        const auto v = rhythmTrace(sq, 1.0, true, 0.0, 120.0);
+        double worst = 0.0;
+        for (size_t k = 0; k < std::min(u.size(), v.size()); ++k) worst = std::max(worst, static_cast<double>(std::fabs(u[k] - v[k])));
+        // to within the rounding of the song position itself: an edge landing a
+        // sample late would show here as about 0.07
+        check("the same bar moves the same way from anywhere on the timeline", worst < 0.01, f2s(worst, 6));
+    }
+    {
+        // groove 66 on 1/8 squares: the second of each pair starts two thirds of
+        // the way through the pair, i.e. at 0.667 beats, not 0.5
+        const Patch g = { {"rhShape", 4}, {"rhDiv", 9}, {"rhGroove", 66.6667f}, {"rhGlide", 0} };
+        const auto t = rhythmTrace(g, 1.0, true, 0.0, 120.0);
+        std::vector<double> rises;
+        for (size_t k = 1; k < t.size(); ++k) if (t[k - 1] < 0.5f && t[k] >= 0.5f) rises.push_back(k * blockSec);
+        const double beatSec = 0.5;
+        const bool ok = rises.size() >= 2 && std::fabs(rises[0] - beatSec * 2.0 / 3.0) < 0.004
+                                           && std::fabs(rises[1] - beatSec) < 0.004;
+        check("groove swings every second cycle late, and only that one", ok,
+              rises.size() >= 2 ? "rises at " + f2s(rises[0] / beatSec, 3) + " and " + f2s(rises[1] / beatSec, 3) + " beats"
+                                : "too few rises");
+    }
+    {
+        // the step pattern, one step per 1/16, read back in order
+        Patch st = { {"rhShape", 5}, {"rhDiv", 11}, {"rhGlide", 0} };
+        const float want[8] = { 90, 10, 70, 30, 50, 0, 100, 20 };
+        for (int k = 0; k < 8; ++k) st["rhStep" + std::to_string(k + 1)] = want[k];
+        const auto t = rhythmTrace(st, 1.0, true, 0.0, 120.0);
+        double worst = 0.0;
+        for (int k = 0; k < 8; ++k){
+            const double mid = (k + 0.5) * 0.125;                  // mid-step, in seconds at 120 BPM
+            const size_t idx = static_cast<size_t>(mid / blockSec);
+            worst = std::max(worst, std::fabs(t[idx] - want[k] / 100.0));
+        }
+        check("the eight steps play in order, one per division", worst < 1e-6, f2s(worst, 9));
+    }
+    {
+        // stereo phase 180 on a sine: the right channel is the left upside down
+        const Patch ph = { {"rhShape", 0}, {"rhDiv", 6}, {"rhPhase", 180}, {"rhGlide", 0} };
+        const auto L = rhythmTrace(ph, 1.0, true, 0.0, 120.0, 0);
+        const auto R = rhythmTrace(ph, 1.0, true, 0.0, 120.0, 1);
+        double worst = 0.0;
+        for (size_t k = 0; k < L.size(); ++k) worst = std::max(worst, std::fabs(L[k] + R[k] - 1.0));
+        check("phase 180 puts the right channel opposite the left", worst < 1e-6, f2s(worst, 9));
+    }
+    {
+        // random is a function of position: two renders agree, and it moves
+        const Patch rn = { {"rhShape", 6}, {"rhDiv", 11}, {"rhGlide", 0} };
+        const auto a = rhythmTrace(rn, 1.0, true, 4.0, 100.0), b = rhythmTrace(rn, 1.0, true, 4.0, 100.0);
+        double worst = 0.0, lo = 1.0, hi = 0.0;
+        for (size_t k = 0; k < a.size(); ++k){
+            worst = std::max(worst, static_cast<double>(std::fabs(a[k] - b[k])));
+            lo = std::min(lo, static_cast<double>(a[k])); hi = std::max(hi, static_cast<double>(a[k]));
+        }
+        check("random is the same on every render, and actually random", worst == 0.0 && hi - lo > 0.5,
+              "range " + f2s(lo) + " to " + f2s(hi));
+    }
+    {
+        // Free runs at Rate; a division with the transport stopped runs at the
+        // division's speed at the host tempo instead of freezing
+        auto period = [&](const Patch& p, double bpm){
+            const auto t = rhythmTrace(p, 3.0, false, 0.0, bpm);
+            std::vector<double> rises;
+            for (size_t k = 1; k < t.size(); ++k) if (t[k - 1] < 0.5f && t[k] >= 0.5f) rises.push_back(k * blockSec);
+            return rises.size() >= 3 ? (rises.back() - rises.front()) / (rises.size() - 1) : -1.0;
+        };
+        const double pf = period({ {"rhShape", 4}, {"rhDiv", 0}, {"rhRate", 2}, {"rhGlide", 0} }, 120.0);
+        const double ps = period({ {"rhShape", 4}, {"rhDiv", 6}, {"rhGlide", 0} }, 90.0);
+        check("Free runs at the rate it says", std::fabs(pf - 0.5) < 0.003, f2s(pf, 4) + " s at 2 Hz");
+        check("and a division keeps time with the transport stopped", std::fabs(ps - 60.0 / 90.0) < 0.003,
+              f2s(ps, 4) + " s for 1/4 at 90 BPM");
+    }
+    {
+        // glide rounds the edges: where a square has got to 5 ms after it falls
+        auto edge = [&](float glide){
+            const auto t = rhythmTrace({ {"rhShape", 4}, {"rhDiv", 6}, {"rhGlide", glide} }, 1.0, true, 0.0, 120.0);
+            return static_cast<double>(t[static_cast<size_t>((0.25 + 0.005) / blockSec)]);
+        };
+        const double sharp = edge(0), soft = edge(60);
+        check("glide takes the edges off", sharp < 0.01 && soft > 0.8,
+              "5 ms after the fall: " + f2s(sharp, 3) + " at 0, " + f2s(soft, 3) + " at 60%");
+    }
+    {
+        // and the rhythm really moves the filter: a 1/4 square, four octaves up
+        // from 300 Hz, on noise. The high half of each cycle is brighter.
+        const Patch mv = { {"fltFreq", 300}, {"fltReso", 0}, {"clock", 48000}, {"aa", 100}, {"bits", 16},
+                           {"rhShape", 4}, {"rhDiv", 6}, {"rhGlide", 0}, {"rhDepth", 4} };
+        const auto in = noise(0.3, 2.0, sr, 3);
+        Engine e; e.prepare(sr, 128); applyPatch(e, mv);
+        const int lat = e.latencySamples();
+        auto l = in, r = in; double ppq = 0.0;
+        for (int i = 0; i < static_cast<int>(l.size()); i += 128){
+            const int m = std::min(128, static_cast<int>(l.size()) - i);
+            e.setTransport(true, ppq, 120.0);
+            float* io[2] = { l.data() + i, r.data() + i };
+            e.process(io, 2, m);
+            ppq += m / sr * 2.0;
+        }
+        double hiP = 0, loP = 0;
+        for (int c = 1; c < 3; ++c){
+            const int start = static_cast<int>(c * 0.5 * sr) + lat;
+            for (int k = 0; k < static_cast<int>(0.2 * sr); ++k){
+                const double on = l[static_cast<size_t>(start + 480 + k)];
+                const double off = l[static_cast<size_t>(start + static_cast<int>(0.25 * sr) + 480 + k)];
+                hiP += on * on; loP += off * off;
+            }
+        }
+        check("Mod +4 oct opens the filter on the high half of the rhythm",
+              10.0 * std::log10(hiP / loP) > 6.0, "+" + f2s(10.0 * std::log10(hiP / loP)) + " dB");
+    }
+
     // ------------------------------------------------------ the oversampling
     std::printf("\nOversampling\n");
     {
@@ -366,24 +560,44 @@ int main(){
         check("and four times is what the plugin runs", dflt.latencySamples() == at4.latencySamples());
     }
     {
-        // the dry path is delayed by exactly the oversampling latency, so a half
-        // mix of a clean patch sums in phase instead of comb-filtering
-        const Patch clean = { {"clock", 48000}, {"aa", 100}, {"bits", 16},
-                              {"fltFreq", 18000}, {"fltReso", 0}, {"mix", 50} };
+        // the dry path is delayed by exactly the oversampling latency. The test
+        // predicts a half mix from the wet signal and the INPUT, shifted by the
+        // latency the plugin reports, as complex numbers (so the filter's own
+        // phase is accounted for), and requires the real half mix to match.
+        // The dry reference must be the input and not a mix-0 render: the first
+        // version used a render, which goes through the same delay line and so
+        // agreed with itself even when the delay was a sample out
+        const Patch base = { {"clock", 48000}, {"aa", 100}, {"bits", 16},
+                             {"fltFreq", 18000}, {"fltReso", 0} };
+        auto phasor = [&](const std::vector<float>& x, double f, int from){
+            const double w = 2.0 * M_PI * f / sr;
+            const int avail = static_cast<int>(x.size()) - from;
+            const int n = static_cast<int>(std::floor(avail * f / sr) * sr / f);
+            double re = 0.0, im = 0.0;
+            for (int k = 0; k < n; ++k){
+                re += x[static_cast<size_t>(from + k)] * std::cos(w * (from + k));
+                im -= x[static_cast<size_t>(from + k)] * std::sin(w * (from + k));
+            }
+            return std::pair<double, double>(2.0 * re / n, 2.0 * im / n);
+        };
         double worst = 0.0;
         for (double f : { 2000.0, 6000.0, 9000.0 }){
-            const auto r = run(clean, sine(f, 0.25, 0.5, sr));
-            const auto full = run({ {"clock", 48000}, {"aa", 100}, {"bits", 16},
-                                    {"fltFreq", 18000}, {"fltReso", 0}, {"mix", 100} },
-                                  sine(f, 0.25, 0.5, sr));
-            // a half mix should sit between the dry level (0 dB) and the wet
-            // level, never below both, which is what a timing error does
-            const double half = dBOf(goertzel(r.l, f, sr, 9600) / 0.25);
-            const double wet = dBOf(goertzel(full.l, f, sr, 9600) / 0.25);
-            worst = std::min(worst, half - std::min(0.0, wet));
+            Patch half = base, wet = base;
+            half["mix"] = 50; wet["mix"] = 100;
+            Engine probe; probe.prepare(sr, 128);
+            const int lat = probe.latencySamples();
+            const auto in = sine(f, 0.25, 0.5, sr);
+            std::vector<float> late(in.size(), 0.0f);
+            for (size_t k = static_cast<size_t>(lat); k < in.size(); ++k) late[k] = in[k - static_cast<size_t>(lat)];
+            const auto H = phasor(run(half, in).l, f, 9600);
+            const auto W = phasor(run(wet, in).l, f, 9600);
+            const auto D = phasor(late, f, 9600);
+            const double er = H.first - 0.5 * (W.first + D.first);
+            const double ei = H.second - 0.5 * (W.second + D.second);
+            worst = std::max(worst, std::sqrt(er * er + ei * ei) / 0.25);
         }
-        check("dry and wet stay in step at a half mix", worst > -0.5,
-              f2s(worst) + " dB below the quieter of the two, at worst");
+        check("dry and wet stay in step at a half mix", worst < 0.01,
+              "worst error " + f2s(dBOf(worst)) + " dB below the signal");
     }
 
     // -------------------------------------------------------- the hit envelope

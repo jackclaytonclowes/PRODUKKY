@@ -3,7 +3,8 @@
 //
 //   in ─ gain ─┬─ dry ─ delay (matches the 4x) ───────────────────┐
 //              ├─ + dust ─ converter ─ [ four-pole at 4x ] ─ wet ──┤
-//              └─ hit detector ─ envelope ──┘ (cutoff)             │
+//              └─ hit detector ─ envelope ──┤ (cutoff)             │
+//                 rhythm (host position) ───┘                      │
 //                                       mix ─ feel (swing, push) ─ out gain ─ clip
 //
 // Two ordering decisions worth knowing:
@@ -26,6 +27,7 @@
 #include "Dust.h"
 #include "HitEnv.h"
 #include "Oversampler.h"
+#include "RhythmMod.h"
 
 namespace crate {
 
@@ -61,12 +63,13 @@ public:
         for (auto& d : dryDelay_){ d.prepare(64); d.setDelay(os_[0].latencySamples()); }
         dust_.prepare(sampleRate);
         hit_.prepare(sampleRate);
+        rhythm_.prepare(sampleRate);
         feel_.prepare(sampleRate, 320.0);
         feel_.setGrid(gridSteps(static_cast<int>(v_[static_cast<size_t>(Ids::get().grid)])));
         reset();
     }
     void reset(){
-        conv_.reset(); ladder_.reset(); feel_.reset(); hit_.reset();
+        conv_.reset(); ladder_.reset(); feel_.reset(); hit_.reset(); rhythm_.reset();
         for (auto& o : os_) o.reset();
         for (auto& d : dryDelay_) d.reset();
         first_ = true;
@@ -83,6 +86,7 @@ public:
     void seedFrom(int64_t playheadSamples){ dust_.seedFrom(playheadSamples); }
     long hitCount() const { return hit_.hits; }            // for the tests
     double hitEnvelope() const { return hit_.value(); }    // what the editor could draw
+    double rhythmValue(int ch = 0) const { return rhythm_.value(ch); }
 
     // the transport, for the grid. With nothing playing, swing does nothing.
     void setTransport(bool playing, double ppqAtBlockStart, double bpm){
@@ -108,7 +112,23 @@ public:
                         v_[static_cast<size_t>(id.trick)]);
         const double drive = v_[static_cast<size_t>(id.fltDrive)];
         const double cutoff = v_[static_cast<size_t>(id.fltFreq)];
-        ladder_.configure(cutoff, v_[static_cast<size_t>(id.fltReso)] / 100.0, drive);
+        static constexpr int polesFor[] = { 2, 4, 6, 8 };
+        ladder_.configure(cutoff, v_[static_cast<size_t>(id.fltReso)] / 100.0, drive,
+                          static_cast<int>(v_[static_cast<size_t>(id.fltShape)]),
+                          polesFor[std::clamp(static_cast<int>(v_[static_cast<size_t>(id.fltPoles)]), 0, 3)]);
+        const double fmix = v_[static_cast<size_t>(id.fltMix)] / 100.0;
+        const double rhDepth = v_[static_cast<size_t>(id.rhDepth)];
+        {
+            double steps[RhythmMod::numSteps];
+            for (int k = 0; k < RhythmMod::numSteps; ++k) steps[k] = v_[static_cast<size_t>(id.rhStep[k])] / 100.0;
+            rhythm_.configure(static_cast<int>(v_[static_cast<size_t>(id.rhDiv)]),
+                              v_[static_cast<size_t>(id.rhRate)],
+                              static_cast<int>(v_[static_cast<size_t>(id.rhShape)]),
+                              v_[static_cast<size_t>(id.rhGroove)],
+                              v_[static_cast<size_t>(id.rhPhase)],
+                              v_[static_cast<size_t>(id.rhGlide)] / 100.0, steps);
+            rhythm_.beginBlock(playing_, ppq_, bpm_);
+        }
         const double envOct = v_[static_cast<size_t>(id.fltEnv)];
         hit_.setDecay(v_[static_cast<size_t>(id.fltDecay)]);
         dust_.configure(v_[static_cast<size_t>(id.dust)] / 100.0,
@@ -143,12 +163,20 @@ public:
             // one envelope for both channels, so a hit opens both sides together.
             // It always runs, so turning Env up mid-bar lands on the right phase
             const double e = hit_.process(nch == 2 ? (dryIn[0] + dryIn[1]) * 0.5 : dryIn[0]);
-            if (envOct > 0.0) ladder_.setCutoff(cutoff * std::exp2(envOct * e));
+            rhythm_.step();                                // runs even at zero depth, to stay in phase
+            if (envOct > 0.0 || rhDepth != 0.0){
+                for (int ch = 0; ch < nch; ++ch)
+                    ladder_.setCutoff(cutoff * std::exp2(envOct * e + rhDepth * rhythm_.value(ch)), ch);
+            }
             for (int ch = 0; ch < nch; ++ch){
                 const double dry = dryDelay_[ch].process(dryIn[ch]);   // in step with the wet path
                 double wet = dryIn[ch] + dust_.process(ch);
                 wet = conv_.process(ch, wet);
-                wet = os_[ch].process(wet, [&](double v){ return ladder_.process(ch, v); }) * driveComp;
+                // the filter's own mix happens inside the oversampled region, so
+                // both halves share its filters and no extra delay is needed
+                wet = os_[ch].process(wet, [&](double v){
+                    return v + (ladder_.process(ch, v) * driveComp - v) * fmix;
+                });
                 feel_.write(ch, dry * (1.0 - m) + wet * m);
             }
             feel_.advance();
@@ -174,6 +202,7 @@ private:
     Ladder ladder_;
     Dust dust_;
     HitEnv hit_;
+    RhythmMod rhythm_;
     Oversampler os_[maxChannels];
     DelayLine dryDelay_[maxChannels];
     int osFactor_ = 4;

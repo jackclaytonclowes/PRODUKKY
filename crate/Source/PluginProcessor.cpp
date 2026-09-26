@@ -94,6 +94,7 @@ void CrateProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
     }
     inPeak.store(engine.inPeak);
     outPeak.store(engine.outPeak);
+    rhythmNow.store(static_cast<float>(engine.rhythmValue(0)));
 }
 
 int CrateProcessor::getNumPrograms(){ return static_cast<int>(presets().size()); }

@@ -60,6 +60,24 @@ private:
     CrateProcessor& proc;
 };
 
+// the rhythm, drawn: eight steps you can draw with the mouse when the shape is
+// Steps, and the shape itself across eight cycles when it is anything else,
+// with where the rhythm is right now marked on the right
+class StepEditor : public juce::Component, private juce::Timer {
+public:
+    explicit StepEditor(CrateProcessor&);
+    void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+private:
+    void timerCallback() override { repaint(); }
+    juce::Rectangle<int> lane() const;
+    void setFrom(juce::Point<int>);
+    CrateProcessor& proc;
+    int dragging = -1;
+};
+
 class Meters : public juce::Component, private juce::Timer {
 public:
     explicit Meters(CrateProcessor&);
@@ -80,7 +98,7 @@ private:
     void timerCallback() override;
     CrateProcessor& proc;
     bauhaus::Look look;
-    static constexpr int designW = 1080, designH = 620;
+    static constexpr int designW = 1080, designH = 810;
     bauhaus::Canvas canvas { designW, designH };       // everything is drawn on this
 
     void paintDesign(juce::Graphics&);                 // both work in design coordinates
@@ -89,11 +107,12 @@ private:
     std::vector<std::unique_ptr<juce::Component>> owned;
     std::vector<KnobBox*> knobs;
     Panel *pIn = nullptr, *pConv = nullptr, *pFilter = nullptr,
-          *pFeel = nullptr, *pDust = nullptr, *pOut = nullptr;
-    std::vector<juce::Component*> inRow, convRow, filterRow, feelRow, dustRow, outRow;
+          *pFeel = nullptr, *pDust = nullptr, *pOut = nullptr, *pRhythm = nullptr;
+    std::vector<juce::Component*> inRow, convRow, filterRow, feelRow, dustRow, outRow, rhythmRow;
     juce::ComboBox presetBox;
     FeelStrip* strip = nullptr;
     Meters* meters = nullptr;
+    StepEditor* steps = nullptr;
 
     template <typename T, typename... A> T* make(A&&... args){
         auto p = std::make_unique<T>(std::forward<A>(args)...);

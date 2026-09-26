@@ -9,7 +9,10 @@ static juce::String fmtValue(const ParamInfo& p, double v){
     if (p.id == "tune")  return (v > 0 ? "+" : "") + juce::String(v, 1);
     if (p.id == "fltDrive") return juce::String(v, 1) + "x";
     if (p.id == "fltDecay") return juce::String(juce::roundToInt(v)) + " ms";   // a time, not an offset
-    if (p.unit == "oct") return v <= 0.0 ? juce::String("off") : "+" + juce::String(v, 1) + " oct";
+    if (p.id == "rhRate")   return juce::String(v, v < 10.0 ? 2 : 1) + " Hz";
+    if (p.unit == "oct") return std::fabs(v) < 0.05 ? juce::String("off")
+                                                     : (v > 0 ? "+" : "") + juce::String(v, 1) + " oct";
+    if (p.unit == "deg") return juce::String(juce::roundToInt(v)) + " deg";
     if (p.unit == "Hz")  return v >= 1000.0 ? juce::String(v / 1000.0, v < 10000.0 ? 2 : 1) + "k"
                                             : juce::String(juce::roundToInt(v));
     if (p.unit == "dB")  return (v > 0 ? "+" : "") + juce::String(v, 1);
@@ -178,6 +181,74 @@ void Meters::paint(juce::Graphics& g){
     }
 }
 
+// -------------------------------------------------------------- step editor
+StepEditor::StepEditor(CrateProcessor& p) : proc(p){ startTimerHz(24); }
+
+juce::Rectangle<int> StepEditor::lane() const { return getLocalBounds().reduced(10, 8).withTrimmedRight(26); }
+
+void StepEditor::paint(juce::Graphics& g){
+    auto area = getLocalBounds();
+    g.setColour(face); g.fillRect(area);
+    g.setColour(ink);  g.drawRect(area, 2);
+    const auto L = lane();
+    const int shape = static_cast<int>(proc.apvts.getRawParameterValue("rhShape")->load());
+    const bool stepsShape = shape == crate::RhythmMod::Steps;
+    const float w = L.getWidth() / 8.0f;
+
+    double stepVals[8];
+    for (int k = 0; k < 8; ++k)
+        stepVals[k] = proc.apvts.getRawParameterValue("rhStep" + juce::String(k + 1))->load() / 100.0;
+
+    // the bars: solid when they are what plays, faint when another shape is
+    for (int k = 0; k < 8; ++k){
+        const float hgt = static_cast<float>(stepVals[k]) * L.getHeight();
+        g.setColour(stepsShape ? blue : track);
+        g.fillRect(L.getX() + k * w + 2.0f, L.getBottom() - hgt, w - 4.0f, hgt);
+    }
+    // any other shape, drawn across eight cycles from the same arithmetic the DSP uses
+    if (!stepsShape){
+        crate::RhythmMod r;
+        r.configure(9, 2.0, shape, proc.apvts.getRawParameterValue("rhGroove")->load(), 0.0, 0.0, stepVals);
+        juce::Path path;
+        const int n = L.getWidth();
+        for (int x = 0; x <= n; ++x){
+            const double v = r.shapeAt(8.0 * x / n);
+            const float px = static_cast<float>(L.getX() + x), py = L.getBottom() - static_cast<float>(v) * L.getHeight();
+            if (x == 0) path.startNewSubPath(px, py); else path.lineTo(px, py);
+        }
+        g.setColour(blue); g.strokePath(path, juce::PathStrokeType(2.0f));
+    }
+    // where the rhythm is now
+    auto now = getLocalBounds().reduced(8).removeFromRight(14);
+    g.setColour(track); g.fillRect(now);
+    const float v = juce::jlimit(0.0f, 1.0f, proc.rhythmNow.load());
+    g.setColour(yellow);
+    g.fillRect(now.withTrimmedTop(juce::roundToInt((1.0f - v) * now.getHeight())));
+    g.setColour(ink); g.drawRect(now, 1);
+}
+
+void StepEditor::setFrom(juce::Point<int> pos){
+    const auto L = lane();
+    const int k = juce::jlimit(0, 7, static_cast<int>((pos.x - L.getX()) * 8 / juce::jmax(1, L.getWidth())));
+    const float v = juce::jlimit(0.0f, 1.0f, (L.getBottom() - pos.y) / static_cast<float>(juce::jmax(1, L.getHeight())));
+    if (k != dragging){
+        if (dragging >= 0)
+            if (auto* old = proc.apvts.getParameter("rhStep" + juce::String(dragging + 1))) old->endChangeGesture();
+        dragging = k;
+        if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(k + 1))) prm->beginChangeGesture();
+    }
+    if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(k + 1)))
+        prm->setValueNotifyingHost(prm->convertTo0to1(v * 100.0f));
+    repaint();
+}
+void StepEditor::mouseDown(const juce::MouseEvent& e){ setFrom(e.getPosition()); }
+void StepEditor::mouseDrag(const juce::MouseEvent& e){ setFrom(e.getPosition()); }
+void StepEditor::mouseUp(const juce::MouseEvent&){
+    if (dragging >= 0)
+        if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(dragging + 1))) prm->endChangeGesture();
+    dragging = -1;
+}
+
 // ------------------------------------------------------------------- editor
 static void layoutRow(juce::Rectangle<int> area, const std::vector<juce::Component*>& items, int gap = 12){
     int x = area.getX();
@@ -204,8 +275,9 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     pConv   = make<Panel>(2, "Converter", yellow);
     pFilter = make<Panel>(3, "Four-pole", blue);
     pDust   = make<Panel>(4, "Dust", red);
-    pOut    = make<Panel>(5, "Out", ink);
-    pFeel   = make<Panel>(6, "Feel", ink);
+    pOut    = make<Panel>(6, "Out", ink);
+    pRhythm = make<Panel>(5, "Rhythm", blue);
+    pFeel   = make<Panel>(7, "Feel", ink);
 
     auto knob = [&](juce::Component* parent, const char* id, juce::Colour hue){
         auto* k = new KnobBox(proc, id, hue);
@@ -228,9 +300,14 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
                   knob(pConv, "trick", yellow), knob(pConv, "clock", yellow),
                   knob(pConv, "bits", yellow), knob(pConv, "compand", yellow),
                   knob(pConv, "aa", yellow) };
-    filterRow = { knob(pFilter, "fltFreq", blue), knob(pFilter, "fltReso", blue),
+    filterRow = { choice(pFilter, "fltShape", "Shape", 76), choice(pFilter, "fltPoles", "Poles", 60),
+                  knob(pFilter, "fltFreq", blue), knob(pFilter, "fltReso", blue),
                   knob(pFilter, "fltDrive", blue), knob(pFilter, "fltEnv", blue),
-                  knob(pFilter, "fltDecay", blue) };
+                  knob(pFilter, "fltDecay", blue), knob(pFilter, "fltMix", blue) };
+    rhythmRow = { knob(pRhythm, "rhDepth", blue), choice(pRhythm, "rhDiv", "Rhythm", 96),
+                  knob(pRhythm, "rhRate", blue), choice(pRhythm, "rhShape", "Shape", 100),
+                  knob(pRhythm, "rhGroove", blue), knob(pRhythm, "rhPhase", blue),
+                  knob(pRhythm, "rhGlide", blue) };
     dustRow   = { knob(pDust, "dust", red), knob(pDust, "dustTone", red) };
     outRow    = { knob(pOut, "mix", ink), knob(pOut, "outGain", ink),
                   toggle(pOut, "safety", red, 88) };
@@ -240,6 +317,9 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     strip = new FeelStrip(proc);
     owned.emplace_back(strip);
     pFeel->addAndMakeVisible(strip);
+    steps = new StepEditor(proc);
+    owned.emplace_back(steps);
+    pRhythm->addAndMakeVisible(steps);
     meters = new Meters(proc);
     owned.emplace_back(meters);
     pOut->addAndMakeVisible(meters);
@@ -322,13 +402,23 @@ void CrateEditor::layoutDesign(){
 
     area.removeFromTop(gap);
     auto rowB = area.removeFromTop(132);
-    pFilter->setBounds(rowB.removeFromLeft(cols(5)));
+    pFilter->setBounds(rowB.removeFromLeft(cols(9)));
     rowB.removeFromLeft(gap);
     pDust->setBounds(rowB.removeFromLeft(cols(3)));
-    rowB.removeFromLeft(gap);
-    pOut->setBounds(rowB.removeFromLeft(cols(4)));
     layoutRow(pFilter->content().withHeight(KnobBox::h), filterRow);
     layoutRow(pDust->content().withHeight(KnobBox::h), dustRow);
+
+    area.removeFromTop(gap);
+    auto rowC = area.removeFromTop(190);
+    pRhythm->setBounds(rowC.removeFromLeft(cols(8)));
+    rowC.removeFromLeft(gap);
+    pOut->setBounds(rowC.removeFromLeft(cols(4)));
+    {
+        auto inner = pRhythm->content();
+        layoutRow(inner.removeFromTop(KnobBox::h), rhythmRow);
+        inner.removeFromTop(8);
+        steps->setBounds(inner);
+    }
     {
         auto inner = pOut->content();
         meters->setBounds(inner.removeFromRight(64));

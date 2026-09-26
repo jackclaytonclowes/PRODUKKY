@@ -38,6 +38,7 @@ public:
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
     std::atomic<bool> transportRunning { false };
     std::atomic<float> hostBpm { 120.0f };
+    std::atomic<float> rhythmNow { 0.0f };     // where the rhythm is, 0..1, for the step display
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout buildLayout();

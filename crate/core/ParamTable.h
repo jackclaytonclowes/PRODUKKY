@@ -6,6 +6,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include "RhythmMod.h"
 
 namespace crate {
 
@@ -81,6 +82,25 @@ private:
         // this many octaves above Cutoff, and it falls back over Decay
         f("fltEnv",   "Env",    0, 6, 0, false, "oct");
         f("fltDecay", "Decay",  5, 500, 40, true, "ms");
+        // the FilterFreak half: what comes out of the four-pole, how steep, and
+        // how much of it. Four poles of low pass at full mix is what it always was
+        c("fltShape", "Shape", { "LP", "BP", "HP", "BR" }, 0);
+        c("fltPoles", "Poles", { "2", "4", "6", "8" }, 1);
+        f("fltMix",   "Filter mix", 0, 100, 100, false, "%");
+        // the rhythm that moves the cutoff. Mod is octaves from Cutoff, either
+        // way; at 0 the rhythm runs but moves nothing
+        f("rhDepth",  "Mod",    -6, 6, 0, false, "oct");
+        { std::vector<std::string> d(rhythmDivNames, rhythmDivNames + rhythmNumDivs);
+          c("rhDiv",  "Rhythm", d, 9); }
+        f("rhRate",   "Rate",   0.05f, 20, 2, true, "Hz");
+        { std::vector<std::string> sh(rhythmShapeNames, rhythmShapeNames + rhythmNumShapes);
+          c("rhShape", "Rhythm shape", sh, 0); }
+        f("rhGroove", "Groove", 50, 75, 50, false, "%");
+        f("rhPhase",  "Phase",  0, 180, 0, false, "deg");
+        f("rhGlide",  "Glide",  0, 100, 10, false, "%");
+        { const float pattern[8] = { 100, 0, 60, 0, 100, 25, 60, 0 };
+          for (int k = 0; k < 8; ++k)
+              f("rhStep" + std::to_string(k + 1), "Step " + std::to_string(k + 1), 0, 100, pattern[k], false, "%"); }
         // feel
         f("swing", "Swing", 50, 80, 50, false, "%");
         c("grid",  "Grid", { "1/8", "1/16", "1/32" }, 1);
@@ -99,7 +119,9 @@ private:
 struct Ids {
     static const Ids& get(){ static Ids i; return i; }
     int inGain, mono, machine, tune, trick, clock, bits, compand, aa;
-    int fltFreq, fltReso, fltDrive, fltEnv, fltDecay, swing, grid, push, dust, dustTone, mix, outGain, safety;
+    int fltFreq, fltReso, fltDrive, fltEnv, fltDecay, fltShape, fltPoles, fltMix;
+    int rhDepth, rhDiv, rhRate, rhShape, rhGroove, rhPhase, rhGlide, rhStep[8];
+    int swing, grid, push, dust, dustTone, mix, outGain, safety;
 private:
     Ids(){
         const Params& p = Params::get();
@@ -108,6 +130,10 @@ private:
         bits = I("bits"); compand = I("compand"); aa = I("aa");
         fltFreq = I("fltFreq"); fltReso = I("fltReso"); fltDrive = I("fltDrive");
         fltEnv = I("fltEnv"); fltDecay = I("fltDecay");
+        fltShape = I("fltShape"); fltPoles = I("fltPoles"); fltMix = I("fltMix");
+        rhDepth = I("rhDepth"); rhDiv = I("rhDiv"); rhRate = I("rhRate"); rhShape = I("rhShape");
+        rhGroove = I("rhGroove"); rhPhase = I("rhPhase"); rhGlide = I("rhGlide");
+        for (int k = 0; k < 8; ++k) rhStep[k] = I(("rhStep" + std::to_string(k + 1)).c_str());
         swing = I("swing"); grid = I("grid"); push = I("push");
         dust = I("dust"); dustTone = I("dustTone");
         mix = I("mix"); outGain = I("outGain"); safety = I("safety");

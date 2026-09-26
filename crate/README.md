@@ -92,6 +92,29 @@ one, triggering when the fast one is 6 dB clear, with a 40 ms hold so one hit's 
 cannot retrigger it and a -50 dBFS floor so dust and hiss never count. Both channels share
 one envelope, so a hit opens both sides together.
 
+**The four-pole is also a rhythmic filter**, after the parameter set of the classic
+plug-in for it (not its look, and not its code). All of it is off by default, and four
+poles of low pass at full mix is the filter it always was.
+
+- **Shape** LP, BP, HP or BR, and **Poles** 2, 4, 6 or 8. Every combination comes out of
+  the same resonant core, so changing either never re-tunes the resonance. Cutoff marks the
+  -3 dB point for low and high pass at every slope, and the centre for band pass and band
+  reject. The one-poles are bilinear rather than the simpler kind, because the simpler
+  kind cannot make an exact notch: the first try measured 21 dB of band reject at 8 poles.
+  **Filter mix** blends the filter against what went into it, inside the oversampling.
+- **Rhythm** moves the cutoff. **Mod** is how far, in octaves, either way from Cutoff, which
+  stays where the sweep rests. **Rhythm** is the division (Free uses **Rate** instead),
+  **Shape** is sine, triangle, both saws, square, a random value per division, or **Steps**:
+  eight bars you draw on the panel. **Groove** swings every second division late, the way a
+  drum machine swings, so on Steps it is swung sixteenths. **Phase** offsets the right
+  channel, up to opposite at 180, and **Glide** rounds the edges.
+- The rhythm reads the song position, so the same bar moves the same way wherever the
+  playhead starts, and Random is a hash of the position rather than a generator, so two
+  bounces agree. With the transport stopped it keeps time at the host's tempo instead of
+  freezing.
+- There is no tap tempo. Inside a host the tempo comes from the host; in the standalone
+  app the rhythm runs at the app's tempo or on Free.
+
 **Twelve bits, linear, by default.** Both machines stored linear PCM. The first version of
 this plugin defaulted to µ-law companding and called it the character, which was a guess
 and was wrong. **Compand** is kept as an extra colour: it spends resolution on quiet
@@ -129,7 +152,7 @@ deciding you like it.
 
 ## What is verified, and how
 
-`npm run test:crate` — 54 assertions, no JUCE needed (`VERBOSE=1` prints the measured
+`npm run test:crate` — 70 assertions, no JUCE needed (`VERBOSE=1` prints the measured
 value behind every one). These are measurements, not smoke
 tests, because nobody involved in building this has heard it:
 
@@ -150,6 +173,16 @@ tests, because nobody involved in building this has heard it:
   sit 10 dB under the 15 kHz harmonic at the host rate and 65 dB under at 4x; dry and wet
   stay in step at a half mix to within 0.1 dB; reported latency still matches the measured
   latency sample for sample
+- **every shape at every slope does what it says**: low and high pass 3 dB down on the
+  mark to within 0.01 dB and falling at 6 dB an octave per pole, band pass at unity on the
+  mark, band reject a true notch (below -200 dB). Filter mix at 0 takes it out exactly
+- **the rhythm keeps time**: a synced square rises on the beat it should, the same bar
+  comes out the same from two bars later, groove 66 puts the second of each pair at
+  two thirds of the pair, the eight steps play in order, phase 180 mirrors the right
+  channel, random agrees across renders, Free and a stopped transport run at the right
+  speed, glide rounds the edges, and Mod +4 oct opens the filter by 12 dB on the high half
+- **the half mix is predicted, not assumed**: the dry reference is the input shifted by the
+  reported latency, and a deliberate one-sample error fails the test by 5 dB
 - **the hit envelope counts hits**: eight snare-like bursts in are eight triggers out, and
   a sustained tone triggers once at most. Each hit brings the first 10 ms through about
   15 dB brighter against the resting filter, the tail 250 ms later is the resting filter
@@ -167,9 +200,9 @@ tests, because nobody involved in building this has heard it:
 - dust is bit-identical across two renders of the same bar, and silent at zero
 - 44.1 / 48 / 96 kHz, block sizes 16 to 1024, and everything at once: finite and bounded
 
-`host_smoke` adds 30 more at the host level, including a synthetic transport: the plugin
+`host_smoke` adds 35 more at the host level, including a synthetic transport: the plugin
 sees the tempo, notices when playback stops, re-declares its latency when the grid changes,
-recalls all sixteen presets, round-trips its state, and paints its editor to a PNG — twice,
+recalls all twenty-one presets, round-trips its state, and paints its editor to a PNG — twice,
 the second time at half size, checking the corner panels are scaled rather than cropped.
 
 ## Honest gaps
@@ -204,11 +237,12 @@ the second time at half size, checking the corner panels are scaled rather than 
 ```
 core/           the DSP. No JUCE, no dependencies, no allocation in the audio path
   Converter.h   clock, companding, quantisation, zero-order hold
-  Ladder.h      the four-pole
+  Ladder.h      the four-pole: LP, BP, HP, BR at 2, 4, 6 or 8 poles
   Feel.h        swing and push against the host grid
   Dust.h        hiss and crackle, seeded from the transport
   HitEnv.h      finds hits in the audio and gives the four-pole its envelope
   Oversampler.h runs the four-pole at 4x, and keeps the dry path in step
+  RhythmMod.h   the rhythm: divisions, shapes, steps, groove, phase, glide
   ParamTable.h  one table, shared by the DSP, the host and the editor
   CrateCore.h   the whole processor
 Source/         the JUCE wrapper and the interface

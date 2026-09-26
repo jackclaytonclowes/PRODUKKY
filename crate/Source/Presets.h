@@ -44,6 +44,25 @@ inline const std::vector<Preset>& presets(){
         { "S950, bass lifted out", {
             { "machine", 1 }, { "clock", 16000 }, { "fltFreq", 350 }, { "fltReso", 0 },
             { "fltDrive", 2 }, { "mono", 1 } } },
+        // the rhythm section. Shapes, divisions and poles are written as the
+        // index into their lists: shape LP 0, BP 1, HP 2, BR 3; poles 2/4/6/8
+        // are 0..3; rhShape Sine 0 .. Steps 5, Random 6; rhDiv 1 bar 3, 1/4 6,
+        // 1/8 9, 1/16 11
+        { "Rhythm: gated sixteenths", {
+            { "fltShape", 0 }, { "fltPoles", 1 }, { "fltFreq", 250 }, { "fltReso", 30 },
+            { "rhShape", 5 }, { "rhDiv", 11 }, { "rhDepth", 5 }, { "rhGlide", 5 }, { "rhGroove", 58 } } },
+        { "Rhythm: swung band pass", {
+            { "fltShape", 1 }, { "fltPoles", 1 }, { "fltFreq", 700 }, { "fltReso", 45 },
+            { "rhShape", 0 }, { "rhDiv", 6 }, { "rhDepth", 3 }, { "rhGroove", 62 } } },
+        { "Rhythm: notch through the bar", {
+            { "fltShape", 3 }, { "fltPoles", 2 }, { "fltFreq", 400 },
+            { "rhShape", 1 }, { "rhDiv", 3 }, { "rhDepth", 4 }, { "rhPhase", 90 } } },
+        { "Rhythm: random steps", {
+            { "fltShape", 0 }, { "fltPoles", 0 }, { "fltFreq", 600 }, { "fltReso", 60 },
+            { "rhShape", 6 }, { "rhDiv", 11 }, { "rhDepth", 3 }, { "rhGlide", 20 } } },
+        { "Rhythm: eight-pole bar sweep", {
+            { "fltShape", 0 }, { "fltPoles", 3 }, { "fltFreq", 200 },
+            { "rhShape", 2 }, { "rhDiv", 3 }, { "rhDepth", 6 }, { "fltMix", 80 } } },
         { "Pitched down for grit", {
             { "tune", -5 }, { "aa", 10 }, { "compand", 75 }, { "fltFreq", 9000 } } },
         { "Dusty break", {
