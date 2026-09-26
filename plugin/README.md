@@ -86,6 +86,7 @@ core/               the DSP. No JUCE, no dependencies, no allocation in the audi
   AnalogFilter.h    the nonlinear ladder: zero-delay feedback, saturation, drift
   Tremolo.h         shape, duty, edge and spread, locked to the host's bar
   Sync.h            the transport, and the note divisions that read from it
+  Relevance.h       which controls do nothing right now, and why: the panel dims them
   RhythmMod.h       the filter's rhythm: shapes, steps, groove, phase, glide
   ParamTable.h      ONE parameter table — the DSP, the host and patch import share it
   Presets.h         generated from the browser presets; do not edit
@@ -219,9 +220,24 @@ rather than a toggle plus a division that can disagree with each other. A divisi
 its phase from the host's song position, so the same bar sounds the same wherever you drop
 the playhead, and keeps running at the host's tempo while the transport is stopped.
 
+## The panel
+
+It is laid out wide, in three rows that follow the signal: what goes in, the split and the
+drive; the crush and feedback loop, the filter and its rhythm; then modulation, the scope,
+and the tremolo and output that end the chain. It used to be one tall column at
+1320 x 1376, which on a 1440 x 900 laptop opened at 57% and set its 9-point captions at
+about 5 points. At 1680 x 990 the same screen opens it at 79%.
+
+**Controls that do nothing right now are dimmed**, and their tooltip says why: FB pitch
+while the loop is timed in milliseconds, the filter's Drive and Drift on the clean
+circuit, an LFO that no matrix slot uses, the whole rhythm while its Mod is off. They still
+work, so a value can be set up before it matters. The rules live in `core/Relevance.h`, and
+they take modulation into account: a section switched off by a base value of zero comes
+back to life if the matrix is moving that value. Every control has a one-line tooltip.
+
 ## What is verified, and where
 
-`npm run test:core` — 92 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 94 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -259,6 +275,9 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   corner; filter mix at 0 takes the filter out exactly; the rhythm opens the filter by
   12 dB on the beat on both circuits and renders the same bar identically from two bars
   later; and the new matrix destinations are at the end of the list
+- **every control the panel dims really does nothing**: in twelve states of the box, each
+  of the 694 controls the panel would dim is moved end to end and the output must be
+  bit-identical (a deliberately false rule fails it at once)
 - a tuned loop's fundamental is within a cent of the note from A1 to A6, and through the
   drive at 4x with three bands, measured by phase advance rather than by autocorrelation
   (which reports the spacing of the repeats, not the pitch of the note); a synced loop
@@ -290,7 +309,7 @@ opening a DAW.
 - The tremolo's shape is drawn on the panel from the same arithmetic the DSP uses, but the
   drawing does not know about modulation of depth or duty, so a heavily modulated tremolo
   is shown at its unmodulated shape.
-- GUI resizing is uniform scaling only: the interface is laid out once at 1320 x 1376 and
+- GUI resizing is uniform scaling only: the interface is laid out once at 1680 x 990 and
   the whole canvas is scaled to the window, so nothing is ever cropped, but nothing
   reflows either. The aspect ratio is fixed and the window opens smaller than the design
   size on a screen that cannot fit it.

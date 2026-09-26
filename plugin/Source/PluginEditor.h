@@ -9,10 +9,11 @@
 class KnobBox : public juce::Component {
 public:
     KnobBox(FractureProcessor& p, const juce::String& paramId, juce::Colour hue,
-            bool small = false, bool withCaption = true);
+            bool small = false, bool withCaption = true, bool valueBeside = false);
     void resized() override;
     void paint(juce::Graphics&) override;
     void refresh();                                    // value text and mod tick
+    void setState(bool idle, const juce::String& tip); // dimmed or not, and its tooltip
     static constexpr int w = 62, h = 76, wSmall = 56, hSmall = 62;
 private:
     FractureProcessor& proc;
@@ -20,7 +21,7 @@ private:
     juce::Slider slider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attach;
     juce::String caption, valueText;
-    bool isSmall, showCaption;
+    bool isSmall, showCaption, beside;
 };
 
 class ChoiceBox : public juce::Component {
@@ -28,6 +29,7 @@ public:
     ChoiceBox(FractureProcessor& p, const juce::String& paramId, const juce::String& label, int width = 116);
     void resized() override;
     void paint(juce::Graphics&) override;
+    void setState(bool idle, const juce::String& tip);
     juce::ComboBox box;
 private:
     juce::String caption;
@@ -38,6 +40,7 @@ class ToggleBox : public juce::Component {
 public:
     ToggleBox(FractureProcessor& p, const juce::String& paramId, juce::Colour onColour, int width = 96);
     void resized() override;
+    void setState(bool idle, const juce::String& tip);
     juce::TextButton button;
 private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attach;
@@ -93,13 +96,14 @@ private:
 // the rhythm, drawn: eight steps you draw with the mouse when the shape is
 // Steps, the shape itself across eight cycles when it is anything else, and
 // where the rhythm is right now on the right. The same component CRATE has.
-class StepEditor : public juce::Component, private juce::Timer {
+class StepEditor : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
 public:
     explicit StepEditor(FractureProcessor&);
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
+    void setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); setTooltip(tip); }
 private:
     void timerCallback() override { repaint(); }
     juce::Rectangle<int> lane() const;
@@ -134,7 +138,7 @@ private:
     FractureProcessor& proc;
     bauhaus::Look look;
 
-    static constexpr int designW = 1320, designH = 1376;
+    static constexpr int designW = 1680, designH = 990;
     bauhaus::Canvas canvas { designW, designH };       // everything is drawn on this
 
     void paintDesign(juce::Graphics&);                 // both work in design coordinates
@@ -143,6 +147,16 @@ private:
 
     std::vector<std::unique_ptr<juce::Component>> owned;
     std::vector<KnobBox*> knobs;
+    // every control, by parameter, so the timer can dim the ones that do
+    // nothing right now and give each its tooltip
+    struct Control { int param; std::function<void(bool, const juce::String&)> set; juce::String tip; };
+    std::vector<Control> controls;
+    template <typename B> void reg(const juce::String& id, B* box){
+        controls.push_back({ fracture::Params::get().index(id.toStdString()),
+                             [box](bool i, const juce::String& t){ box->setState(i, t); }, {} });
+    }
+    void updateIdle();
+    juce::TooltipWindow tips { this, 500 };
     std::vector<Panel*> panels;
 
     Panel* pIn = nullptr; Panel* pSplit = nullptr; Panel* pDrive = nullptr;

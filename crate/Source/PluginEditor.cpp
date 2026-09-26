@@ -2,7 +2,51 @@
 #include "Presets.h"
 
 using namespace bauhaus;
+#include <map>
+#include "Relevance.h"
 using namespace crate;
+
+// one line per control, for its tooltip: what it does, in the terms the
+// README uses. Controls that do nothing right now say why instead
+static juce::String helpFor(const std::string& id){
+    static const std::map<std::string, const char*> h = {
+        { "inGain", "Level into the box. Hitting the converter is a technique, not a fault" },
+        { "mono", "Sum to mono before anything else, as the hardware was" },
+        { "machine", "SP: gentle anti-alias, images left in. S900: six-pole filters either side, darker and cleaner" },
+        { "tune", "Moves the sample clock, the S900 way. Pitch and tempo stay where they are" },
+        { "trick", "The 45-on-33 trick: sample it sped up, play it back down. Lowers the rate and adds the SP's drop-sample grit" },
+        { "clock", "The sample clock. 26.04 kHz is the SP; the S900 ran up to 40 kHz" },
+        { "bits", "Converter resolution. Six decibels of noise floor per bit" },
+        { "compand", "Mu-law companding. Off is linear, which is what both machines stored" },
+        { "aa", "How much the anti-alias filter removes. Lower lets more fold back" },
+        { "fltFreq", "Cutoff. For low and high pass this is the -3 dB point; for band pass and reject, the centre" },
+        { "fltReso", "Resonance. Sings at the pole" },
+        { "fltDrive", "Drive into the filter's saturating core" },
+        { "fltEnv", "Each hit opens the filter this many octaves above Cutoff, like the SP's outputs 1 and 2" },
+        { "fltDecay", "How fast the hit envelope falls back to Cutoff" },
+        { "fltShape", "Low pass, band pass, high pass or band reject" },
+        { "fltPoles", "Steepness: 2, 4, 6 or 8 poles, 6 dB an octave each" },
+        { "fltMix", "The filter against what went into it" },
+        { "rhDepth", "How far the rhythm moves the cutoff, in octaves either way" },
+        { "rhDiv", "One rhythm cycle per division, locked to the host. Free uses Rate" },
+        { "rhRate", "The rhythm's speed when the division is Free" },
+        { "rhShape", "Sine, triangle, saws, square, a random value per division, or the eight steps below" },
+        { "rhGroove", "Swings every second division late. 66% is a triplet feel" },
+        { "rhPhase", "Offsets the right channel's rhythm; 180 is opposite" },
+        { "rhGlide", "Rounds the rhythm's edges" },
+        { "rhStep", "Draw the eight steps; they play when the shape is Steps" },
+        { "swing", "Pulls the off-beats late against the host grid. Needs the transport running" },
+        { "grid", "What the swing counts in" },
+        { "push", "Moves everything early or late, in milliseconds" },
+        { "dust", "Hiss and crackle from the record, added before the converter" },
+        { "dustTone", "How bright the dust is" },
+        { "mix", "The whole box against the dry signal" },
+        { "outGain", "Level out" },
+        { "safety", "A limiter that is transparent below -3 dB and never passes 0 dBFS" },
+    };
+    for (const auto& kv : h) if (id.rfind(kv.first, 0) == 0 && (id == kv.first || kv.first == "rhStep")) return kv.second;
+    return {};
+}
 
 static juce::String fmtValue(const ParamInfo& p, double v){
     if (p.id == "bits")  return juce::String(v, 1);
@@ -46,6 +90,10 @@ void KnobBox::paint(juce::Graphics& g){
     g.setFont(mono(11.0f));
     g.drawText(valueText, 0, 63, getWidth(), 12, juce::Justification::centred);
 }
+void KnobBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); slider.setTooltip(tip); }
+void ChoiceBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); box.setTooltip(tip); }
+void ToggleBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); button.setTooltip(tip); }
+
 void KnobBox::refresh(){
     const juce::String t = fmtValue(info, proc.apvts.getRawParameterValue(info.id)->load());
     if (t != valueText){ valueText = t; repaint(); }
@@ -279,19 +327,25 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     pRhythm = make<Panel>(5, "Rhythm", blue);
     pFeel   = make<Panel>(7, "Feel", ink);
 
+    auto reg = [&](const char* id, auto* box){
+        controls.push_back({ Params::get().index(id), [box](bool i, const juce::String& t){ box->setState(i, t); } });
+    };
     auto knob = [&](juce::Component* parent, const char* id, juce::Colour hue){
         auto* k = new KnobBox(proc, id, hue);
         owned.emplace_back(k); parent->addAndMakeVisible(k); knobs.push_back(k);
+        reg(id, k);
         return static_cast<juce::Component*>(k);
     };
     auto choice = [&](juce::Component* parent, const char* id, const char* label, int width = 110){
         auto* c = new ChoiceBox(proc, id, label, width);
         owned.emplace_back(c); parent->addAndMakeVisible(c);
+        reg(id, c);
         return static_cast<juce::Component*>(c);
     };
     auto toggle = [&](juce::Component* parent, const char* id, juce::Colour hue, int width = 96){
         auto* t = new ToggleBox(proc, id, hue, width);
         owned.emplace_back(t); parent->addAndMakeVisible(t);
+        reg(id, t);
         return static_cast<juce::Component*>(t);
     };
 
@@ -320,6 +374,7 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     steps = new StepEditor(proc);
     owned.emplace_back(steps);
     pRhythm->addAndMakeVisible(steps);
+    reg("rhStep1", steps);          // the eight steps are dimmed together
     meters = new Meters(proc);
     owned.emplace_back(meters);
     pOut->addAndMakeVisible(meters);
@@ -329,12 +384,29 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     getConstrainer()->setFixedAspectRatio(static_cast<double>(designW) / designH);
     const auto open = bauhaus::Canvas::openingSize(designW, designH);
     setSize(open.getWidth(), open.getHeight());
+    updateIdle();                   // so the first paint is already right
     startTimerHz(20);
 }
 CrateEditor::~CrateEditor(){ setLookAndFeel(nullptr); }
 
+void CrateEditor::updateIdle(){
+    const Params& P = Params::get();
+    std::vector<float> v(static_cast<size_t>(P.count()));
+    for (int i = 0; i < P.count(); ++i) v[static_cast<size_t>(i)] = proc.apvts.getRawParameterValue(P[i].id)->load();
+    const auto idle = idleControls(v.data());
+    for (auto& c : controls){
+        juce::String why;
+        for (const auto& d : idle) if (d.param == c.param){ why = d.why; break; }
+        const bool now = why.isNotEmpty();
+        const juce::String help = helpFor(P[c.param].id);
+        const juce::String tip = now ? "Inactive: " + why + ".  " + help : help;
+        if (tip != c.tip){ c.set(now, tip); c.tip = tip; c.idle = now; }   // only on a change
+    }
+}
+
 void CrateEditor::timerCallback(){
     for (auto* k : knobs) k->refresh();
+    updateIdle();
     if (presetBox.getSelectedItemIndex() != proc.getCurrentProgram())
         presetBox.setSelectedItemIndex(proc.getCurrentProgram(), juce::dontSendNotification);
 }

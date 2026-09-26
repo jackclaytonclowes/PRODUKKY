@@ -5,6 +5,7 @@
 //
 //   npm run test:core
 #include "FractureCore.h"
+#include "Relevance.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -894,6 +895,71 @@ int main(int argc, char** argv){
         const Result r = render(p, 1.0);
         check("through the drive at full tilt stays finite and bounded", r.bad == 0 && r.peak <= 1.0,
               "peak " + f2s(r.peak, 3));
+    }
+
+    // ------------------------------------------------------ what the panel dims
+    std::printf("\nDimmed controls\n");
+    {
+        // A dimmed control is a promise that it does nothing right now. Each
+        // patch here puts the box in a different state; every control the
+        // panel would dim is moved to the other end of its range, and the
+        // output must not change by a single bit.
+        std::vector<float> in(static_cast<size_t>(48000 * 0.25));
+        uint32_t r = 11;
+        for (auto& x : in){ r = r * 1664525u + 1013904223u; x = static_cast<float>((r >> 8) / 8388608.0 - 1.0) * 0.3f; }
+        const std::vector<Patch> states = [&]{
+            std::vector<Patch> v(12);
+            v[1].v = { {"fbAmt", 40}, {"fbMode", 1} };
+            v[2].v = { {"fbAmt", 40}, {"fbMode", 2}, {"fbThru", 1} };
+            v[3].v = { {"fltType", 1}, {"fltCirc", 0} };
+            v[4].v = { {"fltType", 3}, {"fltCirc", 1}, {"rhDepth", 3}, {"rhShape", 5} };
+            v[5].v = { {"mS0", 1}, {"mD0", 5}, {"mA0", 30}, {"trOn", 1}, {"crMix", 50}, {"l1Div", 7} };
+            v[6].v = { {"mix", 0} };
+            v[7].v = { {"bands", 0}, {"sb0", 1} };
+            v[8].v = { {"fltType", 1}, {"fltMix", 0} };
+            v[9].v = { {"mS2", 3}, {"trOn", 1}, {"trDiv", 0} };
+            v[10].v = { {"fltType", 2}, {"rhDepth", -2}, {"rhDiv", 0} };
+            v[11].v = { {"mS0", 2}, {"mD0", 3}, {"mA0", 0}, {"bands", 1} };
+            return v;
+        }();
+        int claims = 0; std::string lies;
+        for (size_t si = 0; si < states.size(); ++si){
+            Engine probe; probe.prepare(48000.0, 128); applyPatch(probe, states[si]);
+            std::vector<float> vals(static_cast<size_t>(P.count()));
+            for (int i = 0; i < P.count(); ++i) vals[static_cast<size_t>(i)] = probe.getParam(i);
+            const Take base = renderWith(states[si], in, 48000.0, 128, true, 120.0, 0.0);
+            for (const Idle& d : idleControls(vals.data())){
+                const ParamInfo& info = P[d.param];
+                const float cur = vals[static_cast<size_t>(d.param)];
+                float other;
+                if (info.kind == Kind::Float) other = (cur - info.min) > (info.max - cur) ? info.min : info.max;
+                else other = cur >= info.max ? info.min : cur + 1.0f;
+                Patch moved = states[si];
+                moved.v[info.id] = other;
+                const Take t = renderWith(moved, in, 48000.0, 128, true, 120.0, 0.0);
+                ++claims;
+                for (size_t k = 0; k < in.size(); ++k)
+                    if (t.L[k] != base.L[k] || t.R[k] != base.R[k]){
+                        lies += " [state " + std::to_string(si) + ": " + info.id + "]";
+                        break;
+                    }
+            }
+        }
+        check("every dimmed control really does nothing (" + std::to_string(claims) + " claims checked)",
+              lies.empty(), lies.empty() ? "" : "audible:" + lies);
+        // and the rules are not vacuous: a default patch dims something, and a
+        // control in use is not dimmed
+        Engine e; e.prepare(48000.0, 128);
+        std::vector<float> vals(static_cast<size_t>(P.count()));
+        for (int i = 0; i < P.count(); ++i) vals[static_cast<size_t>(i)] = e.getParam(i);
+        const auto idleNow = idleControls(vals.data());
+        bool fbDimmed = false, driveDimmed = false;
+        for (const Idle& d : idleNow){
+            if (P[d.param].id == "fbTime") fbDimmed = true;
+            if (P[d.param].id == "d0a") driveDimmed = true;
+        }
+        check("at the defaults the feedback controls are dimmed and the drive is not",
+              fbDimmed && !driveDimmed, std::to_string(idleNow.size()) + " dimmed");
     }
 
     std::printf("\nTempo sync\n");

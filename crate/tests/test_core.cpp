@@ -9,6 +9,7 @@
 //
 //   npm run test:crate
 #include "CrateCore.h"
+#include "Relevance.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -684,6 +685,44 @@ int main(){
         const double after = peakAt >= 0 ? v[static_cast<size_t>(peakAt + static_cast<int>(0.050 * sr))] : -1.0;
         check("Decay is the time constant it says", std::fabs(after - std::exp(-1.0)) < 0.03,
               f2s(after, 3) + " after 50 ms, want 0.368");
+    }
+
+    // ------------------------------------------------------ what the panel dims
+    std::printf("\nDimmed controls\n");
+    {
+        // every control the panel dims is moved end to end, in each of these
+        // states, and the output must not change by a single bit
+        const auto in = noise(0.3, 0.25, sr, 5);
+        const std::vector<Patch> states = {
+            {}, { {"mix", 0} }, { {"fltMix", 0} }, { {"fltEnv", 3} },
+            { {"rhDepth", 3}, {"rhDiv", 0} }, { {"rhDepth", -2}, {"rhShape", 5} },
+            { {"dust", 30} }, { {"machine", 1}, {"swing", 60} }
+        };
+        int claims = 0; std::string lies;
+        const Params& PP = Params::get();
+        for (size_t si = 0; si < states.size(); ++si){
+            Engine probe; probe.prepare(sr, 128); applyPatch(probe, states[si]);
+            std::vector<float> vals(static_cast<size_t>(PP.count()));
+            for (int i = 0; i < PP.count(); ++i) vals[static_cast<size_t>(i)] = probe.getParam(i);
+            const auto base = run(states[si], in, sr, 128, true, 96.0);
+            for (const Idle& d : idleControls(vals.data())){
+                const ParamInfo& info = PP[d.param];
+                const float cur = vals[static_cast<size_t>(d.param)];
+                float other;
+                if (info.kind == Kind::Float) other = (cur - info.min) > (info.max - cur) ? info.min : info.max;
+                else other = cur >= info.max ? info.min : cur + 1.0f;
+                Patch moved = states[si];
+                moved[info.id] = other;
+                const auto t = run(moved, in, sr, 128, true, 96.0);
+                ++claims;
+                for (size_t k = 0; k < in.size(); ++k)
+                    if (t.l[k] != base.l[k] || t.r[k] != base.r[k]){
+                        lies += " [state " + std::to_string(si) + ": " + info.id + "]"; break;
+                    }
+            }
+        }
+        check("every dimmed control really does nothing (" + std::to_string(claims) + " claims checked)",
+              lies.empty(), lies.empty() ? "" : "audible:" + lies);
     }
 
     std::printf("\nFeel\n");

@@ -11,6 +11,7 @@ public:
     void resized() override;
     void paint(juce::Graphics&) override;
     void refresh();
+    void setState(bool idle, const juce::String& tip);   // dimmed or not, and what the tooltip says
     static constexpr int w = 66, h = 78;
 private:
     CrateProcessor& proc;
@@ -25,6 +26,7 @@ public:
     ChoiceBox(CrateProcessor&, const juce::String& paramId, const juce::String& label, int width = 110);
     void resized() override;
     void paint(juce::Graphics&) override;
+    void setState(bool idle, const juce::String& tip);
     juce::ComboBox box;
 private:
     juce::String caption;
@@ -35,6 +37,7 @@ class ToggleBox : public juce::Component {
 public:
     ToggleBox(CrateProcessor&, const juce::String& paramId, juce::Colour onColour, int width = 96);
     void resized() override;
+    void setState(bool idle, const juce::String& tip);
     juce::TextButton button;
 private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attach;
@@ -63,13 +66,14 @@ private:
 // the rhythm, drawn: eight steps you can draw with the mouse when the shape is
 // Steps, and the shape itself across eight cycles when it is anything else,
 // with where the rhythm is right now marked on the right
-class StepEditor : public juce::Component, private juce::Timer {
+class StepEditor : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
 public:
     explicit StepEditor(CrateProcessor&);
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
+    void setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); setTooltip(tip); }
 private:
     void timerCallback() override { repaint(); }
     juce::Rectangle<int> lane() const;
@@ -105,6 +109,12 @@ private:
     void layoutDesign();
 
     std::vector<std::unique_ptr<juce::Component>> owned;
+    // every control, by parameter, so the timer can dim the ones that do
+    // nothing right now and give each its tooltip
+    struct Control { int param; std::function<void(bool, const juce::String&)> set; bool idle = false; juce::String tip; };
+    std::vector<Control> controls;
+    void updateIdle();
+    juce::TooltipWindow tips { this, 500 };
     std::vector<KnobBox*> knobs;
     Panel *pIn = nullptr, *pConv = nullptr, *pFilter = nullptr,
           *pFeel = nullptr, *pDust = nullptr, *pOut = nullptr, *pRhythm = nullptr;

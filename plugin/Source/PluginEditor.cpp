@@ -1,8 +1,70 @@
 #include "PluginEditor.h"
 #include "Presets.h"
+#include "Relevance.h"
+#include <map>
 
 using namespace bauhaus;
 using namespace fracture;
+
+// one line per control, for its tooltip. Band and slot ids share a line: the
+// digit in them is replaced by # before the lookup (d0a, d1a, d2a -> d#a)
+static juce::String helpFor(std::string id){
+    for (auto& c : id) if (c >= '0' && c <= '9') c = '#';
+    static const std::map<std::string, const char*> h = {
+        { "inGain", "Level into the box" },
+        { "preHP", "High pass before anything is driven: keeps the lows clean" },
+        { "preLP", "Low pass before anything is driven: tames what the drive will fold" },
+        { "bands", "Drive the whole signal, or split it into two or three bands first" },
+        { "x#", "Crossover frequency between bands" },
+        { "osFactor", "Oversampling around the drive. More is cleaner and costs latency and CPU" },
+        { "m#a", "The first shaper" }, { "d#a", "How hard the first shaper is driven" },
+        { "sb#", "A second shaper after the first" },
+        { "m#b", "The second shaper" }, { "d#b", "How hard the second shaper is driven" },
+        { "t#", "Tilt between the two shapers: plus is brighter" },
+        { "mx#", "This band's drive against its own dry signal" },
+        { "lv#", "This band's level" }, { "mu#", "Mute this band" }, { "so#", "Hear only this band" },
+        { "bits", "Crush resolution" }, { "redux", "Crush sample-rate division" },
+        { "crMix", "How much of the crushed signal" },
+        { "fbAmt", "How much comes back round the loop" },
+        { "fbTime", "The loop's length, in milliseconds" },
+        { "fbNote", "The note the loop rings at, tuned to the cent" },
+        { "fbTone", "Low pass inside the loop: each repeat darker" },
+        { "fbMode", "Time: milliseconds. Pitch: a note it rings at. Sync: a note division" },
+        { "fbDiv", "The loop's length as a division of the host tempo" },
+        { "fbThru", "Send the repeats back through the drive, so every repeat is driven again" },
+        { "fltType", "The post filter's response" },
+        { "fltFreq", "Cutoff. On the ladder, the mark is where the resonance sings" },
+        { "fltQ", "Resonance. The top of the ladder's range self-oscillates" },
+        { "fltCirc", "Clean biquads, or a nonlinear ladder that squelches when driven" },
+        { "fltPoles", "Steepness: 12 to 48 dB an octave" },
+        { "fltDrive", "Drive into the ladder" }, { "fltDrift", "Slow independent wander per channel" },
+        { "fltMix", "The filter against what went into it" },
+        { "rhDepth", "How far the rhythm moves the cutoff, in octaves either way" },
+        { "rhDiv", "One rhythm cycle per division, locked to the host. Free uses Rate" },
+        { "rhRate", "The rhythm's speed when its division is Free" },
+        { "rhShape", "Sine, triangle, saws, square, random per division, or the eight steps" },
+        { "rhGroove", "Swings every second division late" },
+        { "rhPhase", "Offsets the right channel's rhythm" }, { "rhGlide", "Rounds the rhythm's edges" },
+        { "rhStep#", "Draw the eight steps; they play when the shape is Steps" },
+        { "mix", "The whole effect against the dry signal" },
+        { "width", "Stereo width of the result" }, { "outGain", "Level out" },
+        { "autoGain", "Takes back the level the drive adds, so drive is heard as character" },
+        { "safety", "A limiter, transparent below -3 dB, that never passes 0 dBFS" },
+        { "l#Rate", "LFO speed" }, { "l#Div", "Lock the LFO to the host's tempo" },
+        { "l#Shape", "LFO shape" }, { "l#Depth", "How much of the LFO reaches the matrix" },
+        { "envAtk", "How fast the envelope follower rises" },
+        { "envRel", "How fast it falls" }, { "envSens", "How much of the input level reaches the matrix" },
+        { "trOn", "An insert tremolo at the very end of the chain" },
+        { "trDiv", "Lock the tremolo to the host's tempo" }, { "trRate", "Tremolo speed" },
+        { "trDepth", "How deep the tremolo cuts" }, { "trShape", "Sine through triangle to a hard chop" },
+        { "trEdge", "Softens the chop's edges" }, { "trDuty", "How much of the cycle is the loud half" },
+        { "trSpread", "Offsets the right channel; 180 degrees is auto-pan" },
+        { "mS#", "What moves this slot's target" }, { "mD#", "What this slot moves" },
+        { "mA#", "How far, either way" },
+    };
+    const auto it = h.find(id);
+    return it != h.end() ? juce::String(it->second) : juce::String();
+}
 
 // value readouts formatted the way the browser version formats them
 static juce::String fmtValue(const ParamInfo& p, double v){
@@ -32,9 +94,9 @@ static juce::String fmtValue(const ParamInfo& p, double v){
 
 // ---------------------------------------------------------------- primitives
 KnobBox::KnobBox(FractureProcessor& p, const juce::String& paramId, juce::Colour hue,
-                 bool small, bool withCaption)
+                 bool small, bool withCaption, bool valueBeside)
     : proc(p), info(Params::get()[Params::get().index(paramId.toStdString())]),
-      isSmall(small), showCaption(withCaption)
+      isSmall(small), showCaption(withCaption), beside(valueBeside)
 {
     caption = info.id == "redux" ? "Downs." : juce::String(info.name);
     // the panel already says which section this is, so the caption need not
@@ -51,14 +113,22 @@ KnobBox::KnobBox(FractureProcessor& p, const juce::String& paramId, juce::Colour
     attach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, info.id, slider);
     valueText = fmtValue(info, slider.getValue());
-    setSize(small ? wSmall : w, small ? hSmall : h);
+    if (beside) setSize(34 + 52, 44);             // knob, then its value to the right
+    else setSize(small ? wSmall : w, small ? hSmall : h);
 }
 void KnobBox::resized(){
     const int d = isSmall ? 34 : 46;
-    slider.setBounds((getWidth() - d) / 2, 0, d, d);
+    if (beside) slider.setBounds(0, 14 + (30 - d) / 2 + 2, d, d);   // centred on a ChoiceBox's box
+    else slider.setBounds((getWidth() - d) / 2, 0, d, d);
 }
 void KnobBox::paint(juce::Graphics& g){
     const int d = isSmall ? 34 : 46;
+    if (beside){
+        g.setColour(dim);
+        g.setFont(mono(11.0f));
+        g.drawText(valueText, d + 6, 14, getWidth() - d - 6, 30, juce::Justification::centredLeft);
+        return;
+    }
     if (showCaption)
         drawTracked(g, caption, { 0, d + 3, getWidth(), 11 }, isSmall ? 8.5f : 9.0f, 1.1f,
                     juce::Justification::horizontallyCentred, ink);
@@ -67,6 +137,10 @@ void KnobBox::paint(juce::Graphics& g){
     g.drawText(valueText, 0, d + (showCaption ? 15 : 2), getWidth(), 12,
                juce::Justification::centred);
 }
+void KnobBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); slider.setTooltip(tip); }
+void ChoiceBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); box.setTooltip(tip); }
+void ToggleBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); button.setTooltip(tip); }
+
 void KnobBox::refresh(){
     const float base = proc.apvts.getRawParameterValue(info.id)->load();
     const juce::String t = fmtValue(info, base);
@@ -478,11 +552,11 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     pDrive  = make<Panel>(3, "Drive", yellow);
     pCrush  = make<Panel>(4, "Crush & feedback", red);
     pFilter = make<Panel>(5, "Filter", blue);
-    pOut    = make<Panel>(6, "Output", ink);
-    pMod    = make<Panel>(8, "Modulation", blue);
-    pScope  = make<Panel>(9, "Scope", ink);
-    pTrem   = make<Panel>(10, "Tremolo", blue);
-    pRhythm = make<Panel>(7, "Filter rhythm", blue);
+    pOut    = make<Panel>(10, "Output", ink);
+    pMod    = make<Panel>(7, "Modulation", blue);
+    pScope  = make<Panel>(8, "Scope", ink);
+    pTrem   = make<Panel>(9, "Tremolo", blue);
+    pRhythm = make<Panel>(6, "Filter rhythm", blue);
     panels = { pIn, pSplit, pDrive, pCrush, pFilter, pOut, pMod, pScope, pTrem, pRhythm };
 
     auto knob = [&](juce::Component* parent, const char* id, juce::Colour hue, bool small = false){
@@ -490,18 +564,21 @@ FractureEditor::FractureEditor(FractureProcessor& p)
         owned.emplace_back(k);
         parent->addAndMakeVisible(k);
         knobs.push_back(k);
+        reg(id, k);
         return static_cast<juce::Component*>(k);
     };
     auto choice = [&](juce::Component* parent, const char* id, const char* label, int width = 116){
         auto* c = new ChoiceBox(proc, id, label, width);
         owned.emplace_back(c);
         parent->addAndMakeVisible(c);
+        reg(id, c);
         return static_cast<juce::Component*>(c);
     };
     auto toggle = [&](juce::Component* parent, const char* id, juce::Colour hue, int width = 96){
         auto* t = new ToggleBox(proc, id, hue, width);
         owned.emplace_back(t);
         parent->addAndMakeVisible(t);
+        reg(id, t);
         return static_cast<juce::Component*>(t);
     };
     auto divider = [&](juce::Component* parent){
@@ -532,6 +609,7 @@ FractureEditor::FractureEditor(FractureProcessor& p)
                   knob(pRhythm, "rhGlide", blue) };
     steps = make<StepEditor>(proc);
     pRhythm->addAndMakeVisible(steps);
+    reg("rhStep1", steps);                            // the eight steps dim together
     outRow   = { knob(pOut, "mix", ink), knob(pOut, "width", ink), knob(pOut, "outGain", ink) };
     outRow.push_back(toggle(pOut, "autoGain", yellow, 92));
     outRow.push_back(toggle(pOut, "safety", red, 92));
@@ -580,10 +658,11 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     pMod->addAndMakeVisible(modSources);
     for (int k = 0; k < 6; ++k){
         const juce::String s = juce::String(k);
-        auto* amt = new KnobBox(proc, "mA" + s, blue, true, false);
+        auto* amt = new KnobBox(proc, "mA" + s, blue, true, false, true);
         owned.emplace_back(amt);
         pMod->addAndMakeVisible(amt);
         knobs.push_back(amt);
+        reg("mA" + s, amt);
         matrixRow[k] = { choice(pMod, ("mS" + s).toRawUTF8(), k == 0 ? "Source" : "", 186),
                          choice(pMod, ("mD" + s).toRawUTF8(), k == 0 ? "Target" : "", 206),
                          amt };
@@ -602,6 +681,7 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     setSize(open.getWidth(), open.getHeight());
     built = true;
     layoutDesign();
+    updateIdle();                                     // so the first paint is already right
     startTimerHz(24);
 }
 
@@ -615,18 +695,21 @@ void FractureEditor::buildBand(int band){
         owned.emplace_back(k);
         pane->addAndMakeVisible(k);
         knobs.push_back(k);
+        reg(id, k);
         return static_cast<juce::Component*>(k);
     };
     auto choice = [&](const char* id, const char* label){
         auto* c = new ChoiceBox(proc, id, label, 116);
         owned.emplace_back(c);
         pane->addAndMakeVisible(c);
+        reg(id, c);
         return static_cast<juce::Component*>(c);
     };
     auto toggle = [&](const char* id, juce::Colour hue, int width){
         auto* t = new ToggleBox(proc, id, hue, width);
         owned.emplace_back(t);
         pane->addAndMakeVisible(t);
+        reg(id, t);
         return static_cast<juce::Component*>(t);
     };
     auto* div1 = new Divider(); owned.emplace_back(div1); pane->addAndMakeVisible(div1);
@@ -658,8 +741,23 @@ void FractureEditor::selectBand(int band){
     layoutDesign();          // the canvas keeps its size, so lay out on it directly
 }
 
+void FractureEditor::updateIdle(){
+    const Params& P = Params::get();
+    std::vector<float> v(static_cast<size_t>(P.count()));
+    for (int i = 0; i < P.count(); ++i) v[static_cast<size_t>(i)] = proc.apvts.getRawParameterValue(P[i].id)->load();
+    const auto idle = idleControls(v.data());
+    for (auto& c : controls){
+        juce::String why;
+        for (const auto& d : idle) if (d.param == c.param){ why = d.why; break; }
+        const juce::String help = helpFor(P[c.param].id);
+        const juce::String tip = why.isNotEmpty() ? "Inactive: " + why + ".  " + help : help;
+        if (tip != c.tip){ c.set(why.isNotEmpty(), tip); c.tip = tip; }   // only on a change
+    }
+}
+
 void FractureEditor::timerCallback(){
     for (auto* k : knobs) k->refresh();
+    updateIdle();
     updateTabs();
     if (presetBox.getSelectedItemIndex() != proc.getCurrentProgram())
         presetBox.setSelectedItemIndex(proc.getCurrentProgram(), juce::dontSendNotification);
@@ -749,20 +847,20 @@ void FractureEditor::layoutDesign(){
     area.removeFromTop(10);
     area.removeFromTop(8);                                   // the ribbon, painted below
     area.removeFromTop(12);
+    // Three rows across a wide canvas. It was one tall column at 1320 x 1376,
+    // which on a 1440 x 900 screen opened at 57% and set 9-point captions at
+    // about 5; at 1680 x 990 the same screen shows it at 79%.
     const int gap = 14;
-    const int col = (area.getWidth() - 11 * gap) / 12;
-    const auto cols = [&](int n){ return n * col + (n - 1) * gap; };
 
-    auto rowA = area.removeFromTop(132);
-    pIn->setBounds(rowA.removeFromLeft(cols(4)));
+    // ---- row 1: what goes in, how it is split, and the drive
+    auto rowA = area.removeFromTop(160);
+    pIn->setBounds(rowA.removeFromLeft(238));
     rowA.removeFromLeft(gap);
-    pSplit->setBounds(rowA.removeFromLeft(cols(8)));
-    layoutRow(pIn->content().withHeight(KnobBox::h), inRow);
-    layoutRow(pSplit->content().withHeight(KnobBox::h), splitRow);
-
-    area.removeFromTop(gap);
-    auto rowB = area.removeFromTop(190);
-    pDrive->setBounds(rowB);
+    pSplit->setBounds(rowA.removeFromLeft(418));
+    rowA.removeFromLeft(gap);
+    pDrive->setBounds(rowA);
+    layoutRow(pIn->content().withSizeKeepingCentre(pIn->content().getWidth(), KnobBox::h), inRow);
+    layoutRow(pSplit->content().withSizeKeepingCentre(pSplit->content().getWidth(), KnobBox::h), splitRow);
     {
         auto inner = pDrive->content();
         auto tabs = inner.removeFromTop(34);
@@ -770,59 +868,58 @@ void FractureEditor::layoutDesign(){
             bandTab[b].setBounds(tabs.removeFromLeft(210).withTrimmedBottom(4));
             tabs.removeFromLeft(10);
         }
-        inner.removeFromTop(12);
+        inner.removeFromTop(10);
         for (int b = 0; b < 3; ++b){
             bandPane[b]->setBounds(inner);
-            layoutRow(bandPane[b]->getLocalBounds().withHeight(KnobBox::h), bandRow[b]);
+            layoutRow(bandPane[b]->getLocalBounds().withHeight(KnobBox::h), bandRow[b], 10);
         }
     }
 
+    // ---- row 2: crush and the loop, the filter, and the filter's rhythm
     area.removeFromTop(gap);
-    auto rowC = area.removeFromTop(172);
-    pCrush->setBounds(rowC.removeFromLeft(cols(5)));
-    rowC.removeFromLeft(gap);
-    pFilter->setBounds(rowC.removeFromLeft(cols(4)));
-    rowC.removeFromLeft(gap);
-    pOut->setBounds(rowC.removeFromLeft(cols(3)));
+    auto rowB = area.removeFromTop(190);
+    pCrush->setBounds(rowB.removeFromLeft(520));
+    rowB.removeFromLeft(gap);
+    pFilter->setBounds(rowB.removeFromLeft(372));
+    rowB.removeFromLeft(gap);
+    pRhythm->setBounds(rowB);
     {   // the loop's length is a time, a pitch or a division, and the row
         // under the knobs says which, and whether it goes back through the drive
         auto inner = pCrush->content();
         layoutRow(inner.removeFromTop(KnobBox::h), crushRow, 8);
-        inner.removeFromTop(8);
+        inner.removeFromTop(12);
         layoutRow(inner.withHeight(44), fbRow, 10);
     }
     {   // the filter carries its circuit above its knobs
         auto inner = pFilter->content();
         layoutRow(inner.removeFromTop(44), filterTypeRow, 8);
-        inner.removeFromTop(10);
+        inner.removeFromTop(12);
         layoutRow(inner.withHeight(KnobBox::h), filterKnobRow, 8);
     }
-    {
-        auto inner = pOut->content();
-        auto knobsRow = inner.removeFromTop(KnobBox::h);
-        layoutRow(knobsRow, { outRow[0], outRow[1], outRow[2] });
-        inner.removeFromTop(6);
-        layoutRow(inner.withHeight(44), { outRow[3], outRow[4] }, 8);
-    }
-
-    area.removeFromTop(gap);
-    {   // the post filter's rhythm, full width: its controls, then its steps
-        pRhythm->setBounds(area.removeFromTop(172));
+    {   // the rhythm's controls, and under them the steps it plays
         auto inner = pRhythm->content();
-        auto controls = inner.removeFromLeft(640);
-        layoutRow(controls.withSizeKeepingCentre(controls.getWidth(), KnobBox::h), rhythmRow, 10);
-        inner.removeFromLeft(12);
+        layoutRow(inner.removeFromTop(KnobBox::h), rhythmRow, 10);
+        inner.removeFromTop(8);
         steps->setBounds(inner);
     }
 
+    // ---- row 3: modulation, the scope, and the end of the chain
     area.removeFromTop(gap);
-    auto rowD = area;
-    pMod->setBounds(rowD.removeFromLeft(cols(7)));
-    rowD.removeFromLeft(gap);
-    auto rightCol = rowD.removeFromLeft(cols(5));
-    pTrem->setBounds(rightCol.removeFromBottom(220));
+    auto rowC = area;
+    pMod->setBounds(rowC.removeFromLeft(720));
+    rowC.removeFromLeft(gap);
+    auto rightCol = rowC.removeFromRight(440);
+    rowC.removeFromRight(gap);
+    pScope->setBounds(rowC);
+    pOut->setBounds(rightCol.removeFromBottom(172));
     rightCol.removeFromBottom(gap);
-    pScope->setBounds(rightCol);
+    pTrem->setBounds(rightCol);
+    {
+        auto inner = pOut->content();
+        layoutRow(inner.removeFromTop(KnobBox::h), { outRow[0], outRow[1], outRow[2] });
+        inner.removeFromTop(8);
+        layoutRow(inner.withHeight(44), { outRow[3], outRow[4] }, 8);
+    }
     {
         auto inner = pTrem->content();
         layoutRow(inner.removeFromTop(44), tremHeadRow, 10);
@@ -847,8 +944,16 @@ void FractureEditor::layoutDesign(){
         inner.removeFromTop(8);
         matrixCaption->setBounds(inner.removeFromTop(14));
         inner.removeFromTop(2);
-        for (int k = 0; k < 6; ++k)
-            layoutRow(inner.removeFromTop(46), matrixRow[k], 10);
+        // each slot on one line: source, target, and its amount with the
+        // value beside the knob rather than under it, which used to run into
+        // the next row. Only the first slot has captions over its boxes; the
+        // others start their (empty) caption strip 8 px up, so the boxes sit
+        // on a 36 px pitch
+        for (int k = 0; k < 6; ++k){
+            auto r = inner.removeFromTop(k == 0 ? 46 : 36);
+            if (k > 0) r = r.withTop(r.getY() - 8).withHeight(44);
+            layoutRow(r, matrixRow[k], 10);
+        }
     }
     {
         auto inner = pScope->content();

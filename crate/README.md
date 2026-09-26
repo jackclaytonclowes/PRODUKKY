@@ -150,9 +150,17 @@ pays nothing; a bus processor cannot. It is least audible on drums with decaying
 most audible on sustained material — try it on a loop with a chord under the drums before
 deciding you like it.
 
+## The panel
+
+**Controls that do nothing right now are dimmed**, and the tooltip says why: Decay while
+Env is off, Dust tone with no dust, Rate while the rhythm follows a division, the whole
+rhythm while its Mod is off, everything on the wet path at 0% mix. They still work, so a
+value can be set up before it matters. The rules are in `core/Relevance.h`, and the test
+suite holds them to it. Every control has a one-line tooltip.
+
 ## What is verified, and how
 
-`npm run test:crate` — 70 assertions, no JUCE needed (`VERBOSE=1` prints the measured
+`npm run test:crate` — 71 assertions, no JUCE needed (`VERBOSE=1` prints the measured
 value behind every one). These are measurements, not smoke
 tests, because nobody involved in building this has heard it:
 
@@ -183,6 +191,9 @@ tests, because nobody involved in building this has heard it:
   speed, glide rounds the edges, and Mod +4 oct opens the filter by 12 dB on the high half
 - **the half mix is predicted, not assumed**: the dry reference is the input shifted by the
   reported latency, and a deliberate one-sample error fails the test by 5 dB
+- **every control the panel dims really does nothing**: in eight states of the box, each
+  control the panel would dim (130 in all) is moved end to end and the output must be
+  bit-identical
 - **the hit envelope counts hits**: eight snare-like bursts in are eight triggers out, and
   a sustained tone triggers once at most. Each hit brings the first 10 ms through about
   15 dB brighter against the resting filter, the tail 250 ms later is the resting filter
@@ -243,6 +254,7 @@ core/           the DSP. No JUCE, no dependencies, no allocation in the audio pa
   HitEnv.h      finds hits in the audio and gives the four-pole its envelope
   Oversampler.h runs the four-pole at 4x, and keeps the dry path in step
   RhythmMod.h   the rhythm: divisions, shapes, steps, groove, phase, glide
+  Relevance.h   which controls do nothing right now, and why: the panel dims them
   ParamTable.h  one table, shared by the DSP, the host and the editor
   CrateCore.h   the whole processor
 Source/         the JUCE wrapper and the interface
