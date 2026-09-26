@@ -8,6 +8,8 @@
 #include "PluginEditor.h"
 #include "FactoryPresets.h"
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <typeinfo>
+#include <functional>
 
 static int passed = 0;
 static juce::StringArray failures;
@@ -172,6 +174,64 @@ int main(int argc, char** argv){
                 juce::PNGImageFormat png;
                 png.writeImageToStream(shot, *stream);
                 std::printf("  screenshot %s\n", file.getFullPathName().toRawUTF8());
+            }
+
+            // the mouse controls, driven with real mouse events: nothing else in
+            // the suite touches them, and a drag that moved the wrong parameter
+            // or the wrong way would pass every other check
+            {
+                std::function<juce::Component*(juce::Component*, const std::type_info&)> find =
+                    [&](juce::Component* c, const std::type_info& t) -> juce::Component* {
+                        if (typeid(*c) == t) return c;
+                        for (auto* ch : c->getChildren()) if (auto* r = find(ch, t)) return r;
+                        return nullptr;
+                    };
+                auto src = juce::Desktop::getInstance().getMainMouseSource();
+                auto ev = [&](juce::Component* c, juce::Point<float> down, juce::Point<float> at,
+                              juce::ModifierKeys mods = {}, int clicks = 1){
+                    return juce::MouseEvent(src, at, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, c, c,
+                                            juce::Time::getCurrentTime(), down, juce::Time::getCurrentTime(),
+                                            clicks, at != down);
+                };
+                auto get = [&](const char* id){ return proc.apvts.getRawParameterValue(id)->load(); };
+                auto setP = [&](const char* id, float v){
+                    if (auto* prm = proc.apvts.getParameter(id)) prm->setValueNotifyingHost(prm->convertTo0to1(v)); };
+
+                if (auto* fv = find(editor.get(), typeid(FilterView))){
+                    setP("fltFreq", 1000.0f); setP("fltQ", 2.0f);
+                    const auto c = fv->getLocalBounds().getCentre().toFloat();
+                    const float w = (float) fv->getWidth(), hgt = (float) fv->getHeight();
+                    fv->mouseDown(ev(fv, c, c));
+                    fv->mouseDrag(ev(fv, c, c + juce::Point<float>(w * 0.25f, -hgt * 0.25f)));
+                    fv->mouseUp(ev(fv, c, c + juce::Point<float>(w * 0.25f, -hgt * 0.25f)));
+                    const float f1 = get("fltFreq"), q1 = get("fltQ");
+                    check("dragging the filter display right and up raises cutoff and resonance",
+                          f1 > 1500.0f && q1 > 2.5f, juce::String(f1, 0) + " Hz, Q " + juce::String(q1, 2));
+                    // shift is a quarter of the move
+                    setP("fltFreq", 1000.0f);
+                    fv->mouseDown(ev(fv, c, c));
+                    fv->mouseDrag(ev(fv, c, c + juce::Point<float>(w * 0.25f, 0.0f), juce::ModifierKeys::shiftModifier));
+                    fv->mouseUp(ev(fv, c, c));
+                    const float fFine = get("fltFreq");
+                    check("and Shift makes it a fine move", fFine > 1000.0f && fFine < f1,
+                          juce::String(fFine, 0) + " Hz against " + juce::String(f1, 0));
+                    fv->mouseDoubleClick(ev(fv, c, c, {}, 2));
+                    check("a double-click puts cutoff and resonance back",
+                          std::abs(get("fltFreq") - 1200.0f) < 1.0f && std::abs(get("fltQ") - 0.7f) < 0.01f,
+                          juce::String(get("fltFreq"), 0) + " Hz, Q " + juce::String(get("fltQ"), 2));
+                } else check("the filter display is on the panel", false);
+
+                if (auto* xy = find(editor.get(), typeid(XYPad))){
+                    const auto b = xy->getLocalBounds().toFloat();
+                    // the pad's field is inset 14 px; aim at three quarters across, a quarter up
+                    const juce::Point<float> at(14.0f + (b.getWidth() - 28.0f) * 0.75f, 14.0f + (b.getHeight() - 28.0f) * 0.75f);
+                    xy->mouseDown(ev(xy, at, at));
+                    xy->mouseUp(ev(xy, at, at));
+                    check("clicking the pad sets X across and Y up from the bottom",
+                          std::abs(get("xyX") - 75.0f) < 1.5f && std::abs(get("xyY") - 25.0f) < 1.5f,
+                          "X " + juce::String(get("xyX"), 1) + ", Y " + juce::String(get("xyY"), 1));
+                    setP("xyX", 0.0f); setP("xyY", 0.0f);
+                } else check("the XY pad is on the panel", false);
             }
 
             // the drawn filter: a resonant notch, processed once so the engine
