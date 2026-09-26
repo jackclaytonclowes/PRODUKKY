@@ -9,6 +9,7 @@
 // is the correct trade: the filter is now standard.
 #pragma once
 #include <cmath>
+#include <complex>
 
 namespace fracture {
 
@@ -74,6 +75,13 @@ struct Biquad {
     // copy coefficients from another section, keeping this one's state — used
     // for the second half of a cascaded pair
     void copyCoeffs(const Biquad& o){ b0 = o.b0; b1 = o.b1; b2 = o.b2; a1 = o.a1; a2 = o.a2; }
+
+    // the response at w radians per sample: what tuning the feedback loop
+    // needs, since a filter inside a loop moves the pitch the loop rings at
+    std::complex<double> at(double w) const {
+        const std::complex<double> z1c = std::polar(1.0, -w), z2c = std::polar(1.0, -2.0 * w);
+        return (b0 + b1 * z1c + b2 * z2c) / (1.0 + a1 * z1c + a2 * z2c);
+    }
 
     inline double process(double x){
         const double y = b0 * x + z1;

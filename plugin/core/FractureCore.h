@@ -12,6 +12,8 @@
 //                                   └────────────────────────────────────────┘ │
 //                          summed ─┬─ crush ─ post filter ─ wet ───────────────┤
 //                                  └─ feedback: delay ─ tone ─ saturator ──────┘
+//                                     (or, with FB through drive, back into
+//                                      the split, so every repeat is driven again)
 //                    dry/wet ─ width (M/S) ─ tremolo ─ output gain ─ safety ─ out
 //
 // The post filter is either a cascade of clean biquads (one per 12 dB of slope)
@@ -36,6 +38,7 @@
 #include <array>
 #include <cstdint>
 #include <algorithm>
+#include <complex>
 #include "Shapers.h"
 #include "Biquad.h"
 #include "Oversampler.h"
@@ -87,7 +90,8 @@ public:
             // a different seed per channel, or both channels drift in step and
             // the whole point of the drift is lost
             ladder_[ch].prepare(sampleRate, 0x9E3779B9u + 0x7F4A7C15u * static_cast<uint32_t>(ch + 1));
-            fb_[ch].prepare(sampleRate, 300.0);
+            // long enough for a synced division: a 1/4 at 60 BPM is a second
+            fb_[ch].prepare(sampleRate, 2100.0);
             dry_[ch].prepare(static_cast<int>(sampleRate * 0.05) + 8);
         }
         setOversampling(static_cast<int>(base_[Ids::get().osFactor]));
@@ -176,7 +180,10 @@ public:
             xHP2a_[ch].set(Biquad::HighPass, mv_[id.x2], sr_); xHP2b_[ch].copyCoeffs(xHP2a_[ch]);
             xAP_[ch].set(Biquad::AllPass,    mv_[id.x2], sr_);   // keeps the low band in phase
             fbTone_[ch].set(Biquad::LowPass, mv_[id.fbTone], sr_);
-            fbHP_[ch].set(Biquad::HighPass, 40.0, sr_);
+            // the loop's DC blocker. At 40 Hz it bends the phase of anything
+            // near it, which on a tuned loop pulls the partials of a low note
+            // apart, so Pitch mode moves it down out of the musical range
+            fbHP_[ch].set(Biquad::HighPass, static_cast<int>(mv_[id.fbMode]) == 1 ? 10.0 : 40.0, sr_);
             const int ft = static_cast<int>(mv_[id.fltType]);
             if (ft > 0){
                 if (static_cast<int>(mv_[id.fltCirc]) == Ladder::Clean){
@@ -223,7 +230,25 @@ public:
         setR(fbAmt_, mv_[id.fbAmt] / 100.0);
         setR(crMix_, mv_[id.crMix] / 100.0);
         first_ = false;
-        for (int ch = 0; ch < nch; ++ch) fb_[ch].setMs(mv_[id.fbTime]);
+        const int fbMode = static_cast<int>(mv_[id.fbMode]);
+        const bool fbThru = mv_[id.fbThru] > 0.5f;
+        {
+            double d = 0.0;
+            if (fbMode == 1) d = tunedLoopSamples(mv_[id.fbNote], fbThru, nb, solo);
+            else if (fbMode == 2){
+                const double bpm = transport_.valid && transport_.bpm > 1.0 ? transport_.bpm : 120.0;
+                // the whole loop is one division; through the drive, the
+                // oversampler's latency is part of it
+                d = beatsForDiv(static_cast<int>(mv_[id.fbDiv]) + 1) * 60.0 / bpm * sr_
+                    - (fbThru ? latency_ : 0) - 1.0;
+            }
+            for (int ch = 0; ch < nch; ++ch){
+                if (fbMode == 0) fb_[ch].setMs(mv_[id.fbTime]);
+                else if (first_ || fbModeWas_ != fbMode) fb_[ch].rampToSamples(d, 0);
+                else fb_[ch].rampToSamples(d, n);
+            }
+            fbModeWas_ = fbMode;
+        }
 
         // the pre-filters drop out of circuit at their extremes: a 2nd-order
         // highpass parked at 20 Hz still costs 0.8 dB at 30 Hz, and the browser
@@ -288,6 +313,10 @@ public:
                 double pre = xin;
                 if (preHPOn) pre = preHP_[ch].process(pre);
                 if (preLPOn) pre = preLP_[ch].process(pre);
+                // through the drive, the repeats go in after the pre-filters and
+                // before the split, so each one is split and driven again
+                const double fbRead = fb_[ch].read() * amt;
+                if (fbThru) pre += fbRead;
 
                 double lo = 0.0, mid = 0.0, hi = 0.0;
                 if (nb == 1){
@@ -325,8 +354,7 @@ public:
                 }
 
                 // feedback around the drive section
-                const double fbRead = fb_[ch].read() * amt;
-                double node = sum + fbRead;
+                double node = fbThru ? sum : sum + fbRead;
                 fb_[ch].write(softLimit(fbHP_[ch].process(fbTone_[ch].process(node))));
 
                 double v = crusher_.process(ch, node, bits, redux, cm);
@@ -379,6 +407,81 @@ private:
     Biquad xAP_[maxChannels];
     Biquad flt_[maxChannels][4], fbTone_[maxChannels], fbHP_[maxChannels];
     RhythmMod rhythm_;
+    int fbModeWas_ = 0;
+
+    // The delay, in samples, that makes the whole loop ring at `note`. The
+    // loop is the delay line plus everything else between its output and its
+    // input, and each of those has a phase at the target pitch that moves the
+    // note it rings at. The tone and DC filters alone put an A3 about 4 cents
+    // flat; through the drive, the oversampler's latency is 48 samples at 4x,
+    // which is almost a whole cycle of a 1 kHz tone. So the phase of the loop
+    // at that frequency is computed from the same filters the audio runs
+    // through, and the delay is shortened by exactly that much.
+    //
+    // Two parts are not linear, and are not compensated: the shapers, whose
+    // phase at small signal is zero but which add harmonics when driven, and
+    // the saturator at the loop's input. Both are memoryless, so they cannot
+    // retune the fundamental; they colour it.
+    double tunedLoopSamples(double note, bool thru, int nb, int solo){
+        const double f = 440.0 * std::pow(2.0, (note - 69.0) / 12.0);
+        const double w = 2.0 * M_PI * f / sr_;
+        const double period = sr_ / f;
+        std::complex<double> h = fbTone_[0].at(w) * fbHP_[0].at(w);
+        double pure = 0.0;
+        if (thru){
+            h *= splitResponse(w, nb, solo);
+            pure += latency_;
+        }
+        // the phase delay of the filters, taken the short way round: the loop
+        // only has to be in phase modulo a whole cycle
+        const double phaseDelay = -std::arg(h) / w;
+        double d = period - phaseDelay - pure;
+        // linear interpolation is not a pure fractional delay: its phase delay
+        // at w differs from the fraction asked for. Two passes of correcting
+        // for that is well inside a cent
+        for (int k = 0; k < 2; ++k){
+            if (d < 1.0) break;
+            const double a = std::ceil(d) - d;             // weight on the older sample
+            const std::complex<double> interp = a + (1.0 - a) * std::polar(1.0, -w);
+            const double got = std::floor(d) + (-std::arg(interp) / w);
+            if (a > 0.0 && a < 1.0) d += d - got;
+        }
+        // too short to fit (a high note through the oversampler): ring an
+        // octave down rather than out of tune
+        while (d < 1.0) d += period;
+        return d;
+    }
+
+    // what the split and the bands do to a small signal at w: the crossover's
+    // sum, each band's DC blockers on its wet share, its level, mute and solo.
+    // At unity drive and 0 dB tilt this is exactly the linear part of the path
+    std::complex<double> splitResponse(double w, int nb, int solo) const {
+        const Ids& id = Ids::get();
+        const double wOs = w / osFactor_;
+        std::complex<double> xo[numBands];
+        if (nb == 1){ xo[0] = 1.0; xo[1] = xo[2] = 0.0; }
+        else if (nb == 2){
+            xo[0] = xLP1a_[0].at(w) * xLP1b_[0].at(w);
+            xo[1] = xHP1a_[0].at(w) * xHP1b_[0].at(w);
+            xo[2] = 0.0;
+        } else {
+            const std::complex<double> h1 = xHP1a_[0].at(w) * xHP1b_[0].at(w);
+            xo[0] = xAP_[0].at(w) * xLP1a_[0].at(w) * xLP1b_[0].at(w);
+            xo[1] = h1 * xLP2a_[0].at(w) * xLP2b_[0].at(w);
+            xo[2] = h1 * xHP2a_[0].at(w) * xHP2b_[0].at(w);
+        }
+        std::complex<double> sum = 0.0;
+        for (int b = 0; b < nb; ++b){
+            const bool audible = mv_[id.bandMute[b]] < 0.5f && (solo == 0 || solo == b + 1);
+            if (!audible) continue;
+            const Band& bd = bands_[b];
+            std::complex<double> wet = bd.dcA[0].at(wOs);
+            if (mv_[id.bandStageB[b]] > 0.5f) wet *= bd.dcB[0].at(wOs);
+            const double m = mv_[id.bandMix[b]] / 100.0;
+            sum += xo[b] * ((1.0 - m) + m * wet) * dbToGain(mv_[id.bandLevel[b]]);
+        }
+        return std::abs(sum) > 1e-12 ? sum : std::complex<double>(1.0);
+    }
 
     static int polesFor(float choice){ return 2 * (std::clamp(static_cast<int>(choice), 0, 3) + 1); }
     void setCleanFilter(int ch, int type, double freq){

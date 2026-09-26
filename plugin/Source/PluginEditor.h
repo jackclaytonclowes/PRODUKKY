@@ -150,7 +150,7 @@ private:
     Panel* pTrem = nullptr; Panel* pMod = nullptr; Panel* pScope = nullptr;
     Panel* pRhythm = nullptr;
 
-    std::vector<juce::Component*> inRow, splitRow, crushRow, outRow;
+    std::vector<juce::Component*> inRow, splitRow, crushRow, outRow, fbRow;
     std::vector<juce::Component*> filterTypeRow, filterKnobRow;
     std::vector<juce::Component*> tremHeadRow, tremKnobRow, rhythmRow;
     std::vector<juce::Component*> bandRow[3];

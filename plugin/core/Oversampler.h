@@ -147,10 +147,18 @@ public:
         pos_ = 0; delaySamples_ = 1.0;
     }
     void setMs(double ms){
-        const double d = ms * sr_ / 1000.0;
-        const double maxD = static_cast<double>(buf_.size()) - 3.0;
-        delaySamples_ = d < 1.0 ? 1.0 : (d > maxD ? maxD : d);
+        delaySamples_ = clampD(ms * sr_ / 1000.0);
+        step_ = 0.0; left_ = 0;
     }
+    // glide to a new length over n samples: a tuned loop swept by a knob or an
+    // LFO would otherwise jump once a block, which is a zipper at audio pitch
+    void rampToSamples(double d, int n){
+        d = clampD(d);
+        if (n <= 1){ delaySamples_ = d; step_ = 0.0; left_ = 0; return; }
+        step_ = (d - delaySamples_) / n; left_ = n;
+    }
+    double delaySamples() const { return delaySamples_; }
+    double maxSamples() const { return static_cast<double>(buf_.size()) - 3.0; }
     void reset(){ std::fill(buf_.begin(), buf_.end(), 0.0f); pos_ = 0; }
     inline double read() const {
         const int n = static_cast<int>(buf_.size());
@@ -164,10 +172,16 @@ public:
     inline void write(double x){
         buf_[static_cast<size_t>(pos_)] = static_cast<float>(x);
         if (++pos_ >= static_cast<int>(buf_.size())) pos_ = 0;
+        if (left_ > 0){ delaySamples_ += step_; --left_; }
     }
 private:
+    double clampD(double d) const {
+        const double maxD = static_cast<double>(buf_.size()) - 3.0;
+        return d < 1.0 ? 1.0 : (d > maxD ? maxD : d);
+    }
     std::vector<float> buf_;
-    double sr_ = 44100.0, delaySamples_ = 1.0;
+    double sr_ = 44100.0, delaySamples_ = 1.0, step_ = 0.0;
+    int left_ = 0;
     int pos_ = 0;
 };
 

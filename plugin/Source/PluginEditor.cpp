@@ -7,6 +7,14 @@ using namespace fracture;
 // value readouts formatted the way the browser version formats them
 static juce::String fmtValue(const ParamInfo& p, double v){
     if (p.id == "l1Rate" || p.id == "l2Rate" || p.id == "rhRate") return juce::String(v, v < 1.0 ? 2 : 1);
+    if (p.unit == "note"){                            // A3, or A3 +12c between notes
+        static const char* names[] = { "C","C#","D","D#","E","F","F#","G","G#","A","A#","B" };
+        const int k = juce::roundToInt(v);
+        const int cents = juce::roundToInt((v - k) * 100.0);
+        juce::String t = juce::String(names[((k % 12) + 12) % 12]) + juce::String(k / 12 - 1);
+        if (cents != 0) t << (cents > 0 ? " +" : " ") << cents << "c";
+        return t;
+    }
     if (p.unit == "deg") return juce::String(juce::roundToInt(v)) + " deg";
     if (p.unit == "oct") return std::fabs(v) < 0.05 ? juce::String("off")
                                                      : (v > 0 ? "+" : "") + juce::String(v, 1) + " oct";
@@ -475,7 +483,7 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     pScope  = make<Panel>(9, "Scope", ink);
     pTrem   = make<Panel>(10, "Tremolo", blue);
     pRhythm = make<Panel>(7, "Filter rhythm", blue);
-    panels = { pIn, pSplit, pDrive, pCrush, pFilter, pOut, pMod, pScope, pTrem };
+    panels = { pIn, pSplit, pDrive, pCrush, pFilter, pOut, pMod, pScope, pTrem, pRhythm };
 
     auto knob = [&](juce::Component* parent, const char* id, juce::Colour hue, bool small = false){
         auto* k = new KnobBox(proc, id, hue, small);
@@ -508,7 +516,10 @@ FractureEditor::FractureEditor(FractureProcessor& p)
                  divider(pSplit), choice(pSplit, "osFactor", "Oversampling", 108) };
     crushRow = { knob(pCrush, "bits", red), knob(pCrush, "redux", red), knob(pCrush, "crMix", red),
                  divider(pCrush),
-                 knob(pCrush, "fbAmt", red), knob(pCrush, "fbTime", red), knob(pCrush, "fbTone", red) };
+                 knob(pCrush, "fbAmt", red), knob(pCrush, "fbTime", red), knob(pCrush, "fbNote", red),
+                 knob(pCrush, "fbTone", red) };
+    fbRow = { choice(pCrush, "fbMode", "FB mode", 100), choice(pCrush, "fbDiv", "FB division", 110),
+              toggle(pCrush, "fbThru", red, 150) };
     filterTypeRow = { choice(pFilter, "fltType", "Type", 116),
                       choice(pFilter, "fltCirc", "Circuit", 116),
                       choice(pFilter, "fltPoles", "Slope", 96) };
@@ -773,7 +784,13 @@ void FractureEditor::layoutDesign(){
     pFilter->setBounds(rowC.removeFromLeft(cols(4)));
     rowC.removeFromLeft(gap);
     pOut->setBounds(rowC.removeFromLeft(cols(3)));
-    layoutRow(pCrush->content().withHeight(KnobBox::h), crushRow);
+    {   // the loop's length is a time, a pitch or a division, and the row
+        // under the knobs says which, and whether it goes back through the drive
+        auto inner = pCrush->content();
+        layoutRow(inner.removeFromTop(KnobBox::h), crushRow, 8);
+        inner.removeFromTop(8);
+        layoutRow(inner.withHeight(44), fbRow, 10);
+    }
     {   // the filter carries its circuit above its knobs
         auto inner = pFilter->content();
         layoutRow(inner.removeFromTop(44), filterTypeRow, 8);

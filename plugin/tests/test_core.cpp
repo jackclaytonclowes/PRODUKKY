@@ -14,6 +14,7 @@
 #include <vector>
 #include <random>
 #include <map>
+#include <complex>
 #include <tuple>
 
 using namespace fracture;
@@ -711,10 +712,13 @@ int main(int argc, char** argv){
         // saved sessions: 12 and 24 keep their indices, and every new modulatable
         // parameter is at the end of the matrix's destination list
         const auto& d = P.dests();
-        const char* newDests[] = { "fltMix", "rhDepth", "rhRate", "rhGroove", "rhPhase", "rhGlide" };
-        bool atEnd = d.size() > 6;
-        for (int k = 0; k < 6 && atEnd; ++k)
-            atEnd = P[d[d.size() - 6 + static_cast<size_t>(k)]].id == newDests[k];
+        // in the order they were added: the rhythm, then the tuned feedback
+        const char* newDests[] = { "fltMix", "rhDepth", "rhRate", "rhGroove", "rhPhase", "rhGlide",
+                                   "fbNote" };
+        const size_t nNew = sizeof(newDests) / sizeof(newDests[0]);
+        bool atEnd = d.size() > nNew;
+        for (size_t k = 0; k < nNew && atEnd; ++k)
+            atEnd = P[d[d.size() - nNew + k]].id == newDests[k];
         bool stepsOut = true;
         for (int dd : d) if (P[dd].id.rfind("rhStep", 0) == 0) stepsOut = false;
         check("new destinations are appended, so saved matrices keep their targets",
@@ -778,6 +782,118 @@ int main(int argc, char** argv){
         const double rel = 10.0 * std::log10(std::max(1e-30, diff) / sig);
         check("a rhythmic patch renders the same bar the same from anywhere", rel < -120.0,
               f2s(rel, 1) + " dB of difference");
+    }
+
+    // ------------------------------------------------------- tuned feedback
+    std::printf("\nTuned feedback\n");
+    {
+        // The frequency of the loop's fundamental, from how far its phase
+        // advances between two Hann-windowed frames one period apart. This is
+        // the partial the tuning sets. The first version of this test used an
+        // autocorrelation peak, which measures the spacing of the repeats — the
+        // loop's GROUP delay — and at low notes, where the DC blocker bends the
+        // phase, that is not the pitch of the fundamental at all.
+        auto cents = [](const std::vector<float>& x, size_t from, double hz, double sr){
+            const double per = sr / hz;
+            const int n = static_cast<int>(per * 12.0), D = static_cast<int>(std::lround(per));
+            const double w = 2.0 * M_PI * hz / sr;
+            auto frame = [&](size_t start){
+                std::complex<double> acc = 0.0;
+                for (int i = 0; i < n; ++i){
+                    const double win = 0.5 - 0.5 * std::cos(2.0 * M_PI * i / (n - 1));
+                    acc += static_cast<double>(x[start + static_cast<size_t>(i)]) * win * std::polar(1.0, -w * i);
+                }
+                return acc;
+            };
+            const double adv = std::arg(frame(from + static_cast<size_t>(D)) / frame(from));
+            const double dphi = std::remainder(adv - w * D, 2.0 * M_PI);
+            const double got = hz + dphi * sr / (2.0 * M_PI * D);
+            return 1200.0 * std::log2(got / hz);
+        };
+        const double sr = 48000.0;
+        // an impulse into the loop; the tail is the loop ringing on its own
+        auto ring = [&](Patch p, double note){
+            p.v["fbMode"] = 1; p.v["fbNote"] = static_cast<float>(note);
+            p.v["fbAmt"] = 85; p.v["fbTone"] = 14000; p.v["mix"] = 100;
+            std::vector<float> in(static_cast<size_t>(sr * 0.8), 0.0f);
+            in[100] = 0.5f;
+            const Take t = renderWith(p, in, sr, 128, false, 120.0, 0.0);
+            const double hz = 440.0 * std::pow(2.0, (note - 69.0) / 12.0);
+            // from three periods in, over thirty: at 85% a loop at 880 Hz has
+            // made 220 trips and decayed by 1e-15 by a quarter of a second, so a
+            // fixed window late in the tail measures nothing at all
+            return cents(t.L, static_cast<size_t>(100 + 3 * sr / hz), hz, sr);
+        };
+        Patch plain; plain.v = { {"bands", 0}, {"mx0", 0}, {"osFactor", 0} };
+        double worst = 0.0; std::string detail;
+        for (double note : { 33.0, 45.0, 57.0, 69.0, 81.0, 93.0 }){
+            const double c = ring(plain, note);
+            worst = std::max(worst, std::fabs(c));
+            detail += " " + f2s(note, 0) + ":" + f2s(c, 2);
+        }
+        check("the loop rings at the note it is set to, A1 to A6, within a cent",
+              worst < 1.0, "cents off at each MIDI note —" + detail);
+
+        // through the drive: the oversampler's 48 samples, a three-band split
+        // and the DC blockers are all inside the loop now, and compensated
+        Patch thru; thru.v = { {"bands", 2}, {"osFactor", 2}, {"fbThru", 1},
+                               {"m0a", 0}, {"m1a", 0}, {"m2a", 0},
+                               {"d0a", 1}, {"d1a", 1}, {"d2a", 1} };
+        worst = 0.0; detail.clear();
+        for (double note : { 45.0, 57.0, 69.0, 81.0 }){
+            const double c = ring(thru, note);
+            worst = std::max(worst, std::fabs(c));
+            detail += " " + f2s(note, 0) + ":" + f2s(c, 2);
+        }
+        check("and through the drive, split three ways at 4x, within 3 cents",
+              worst < 3.0, "cents off —" + detail);
+    }
+    {
+        // sync: a 1/8 at 120 BPM is 250 ms between repeats, to the sample
+        Patch p; p.v = { {"bands", 0}, {"mx0", 0}, {"osFactor", 0}, {"fbMode", 2}, {"fbDiv", 9},
+                         {"fbAmt", 50}, {"fbTone", 14000}, {"mix", 100} };
+        std::vector<float> in(48000, 0.0f);
+        in[1000] = 0.5f;
+        const Take t = renderWith(p, in, 48000.0, 128, true, 120.0, 0.0);
+        size_t second = 0; double best = 0.0;
+        for (size_t i = 1000 + 6000; i < 1000 + 18000; ++i)
+            if (std::fabs(t.L[i]) > best){ best = std::fabs(t.L[i]); second = i; }
+        check("synced feedback repeats on the division, to the sample",
+              std::llabs(static_cast<long long>(second) - 13000) <= 1,
+              "repeat at " + std::to_string(static_cast<long long>(second) - 1000) + " samples, want 12000");
+    }
+    {
+        // through the drive, every repeat is driven again: a sine burst into a
+        // folding band gains harmonics repeat after repeat; without it, only
+        // the burst is driven and the repeats stay as they came out
+        auto third = [&](bool thru){
+            Patch p; p.v = { {"bands", 0}, {"osFactor", 2}, {"m0a", 6}, {"d0a", 3},
+                             {"fbMode", 0}, {"fbTime", 40}, {"fbAmt", 80}, {"fbTone", 14000},
+                             {"fbThru", thru ? 1.0f : 0.0f}, {"autoGain", 1} };
+            std::vector<float> in(static_cast<size_t>(48000 * 0.3), 0.0f);
+            for (int i = 0; i < 480; ++i) in[static_cast<size_t>(i)] = static_cast<float>(0.2 * std::sin(2.0 * M_PI * 1000.0 * i / 48000.0));
+            const Take t = renderWith(p, in, 48000.0, 128, false, 120.0, 0.0);
+            // the third repeat, 120 ms in, measured as 3 kHz against 1 kHz
+            std::vector<float> seg(t.L.begin() + 5760 + 48, t.L.begin() + 5760 + 48 + 480);
+            auto amp = [&](double f){
+                double re = 0, im = 0;
+                for (size_t i = 0; i < seg.size(); ++i){ re += seg[i] * std::cos(2 * M_PI * f * i / 48000.0); im += seg[i] * std::sin(2 * M_PI * f * i / 48000.0); }
+                return std::sqrt(re * re + im * im);
+            };
+            return db(amp(3000) / std::max(1e-12, amp(1000)));
+        };
+        const double off = third(false), on = third(true);
+        check("through the drive, each repeat is driven again", on - off > 6.0,
+              "3rd harmonic of the 3rd repeat: " + f2s(off, 1) + " dB, " + f2s(on, 1) + " dB through the drive");
+    }
+    {
+        // the worst case stays inside the rails: the wrap shaper at full drive,
+        // 85% feedback, through the drive, at a low note
+        Patch p; p.v = { {"bands", 2}, {"m0a", 9}, {"m1a", 9}, {"m2a", 9}, {"d0a", 40}, {"d1a", 40}, {"d2a", 40},
+                         {"fbMode", 1}, {"fbNote", 36}, {"fbAmt", 85}, {"fbThru", 1} };
+        const Result r = render(p, 1.0);
+        check("through the drive at full tilt stays finite and bounded", r.bad == 0 && r.peak <= 1.0,
+              "peak " + f2s(r.peak, 3));
     }
 
     std::printf("\nTempo sync\n");

@@ -43,6 +43,8 @@ inline const char* const circuitNames[] = { "Clean","Analogue","Vintage" };
 // 36 and 48 were added later, at the end, so a saved 12 or 24 keeps its index
 inline const char* const slopeIds[]     = { "12","24","36","48" };
 inline const char* const slopeNames[]   = { "12 dB","24 dB","36 dB","48 dB" };
+inline const char* const fbModeIds[]   = { "time","pitch","sync" };
+inline const char* const fbModeNames[] = { "Time","Pitch","Sync" };
 inline const char* const rhythmShapeIds[] = { "sin","tri","saw","ramp","sqr","steps","rnd" };
 
 inline constexpr int numBands = 3;
@@ -202,6 +204,14 @@ private:
           for (int k = 0; k < 8; ++k)
               f("rhStep" + std::to_string(k + 1), "Step " + std::to_string(k + 1),
                 0, 100, pattern[k], false, false, "%"); }
+        // tuned feedback, after Rift: the loop's length as a time (what it
+        // always was), as a pitch it rings at, or as a note division; and
+        // whether it goes back through the drive section. At Time, off, it is
+        // the loop every existing patch was made with
+        c("fbMode", "FB mode", fbModeNames, 3, 0, -1, fbModeIds);
+        f("fbNote", "FB pitch", 24, 96, 57, false, true, "note");     // A3, 220 Hz
+        c("fbDiv",  "FB division", divNames + 1, numDivs - 1, 9, -1, divIds + 1);
+        b("fbThru", "FB through drive", false);
 
         // the matrix destination list is every modulatable parameter above
         for (size_t i = 0; i < info_.size(); ++i)
@@ -259,6 +269,7 @@ struct Ids {
     int bits, redux, crMix, fbAmt, fbTime, fbTone;
     int fltType, fltFreq, fltQ, fltCirc, fltPoles, fltDrive, fltDrift;
     int trOn, trDiv, trRate, trDepth, trShape, trEdge, trDuty, trSpread;
+    int fbMode, fbNote, fbDiv, fbThru;
     int fltMix, rhDepth, rhDiv, rhRate, rhShape, rhGroove, rhPhase, rhGlide, rhStep[8];
     int mix, width, outGain, autoGain, safety, osFactor;
     int l1Rate, l1Div, l1Shape, l1Depth, l2Rate, l2Div, l2Shape, l2Depth;
@@ -280,6 +291,7 @@ private:
         fltDrive = I("fltDrive"); fltDrift = I("fltDrift");
         trOn = I("trOn"); trDiv = I("trDiv"); trRate = I("trRate"); trDepth = I("trDepth");
         trShape = I("trShape"); trEdge = I("trEdge"); trDuty = I("trDuty"); trSpread = I("trSpread");
+        fbMode = I("fbMode"); fbNote = I("fbNote"); fbDiv = I("fbDiv"); fbThru = I("fbThru");
         fltMix = I("fltMix"); rhDepth = I("rhDepth"); rhDiv = I("rhDiv"); rhRate = I("rhRate");
         rhShape = I("rhShape"); rhGroove = I("rhGroove"); rhPhase = I("rhPhase"); rhGlide = I("rhGlide");
         for (int k = 0; k < 8; ++k) rhStep[k] = I(("rhStep" + std::to_string(k + 1)).c_str());

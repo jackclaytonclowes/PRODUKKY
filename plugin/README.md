@@ -190,6 +190,30 @@ Filter mix defaults to 100% and Rhythm mod to off.
 - None of this is in the browser version, so a patch copied out of the plugin carries ids
   the browser does not know about. Patches from the browser still load here unchanged.
 
+**The feedback loop can be tuned**, after Rift. **FB mode** sets what its length is:
+**Time** is the 1–250 ms it always was (and the default, so no patch changes); **Pitch**
+makes the loop ring at a note, from C1 to C7, as a comb or a resonator; **Sync** makes each
+repeat one note division at the host's tempo. **FB through drive** sends the repeats back
+in before the split instead of after it, so every repeat is split and driven again — the
+thing that turns a comb into a growl. **FB pitch** is a matrix destination, so a loop can
+be swept in tune by an LFO or the envelope.
+
+The pitch is exact because the loop is tuned as a whole, not just its delay line. The
+tone filter, the DC blocker and the linear interpolation all have a phase at the target
+note, and through the drive so do the oversampler (48 samples at 4x, most of a cycle at
+1 kHz), the crossover and each band's DC blockers. The plugin computes that phase from
+the same filters the audio runs through and shortens the delay by it. Measured, the
+fundamental lands within 0.1 cent from A1 to A6, and within a cent through the drive at
+4x with three bands. Without the correction it is up to 66 cents out on its own and more
+than four semitones out through the drive; the test was run that way to check it fails.
+
+Two things the tuning cannot do. The shapers and the loop's saturator are memoryless, so
+they do not move the fundamental, but driven hard they add harmonics and so change what
+the note sounds like. And a high note through the oversampler can need a loop shorter
+than the oversampler's own latency: there, it rings an octave down rather than out of
+tune. In Pitch mode the DC blocker drops from 40 Hz to 10 Hz, because at 40 Hz it bends
+the phase of a low note's partials apart; in Time mode it is where it always was.
+
 **Sync** appears on the tremolo and on both LFOs as one list whose first entry is `Free`,
 rather than a toggle plus a division that can disagree with each other. A division takes
 its phase from the host's song position, so the same bar sounds the same wherever you drop
@@ -197,7 +221,7 @@ the playhead, and keeps running at the host's tempo while the transport is stopp
 
 ## What is verified, and where
 
-`npm run test:core` — 87 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 92 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -235,6 +259,12 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   corner; filter mix at 0 takes the filter out exactly; the rhythm opens the filter by
   12 dB on the beat on both circuits and renders the same bar identically from two bars
   later; and the new matrix destinations are at the end of the list
+- a tuned loop's fundamental is within a cent of the note from A1 to A6, and through the
+  drive at 4x with three bands, measured by phase advance rather than by autocorrelation
+  (which reports the spacing of the repeats, not the pitch of the note); a synced loop
+  repeats on the division to the sample; through the drive the third repeat carries
+  40 dB more third harmonic than without; and the worst case (wrap at full drive, 85%,
+  through the drive) stays inside the rails
 
 `host_smoke` — 29 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
@@ -251,8 +281,12 @@ opening a DAW.
 - The oversampler is correct but not cheap — around 780 multiply-adds per sample per band
   per channel at 4x. If CPU matters, swap `Oversampler` for `juce::dsp::Oversampling`,
   which is polyphase; the interface is a drop-in.
-- The tremolo and the LFOs sync to the host, but nothing else does: there is no
-  tempo-locked feedback time, which is the obvious next one.
+- Rift takes the feedback pitch from incoming MIDI. This does not: an effect that accepts
+  MIDI is a different kind of Audio Unit (`aumf` rather than `aufx`), and changing it would
+  re-register the plugin and break every Logic session that already uses it. Set FB pitch
+  by hand, or automate it.
+- Sync mode's loop is capped at 2.1 seconds, which is a 1/4 at 30 BPM or a bar at 115;
+  longer divisions are clamped to it.
 - The tremolo's shape is drawn on the panel from the same arithmetic the DSP uses, but the
   drawing does not know about modulation of depth or duty, so a heavily modulated tremolo
   is shown at its unmodulated shape.
