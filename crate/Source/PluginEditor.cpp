@@ -208,7 +208,7 @@ void StepEditor::paint(juce::Graphics& g){
     // any other shape, drawn across eight cycles from the same arithmetic the DSP uses
     if (!stepsShape){
         crate::RhythmMod r;
-        r.configure(9, 2.0, shape, proc.apvts.getRawParameterValue("rhGroove")->load(), 0.0, 0.0, stepVals);
+        r.configure(1.0, 2.0, shape, proc.apvts.getRawParameterValue("rhGroove")->load(), 0.0, 0.0, stepVals);
         juce::Path path;
         const int n = L.getWidth();
         for (int x = 0; x <= n; ++x){

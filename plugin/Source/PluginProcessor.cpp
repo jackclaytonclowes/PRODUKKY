@@ -101,6 +101,7 @@ void FractureProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 
     inPeak.store(engine.inPeak);
     outPeak.store(engine.outPeak);
+    rhythmOut.store(engine.rhythmOut());
     lfo1.store(engine.lfo1());
     lfo2.store(engine.lfo2());
     envOut.store(engine.envOut());

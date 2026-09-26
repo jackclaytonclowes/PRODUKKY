@@ -13,6 +13,7 @@
 #include <algorithm>
 #include "Shapers.h"
 #include "Sync.h"
+#include "RhythmMod.h"
 
 namespace fracture {
 
@@ -39,8 +40,10 @@ inline const char* const filterTypeNames[] = { "Off","Low pass","High pass","Ban
 inline const char* const modSourceNames[] = { "—","LFO 1","LFO 2","Envelope","Envelope inv","Tremolo" };
 inline const char* const circuitIds[]   = { "clean","analog","vintage" };
 inline const char* const circuitNames[] = { "Clean","Analogue","Vintage" };
-inline const char* const slopeIds[]     = { "12","24" };
-inline const char* const slopeNames[]   = { "12 dB","24 dB" };
+// 36 and 48 were added later, at the end, so a saved 12 or 24 keeps its index
+inline const char* const slopeIds[]     = { "12","24","36","48" };
+inline const char* const slopeNames[]   = { "12 dB","24 dB","36 dB","48 dB" };
+inline const char* const rhythmShapeIds[] = { "sin","tri","saw","ramp","sqr","steps","rnd" };
 
 inline constexpr int numBands = 3;
 inline constexpr int numSlots = 6;          // modulation matrix slots
@@ -170,7 +173,7 @@ private:
         //
         // the ladder: circuit, slope, and the two controls only it has
         c("fltCirc",  "Filter circuit", circuitNames, 3, 0, -1, circuitIds);
-        c("fltPoles", "Filter slope",   slopeNames,   2, 1, -1, slopeIds);
+        c("fltPoles", "Filter slope",   slopeNames,   4, 1, -1, slopeIds);
         f("fltDrive", "Filter drive", 1, 16, 1, true, true, "x");
         f("fltDrift", "Filter drift", 0, 100, 35, false, false, "%");
         // tremolo, at the very end of the chain
@@ -182,6 +185,23 @@ private:
         f("trEdge",   "Trem edge",   0, 100, 50, false, true, "%");
         f("trDuty",   "Trem duty",   5, 95, 50, false, true, "%");
         f("trSpread", "Trem spread", 0, 180, 0, false, true, "deg");
+        // the rhythm on the post filter, and the filter's own mix. The rule
+        // above applies: the modulatable ones are new destinations, so they go
+        // here, after everything that was already a destination. The eight
+        // steps are not destinations; eight more entries in every matrix
+        // target list would bury the ones people actually reach for.
+        f("fltMix",   "Filter mix",   0, 100, 100, false, true, "%");
+        f("rhDepth",  "Rhythm mod",   -6, 6, 0, false, true, "oct");
+        c("rhDiv",    "Rhythm",       divNames, numDivs, 10, -1, divIds);
+        f("rhRate",   "Rhythm rate",  0.05f, 20, 2, true, true, "Hz");
+        c("rhShape",  "Rhythm shape", rhythmShapeNames, rhythmNumShapes, 0, -1, rhythmShapeIds);
+        f("rhGroove", "Groove",       50, 75, 50, false, true, "%");
+        f("rhPhase",  "Rhythm phase", 0, 180, 0, false, true, "deg");
+        f("rhGlide",  "Glide",        0, 100, 10, false, true, "%");
+        { const float pattern[8] = { 100, 0, 60, 0, 100, 25, 60, 0 };
+          for (int k = 0; k < 8; ++k)
+              f("rhStep" + std::to_string(k + 1), "Step " + std::to_string(k + 1),
+                0, 100, pattern[k], false, false, "%"); }
 
         // the matrix destination list is every modulatable parameter above
         for (size_t i = 0; i < info_.size(); ++i)
@@ -239,6 +259,7 @@ struct Ids {
     int bits, redux, crMix, fbAmt, fbTime, fbTone;
     int fltType, fltFreq, fltQ, fltCirc, fltPoles, fltDrive, fltDrift;
     int trOn, trDiv, trRate, trDepth, trShape, trEdge, trDuty, trSpread;
+    int fltMix, rhDepth, rhDiv, rhRate, rhShape, rhGroove, rhPhase, rhGlide, rhStep[8];
     int mix, width, outGain, autoGain, safety, osFactor;
     int l1Rate, l1Div, l1Shape, l1Depth, l2Rate, l2Div, l2Shape, l2Depth;
     int envAtk, envRel, envSens;
@@ -259,6 +280,9 @@ private:
         fltDrive = I("fltDrive"); fltDrift = I("fltDrift");
         trOn = I("trOn"); trDiv = I("trDiv"); trRate = I("trRate"); trDepth = I("trDepth");
         trShape = I("trShape"); trEdge = I("trEdge"); trDuty = I("trDuty"); trSpread = I("trSpread");
+        fltMix = I("fltMix"); rhDepth = I("rhDepth"); rhDiv = I("rhDiv"); rhRate = I("rhRate");
+        rhShape = I("rhShape"); rhGroove = I("rhGroove"); rhPhase = I("rhPhase"); rhGlide = I("rhGlide");
+        for (int k = 0; k < 8; ++k) rhStep[k] = I(("rhStep" + std::to_string(k + 1)).c_str());
         mix = I("mix"); width = I("width"); outGain = I("outGain");
         autoGain = I("autoGain"); safety = I("safety"); osFactor = I("osFactor");
         l1Rate = I("l1Rate"); l1Div = I("l1Div"); l1Shape = I("l1Shape"); l1Depth = I("l1Depth");

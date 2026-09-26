@@ -121,7 +121,7 @@ public:
         {
             double steps[RhythmMod::numSteps];
             for (int k = 0; k < RhythmMod::numSteps; ++k) steps[k] = v_[static_cast<size_t>(id.rhStep[k])] / 100.0;
-            rhythm_.configure(static_cast<int>(v_[static_cast<size_t>(id.rhDiv)]),
+            rhythm_.configure(rhythmDivBeats[std::clamp(static_cast<int>(v_[static_cast<size_t>(id.rhDiv)]), 0, rhythmNumDivs - 1)],
                               v_[static_cast<size_t>(id.rhRate)],
                               static_cast<int>(v_[static_cast<size_t>(id.rhShape)]),
                               v_[static_cast<size_t>(id.rhGroove)],

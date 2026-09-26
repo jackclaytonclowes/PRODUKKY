@@ -20,7 +20,12 @@
 //
 // Every response comes from the same ladder by mixing the four taps
 // (Oberheim-style mode mixing), so switching type or slope never re-tunes the
-// resonance or jumps in level.
+// resonance or jumps in level. 36 and 48 dB add two or four plain TPT
+// one-poles after the ladder, at the same corner, which steepen the response
+// without resonating: low pass adds low passes, high pass adds high passes,
+// band pass a low and a high per pair, and from 36 dB up notch and peak are
+// built on that steeper band pass (input minus it, and input plus twice it).
+// At 12 and 24 dB everything is exactly what it was.
 //
 // The clean biquad path is still there and is still the default: this filter
 // only runs when the Circuit control asks for it, so every patch made before
@@ -62,6 +67,7 @@ public:
 
     void reset(){
         z_[0] = z_[1] = z_[2] = z_[3] = 0.0;
+        e_[0] = e_[1] = e_[2] = e_[3] = 0.0;
         hf_ = 0.0;
         drift_ = driftTarget_ = 0.0;
         driftCount_ = 0;
@@ -74,7 +80,7 @@ public:
     void set(int type, int poles, int circuit, double freq, double reso,
              double drive, double driftAmt){
         type_ = std::clamp(type, 1, 5);
-        poles_ = poles >= 4 ? 4 : 2;
+        poles_ = poles >= 8 ? 8 : (poles >= 6 ? 6 : (poles >= 4 ? 4 : 2));
         circuit_ = circuit == Vintage ? Vintage : Analogue;
         freq_ = std::clamp(freq, 20.0, sr_ * 0.45);
         k_ = resoToFeedback(reso);
@@ -100,6 +106,13 @@ public:
         coeffCount_ = 0;                                  // recompute on the next sample
     }
 
+    // move the corner without touching anything else: the rhythm modulator
+    // calls this every few samples, and the coefficients follow on the next one
+    void retune(double freq){
+        freq_ = poleFreq_ = std::clamp(freq, 20.0, sr_ * 0.45);
+        coeffCount_ = 0;
+    }
+
     double process(double x){
         if (--coeffCount_ <= 0){ updateDrift(); updateCoeffs(); coeffCount_ = coeffInterval; }
 
@@ -119,6 +132,7 @@ public:
         const double y4 = G_ * y3 + b4; z_[3] = 2.0 * y4 - s4;
 
         double out = a0_ * u + a1_ * y1 + a2_ * y2 + a3_ * y3 + a4_ * y4;
+        if (poles_ > 4) out = steepen(out, u, y2, y3, y4);
         if (circuit_ == Vintage){                          // the top end a real one never had
             hf_ += (out - hf_) * hfK_;
             out = hf_;
@@ -127,6 +141,36 @@ public:
     }
 
 private:
+    // one TPT low-pass step on state s
+    inline double lp(double& s, double x) const {
+        const double v = (x - s) * G_;
+        const double y = v + s;
+        s = y + v;
+        return y;
+    }
+    // the extra one-poles for 36 and 48 dB
+    double steepen(double out, double u, double y2, double y3, double y4){
+        const int extra = poles_ - 4;
+        switch (type_){
+        case 1: for (int k = 0; k < extra; ++k) out = lp(e_[k], out); return out;
+        case 2: for (int k = 0; k < extra; ++k) out -= lp(e_[k], out); return out;
+        default: {
+            // band pass of N poles, unity at the corner: the four-pole one from
+            // the taps, then a low and a high one-pole per extra pair, each pair
+            // doubled because a low and a high meet at -6 dB
+            double b = 4.0 * (y2 - 2.0 * y3 + y4);
+            for (int k = 0; k < extra; k += 2){
+                b = lp(e_[k], b);
+                b -= lp(e_[k + 1], b);
+                b *= 2.0;
+            }
+            if (type_ == 3) return b;
+            if (type_ == 4) return u - b;
+            return u + 2.0 * b;
+        }
+        }
+    }
+
     static constexpr int coeffInterval = 32;               // drift is slow; tan() is not
 
     // 0.3..18 of "Q" mapped onto ladder feedback. 4.0 is where a ladder starts
@@ -140,7 +184,7 @@ private:
     void setMix(){
         // taps: u, y1..y4. Everything is a mix of the same ladder, so changing
         // type does not re-tune the resonance.
-        const bool four = poles_ == 4;
+        const bool four = poles_ >= 4;              // 36 and 48 build on the four-pole taps
         switch (type_){
         case 1:                                            // low pass: one tap
             if (four) set5(0, 0, 0, 0, 1); else set5(0, 0, 1, 0, 0);
@@ -191,6 +235,7 @@ private:
     double G_ = 0.1, omG_ = 0.9, G4_ = 0.0001;
     double a0_ = 0, a1_ = 0, a2_ = 0, a3_ = 0, a4_ = 1;
     double z_[4] = { 0, 0, 0, 0 };
+    double e_[4] = { 0, 0, 0, 0 };                        // the 36/48 dB extras
     double hf_ = 0.0, hfK_ = 0.5;
     double drift_ = 0.0, driftTarget_ = 0.0;
     int driftCount_ = 0, coeffCount_ = 0;

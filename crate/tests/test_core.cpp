@@ -415,9 +415,10 @@ int main(){
         const auto v = rhythmTrace(sq, 1.0, true, 0.0, 120.0);
         double worst = 0.0;
         for (size_t k = 0; k < std::min(u.size(), v.size()); ++k) worst = std::max(worst, static_cast<double>(std::fabs(u[k] - v[k])));
-        // to within the rounding of the song position itself: an edge landing a
-        // sample late would show here as about 0.07
-        check("the same bar moves the same way from anywhere on the timeline", worst < 0.01, f2s(worst, 6));
+        // exactly: the rhythm is read mid-sample, so rounding in the song position
+        // cannot push an edge from one sample to the next (before it was, this
+        // measured 0.0008 and FRACTURE's version of the test failed outright)
+        check("the same bar moves the same way from anywhere on the timeline", worst < 1e-6, f2s(worst, 9));
     }
     {
         // groove 66 on 1/8 squares: the second of each pair starts two thirds of

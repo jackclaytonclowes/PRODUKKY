@@ -6,6 +6,7 @@
 //   npm run test:core
 #include "FractureCore.h"
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -20,7 +21,7 @@ using namespace fracture;
 static int passed = 0;
 static std::vector<std::string> failures;
 static void check(const std::string& name, bool ok, const std::string& detail = ""){
-    if (ok){ ++passed; std::printf("  ok    %s\n", name.c_str()); }
+    if (ok){ ++passed; std::printf("  ok    %s%s\n", name.c_str(), std::getenv("VERBOSE") && !detail.empty() ? (" — " + detail).c_str() : ""); }
     else {
         failures.push_back(name + (detail.empty() ? "" : " — " + detail));
         std::printf("  FAIL  %s%s\n", name.c_str(), detail.empty() ? "" : (" — " + detail).c_str());
@@ -675,6 +676,110 @@ int main(int argc, char** argv){
     }
 
     // --------------------------------------------------------- the synced LFOs
+    // ------------------------------------------- slopes, rhythm and filter mix
+    std::printf("\nFilter slopes and rhythm\n");
+    {
+        auto fp = [](int circuit, int type, int poles, double freq, double q = 0.3){
+            Patch p; p.v = { {"bands", 0}, {"mx0", 0}, {"osFactor", 0},
+                             {"fltType", static_cast<float>(type)}, {"fltFreq", static_cast<float>(freq)},
+                             {"fltQ", static_cast<float>(q)}, {"fltCirc", static_cast<float>(circuit)},
+                             {"fltPoles", static_cast<float>(poles)}, {"fltDrift", 0} };
+            return p;
+        };
+        auto gainAt = [&](const Patch& p, double freq){
+            Engine e; e.prepare(48000.0, 128); applyPatch(e, p); e.seedFrom(0);
+            return db(sineAmplitude(e, freq, 48000.0));
+        };
+        // each slope, clean and analogue, over the octave from 2 to 4 kHz with
+        // the corner at 250 Hz, where all of them have settled
+        double worst = 0.0; std::string detail;
+        for (int circuit = 0; circuit < 2; ++circuit) for (int k = 0; k < 4; ++k){
+            const double want = 12.0 * (k + 1);
+            const double got = gainAt(fp(circuit, 1, k, 250), 2000) - gainAt(fp(circuit, 1, k, 250), 4000);
+            const double err = std::fabs(got - want) / want;
+            detail += (circuit ? " A" : " C") + std::to_string(static_cast<int>(want)) + "=" + f2s(got, 1);
+            worst = std::max(worst, err);
+        }
+        check("12, 24, 36 and 48 dB an octave, clean and analogue", worst < 0.12, detail);
+        // the extra poles do not move the mark or the level: an analogue band
+        // pass at 48 dB still peaks on its corner at the level the 24 dB one does
+        const double bp24 = gainAt(fp(1, 3, 1, 1000), 1000), bp48 = gainAt(fp(1, 3, 3, 1000), 1000);
+        check("a 48 dB band pass peaks where the 24 dB one does, at the same level",
+              std::fabs(bp48 - bp24) < 1.0, f2s(bp24, 2) + " dB vs " + f2s(bp48, 2) + " dB");
+        const double n36 = gainAt(fp(1, 4, 2, 1000), 1000) - gainAt(fp(1, 4, 2, 1000), 100);
+        check("and a 36 dB notch is still a notch on its corner", n36 < -30.0, f2s(n36, 1) + " dB");
+        // saved sessions: 12 and 24 keep their indices, and every new modulatable
+        // parameter is at the end of the matrix's destination list
+        const auto& d = P.dests();
+        const char* newDests[] = { "fltMix", "rhDepth", "rhRate", "rhGroove", "rhPhase", "rhGlide" };
+        bool atEnd = d.size() > 6;
+        for (int k = 0; k < 6 && atEnd; ++k)
+            atEnd = P[d[d.size() - 6 + static_cast<size_t>(k)]].id == newDests[k];
+        bool stepsOut = true;
+        for (int dd : d) if (P[dd].id.rfind("rhStep", 0) == 0) stepsOut = false;
+        check("new destinations are appended, so saved matrices keep their targets",
+              atEnd && stepsOut && std::string(slopeIds[0]) == "12" && std::string(slopeIds[1]) == "24");
+    }
+    {
+        // filter mix at zero takes the post filter out entirely
+        auto p = [](double freq){
+            Patch q; q.v = { {"bands", 0}, {"mx0", 0}, {"osFactor", 0}, {"fltType", 1},
+                             {"fltFreq", static_cast<float>(freq)}, {"fltMix", 0} };
+            return q;
+        };
+        std::vector<float> in(24000);
+        for (size_t i = 0; i < in.size(); ++i) in[i] = static_cast<float>(0.3 * std::sin(i * 0.37) * std::sin(i * 0.011));
+        const Take a = renderWith(p(200), in, 48000.0, 128, false, 120.0, 0.0);
+        const Take b = renderWith(p(16000), in, 48000.0, 128, false, 120.0, 0.0);
+        double worst = 0.0;
+        for (size_t i = 0; i < in.size(); ++i) worst = std::max(worst, static_cast<double>(std::fabs(a.L[i] - b.L[i])));
+        check("filter mix at zero takes the post filter out", worst < 1e-6, f2s(worst, 9));
+    }
+    {
+        // the rhythm on the post filter: a 1/4 square, +4 octaves from 300 Hz,
+        // on noise, clean circuit. The high half of each beat is brighter.
+        auto rp = [](int circuit){
+            Patch q; q.v = { {"bands", 0}, {"mx0", 0}, {"osFactor", 0}, {"fltType", 1},
+                             {"fltFreq", 300}, {"fltQ", 0.7f}, {"fltCirc", static_cast<float>(circuit)},
+                             {"rhShape", 4}, {"rhDiv", 7}, {"rhGlide", 0}, {"rhDepth", 4} };
+            return q;
+        };
+        std::vector<float> in(96000);
+        uint32_t r = 7;
+        for (auto& v : in){ r = r * 1664525u + 1013904223u; v = static_cast<float>((r >> 8) / 8388608.0 - 1.0) * 0.3f; }
+        for (int circuit = 0; circuit < 2; ++circuit){
+            const Take t = renderWith(rp(circuit), in, 48000.0, 128, true, 120.0, 0.0);
+            double hi = 0, lo = 0;
+            for (int beat = 1; beat < 3; ++beat){
+                const size_t s0 = static_cast<size_t>(beat * 24000);
+                for (size_t k = 480; k < 9600; ++k){
+                    hi += t.L[s0 + k] * t.L[s0 + k];
+                    lo += t.L[s0 + 12000 + k] * t.L[s0 + 12000 + k];
+                }
+            }
+            check(std::string("the rhythm opens the ") + (circuit ? "analogue" : "clean") + " filter on the beat",
+                  10.0 * std::log10(hi / lo) > 6.0, "+" + f2s(10.0 * std::log10(hi / lo), 1) + " dB");
+        }
+        // and the same bar sounds the same from two bars later
+        std::vector<float> tone(48000);
+        for (size_t i = 0; i < tone.size(); ++i) tone[i] = static_cast<float>(0.2 * std::sin(i * 2.0 * M_PI * 220.0 / 48000.0));
+        Patch st = rp(1); st.v["rhShape"] = 5; st.v["rhDiv"] = 12;       // steps on 1/16
+        const Take a = renderWith(st, tone, 48000.0, 128, true, 120.0, 0.0);
+        const Take b = renderWith(st, tone, 48000.0, 128, true, 120.0, 8.0);
+        // judged as the RMS of the difference. Before the rhythm was read
+        // mid-sample this was -47 dB: at 120 BPM a sixteenth is exactly 6000
+        // samples, so step edges sat exactly on sample instants and rounding in
+        // the song position decided which side they fell
+        double diff = 0.0, sig = 0.0;
+        for (size_t i = 0; i < tone.size(); ++i){
+            const double d = a.L[i] - b.L[i];
+            diff += d * d; sig += static_cast<double>(a.L[i]) * a.L[i];
+        }
+        const double rel = 10.0 * std::log10(std::max(1e-30, diff) / sig);
+        check("a rhythmic patch renders the same bar the same from anywhere", rel < -120.0,
+              f2s(rel, 1) + " dB of difference");
+    }
+
     std::printf("\nTempo sync\n");
     {
         // an LFO on the output gain, with a flat input: the output is the LFO

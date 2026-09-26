@@ -86,6 +86,7 @@ core/               the DSP. No JUCE, no dependencies, no allocation in the audi
   AnalogFilter.h    the nonlinear ladder: zero-delay feedback, saturation, drift
   Tremolo.h         shape, duty, edge and spread, locked to the host's bar
   Sync.h            the transport, and the note divisions that read from it
+  RhythmMod.h       the filter's rhythm: shapes, steps, groove, phase, glide
   ParamTable.h      ONE parameter table — the DSP, the host and patch import share it
   Presets.h         generated from the browser presets; do not edit
   FractureCore.h    the whole processor
@@ -162,6 +163,33 @@ hardware tremolo has ever switched that fast; Spread offsets the right channel, 
 180° it is auto-pan. It is also a modulation source, so the same rhythm that chops the
 level can sweep the filter.
 
+**Slope** now runs to 36 and 48 dB, and the filter has a **Filter rhythm** section, after
+the parameter set of FilterFreak (not its look, and not its code). All of it is new, so
+it is at its neutral setting in every existing patch: 12 and 24 dB keep their indices,
+Filter mix defaults to 100% and Rhythm mod to off.
+
+- **36 and 48 dB** add two or four plain one-poles after the ladder, at the same corner,
+  so the extra slope does not re-tune the resonance or move the mark; on the clean circuit
+  they are more biquads in the cascade. Peak stops at two sections, since cascading a
+  9 dB boost four times makes a spike rather than a steeper shape.
+- **Filter mix** blends the filter against what went into it, which is what makes a
+  resonant sweep usable on a full mix.
+- **Rhythm mod** is how far, in octaves, either way from Cutoff, which stays the resting
+  point. **Rhythm** is the same division list the LFOs and the tremolo use (Free runs at
+  **Rate**). **Shape** is sine, triangle, both saws, square, a random value per division,
+  or **Steps**: eight bars drawn on the panel. **Groove** swings every second division
+  late, so on Steps it is swung sixteenths; **Phase** offsets the right channel; **Glide**
+  rounds the edges. The filter is retuned every 16 samples.
+- It reads the song position, so the same bar moves the same way wherever the playhead
+  starts, and Random is a hash of the position, so two bounces agree. It is read at the
+  middle of each sample: at 120 BPM a sixteenth is exactly 6000 samples at 48 kHz, so
+  step edges sat exactly on sample instants and rounding in the song position decided
+  which side they fell, which a test caught at -47 dB of difference between two bars.
+- Rhythm mod, Filter mix, Rate, Groove, Phase and Glide are matrix destinations, added at
+  the end of the list so every saved matrix keeps its targets. The eight steps are not.
+- None of this is in the browser version, so a patch copied out of the plugin carries ids
+  the browser does not know about. Patches from the browser still load here unchanged.
+
 **Sync** appears on the tremolo and on both LFOs as one list whose first entry is `Free`,
 rather than a toggle plus a division that can disagree with each other. A division takes
 its phase from the host's song position, so the same bar sounds the same wherever you drop
@@ -169,7 +197,8 @@ the playhead, and keeps running at the host's tempo while the transport is stopp
 
 ## What is verified, and where
 
-`npm run test:core` — 79 assertions, no JUCE needed:
+`npm run test:core` — 87 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
   half-steps where JS and C round differently. `tools/make-reference.mjs` pulls the
@@ -201,6 +230,11 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   and zero depth is the bypassed signal to within 1e-7
 - a synced LFO follows the host's quarters, keeps moving while the transport is stopped,
   and hands control back to the rate knob on Free
+- 12, 24, 36 and 48 dB an octave on both circuits (measured 11.9 to 49.0); a 48 dB band
+  pass peaks where and as loud as the 24 dB one; a 36 dB notch is 45 dB deep on its
+  corner; filter mix at 0 takes the filter out exactly; the rhythm opens the filter by
+  12 dB on the beat on both circuits and renders the same bar identically from two bars
+  later; and the new matrix destinations are at the end of the list
 
 `host_smoke` — 29 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
@@ -222,7 +256,7 @@ opening a DAW.
 - The tremolo's shape is drawn on the panel from the same arithmetic the DSP uses, but the
   drawing does not know about modulation of depth or duty, so a heavily modulated tremolo
   is shown at its unmodulated shape.
-- GUI resizing is uniform scaling only: the interface is laid out once at 1180 x 1190 and
+- GUI resizing is uniform scaling only: the interface is laid out once at 1320 x 1376 and
   the whole canvas is scaled to the window, so nothing is ever cropped, but nothing
   reflows either. The aspect ratio is fixed and the window opens smaller than the design
   size on a screen that cannot fit it.

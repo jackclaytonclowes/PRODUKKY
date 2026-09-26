@@ -46,6 +46,7 @@ public:
     // metering and scope data for the editor, written on the audio thread
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
     std::atomic<float> lfo1 { 0.0f }, lfo2 { 0.0f }, envOut { 0.0f }, tremOut { 0.0f };
+    std::atomic<float> rhythmOut { 0.0f };             // 0..1, for the step display
     std::atomic<float> hostBpm { 120.0f };             // what the panel shows next to a division
     std::atomic<bool>  hostPlaying { false };
     static constexpr int scopeOrder = 11;                 // 2048-point FFT

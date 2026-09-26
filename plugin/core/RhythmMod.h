@@ -1,4 +1,5 @@
-// RhythmMod.h — the rhythm that moves the filter.
+// RhythmMod.h — the rhythm that moves the filter. The same class as CRATE's
+// (crate/core/RhythmMod.h), copied so each product's core builds on its own.
 //
 // A FilterFreak-style modulator: a shape repeated once per note division,
 // locked to the host's song position, with a groove that swings every second
@@ -28,19 +29,10 @@
 #include <cstdint>
 #include <algorithm>
 
-namespace crate {
+namespace fracture {
 
-// note divisions in beats; the first entry is Free, so there is one list and
-// no separate sync switch that could disagree with it
-inline const char* const rhythmDivNames[] = {
-    "Free", "4 bars", "2 bars", "1 bar", "1/2", "1/4 dot", "1/4", "1/4 trip",
-    "1/8 dot", "1/8", "1/8 trip", "1/16", "1/16 trip", "1/32"
-};
-inline const double rhythmDivBeats[] = {
-    0.0, 16.0, 8.0, 4.0, 2.0, 1.5, 1.0, 2.0 / 3.0, 0.75, 0.5, 1.0 / 3.0, 0.25, 1.0 / 6.0, 0.125
-};
-inline constexpr int rhythmNumDivs = 14;
-
+// The divisions are FRACTURE's own (Sync.h), shared with the LFOs and the
+// tremolo, so the same list means the same thing everywhere on the panel.
 inline const char* const rhythmShapeNames[] = {
     "Sine", "Triangle", "Saw up", "Saw down", "Square", "Steps", "Random"
 };
@@ -141,4 +133,4 @@ private:
     bool synced_ = false, first_ = true;
 };
 
-} // namespace crate
+} // namespace fracture

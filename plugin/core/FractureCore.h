@@ -14,9 +14,11 @@
 //                                  └─ feedback: delay ─ tone ─ saturator ──────┘
 //                    dry/wet ─ width (M/S) ─ tremolo ─ output gain ─ safety ─ out
 //
-// The post filter is either the clean biquad pair or the nonlinear ladder in
-// AnalogFilter.h, decided by the Circuit control; the tremolo is last, after
-// the dry/wet, because an insert tremolo modulates the whole track.
+// The post filter is either a cascade of clean biquads (one per 12 dB of slope)
+// or the nonlinear ladder in AnalogFilter.h, decided by the Circuit control. A
+// rhythm (RhythmMod.h) can move its cutoff in time with the host, and it has
+// its own mix against what went into it. The tremolo is last, after the
+// dry/wet, because an insert tremolo modulates the whole track.
 //
 // Differences from the browser version, all deliberate:
 //   * drive evaluates f(x * drive) per sample instead of indexing a fixed curve
@@ -43,6 +45,7 @@
 #include "AnalogFilter.h"
 #include "Tremolo.h"
 #include "Sync.h"
+#include "RhythmMod.h"
 
 namespace fracture {
 
@@ -78,6 +81,7 @@ public:
         for (int i = 0; i < P.count(); ++i) base_[i] = P[i].def;
 
         mod_.prepare(sampleRate);
+        rhythm_.prepare(sampleRate);
         trem_.prepare(sampleRate);
         for (int ch = 0; ch < maxChannels; ++ch){
             // a different seed per channel, or both channels drift in step and
@@ -92,8 +96,9 @@ public:
 
     void reset(){
         for (int ch = 0; ch < maxChannels; ++ch){
-            for (auto* f : { &preHP_[ch], &preLP_[ch], &fltA_[ch], &fltB_[ch], &fbTone_[ch], &fbHP_[ch] })
+            for (auto* f : { &preHP_[ch], &preLP_[ch], &fbTone_[ch], &fbHP_[ch] })
                 f->reset();
+            for (auto& f : flt_[ch]) f.reset();
             for (int b = 0; b < numBands; ++b){
                 Band& bd = bands_[b];
                 for (auto* f : { &bd.dcA[ch], &bd.dcB[ch], &bd.tiltLo[ch], &bd.tiltHi[ch] }) f->reset();
@@ -108,6 +113,7 @@ public:
         }
         crusher_.reset();
         mod_.reset();
+        rhythm_.reset();
         trem_.reset();
         first_ = true;
         inPeak = outPeak = 0.0f;
@@ -137,6 +143,7 @@ public:
     float lfo2() const { return static_cast<float>(mod_.lfo(1)); }
     float envOut() const { return static_cast<float>(mod_.env()); }
     float tremOut() const { return static_cast<float>(trem_.value()); }
+    float rhythmOut() const { return static_cast<float>(rhythm_.value(0)); }
 
     void process(float* const* io, int numChannels, int n){
         if (n <= 0) return;
@@ -173,12 +180,9 @@ public:
             const int ft = static_cast<int>(mv_[id.fltType]);
             if (ft > 0){
                 if (static_cast<int>(mv_[id.fltCirc]) == Ladder::Clean){
-                    static const Biquad::Type map[] = { Biquad::AllPass, Biquad::LowPass, Biquad::HighPass,
-                                                        Biquad::BandPass, Biquad::Notch, Biquad::Peaking };
-                    fltA_[ch].set(map[ft], mv_[id.fltFreq], sr_, mv_[id.fltQ], 9.0);
-                    fltB_[ch].copyCoeffs(fltA_[ch]);
+                    setCleanFilter(ch, ft, mv_[id.fltFreq]);
                 } else {
-                    ladder_[ch].set(ft, mv_[id.fltPoles] > 0.5f ? 4 : 2,
+                    ladder_[ch].set(ft, polesFor(mv_[id.fltPoles]),
                                     static_cast<int>(mv_[id.fltCirc]),
                                     mv_[id.fltFreq], mv_[id.fltQ],
                                     mv_[id.fltDrive], mv_[id.fltDrift] / 100.0);
@@ -232,7 +236,23 @@ public:
         const bool safety = mv_[id.safety] > 0.5f;
         const int ft = static_cast<int>(mv_[id.fltType]);
         const int circuit = static_cast<int>(mv_[id.fltCirc]);
-        const bool twoPole = mv_[id.fltPoles] < 0.5f;      // the clean pair is 24 dB; one of it is 12
+        // one clean section per 12 dB, except that Peak stops at two: cascading
+        // a 9 dB boost four times would be a 36 dB spike, not a steeper shape
+        const int sections = ft == 5 ? std::min(2, polesFor(mv_[id.fltPoles]) / 2)
+                                     : polesFor(mv_[id.fltPoles]) / 2;
+        const double fmix = mv_[id.fltMix] / 100.0;
+        const double rhDepth = mv_[id.rhDepth];
+        const bool rhythmOn = ft > 0 && rhDepth != 0.0;
+        {
+            double steps[RhythmMod::numSteps];
+            for (int k = 0; k < RhythmMod::numSteps; ++k) steps[k] = base_[id.rhStep[k]] / 100.0;
+            rhythm_.configure(beatsForDiv(static_cast<int>(mv_[id.rhDiv])), mv_[id.rhRate],
+                              static_cast<int>(mv_[id.rhShape]), mv_[id.rhGroove],
+                              mv_[id.rhPhase], mv_[id.rhGlide] / 100.0, steps);
+            rhythm_.beginBlock(transport_.valid && transport_.playing, transport_.ppq,
+                               transport_.valid ? transport_.bpm : 120.0);
+        }
+        const double cutoffBase = mv_[id.fltFreq];
         trem_.configure(mv_[id.trOn] > 0.5f, mv_[id.trRate], static_cast<int>(mv_[id.trDiv]),
                         mv_[id.trDepth], mv_[id.trShape], mv_[id.trEdge],
                         mv_[id.trDuty], mv_[id.trSpread], transport_);
@@ -241,6 +261,17 @@ public:
         // ---- per sample
         double inPk = 0.0, outPk = 0.0;
         for (int i = 0; i < n; ++i){
+            // the rhythm runs whether or not it is turned up, so it stays in
+            // phase; it retunes the filter every 16 samples (a third of a
+            // millisecond at 48 kHz), which is smooth and a sixteenth the cost
+            rhythm_.step();
+            if (rhythmOn && (i & 15) == 0){
+                for (int ch = 0; ch < nch; ++ch){
+                    const double f = cutoffBase * std::exp2(rhDepth * rhythm_.value(ch));
+                    if (circuit == Ladder::Clean) setCleanFilter(ch, ft, f);
+                    else ladder_[ch].retune(f);
+                }
+            }
             const double gIn = inG_.next(), gOut = outG_.next(), w = wet_.next();
             const double width = widthR_.next(), amt = fbAmt_.next(), cm = crMix_.next();
             double dA[numBands], dB[numBands], pA[numBands], pB[numBands], bm[numBands], bl[numBands];
@@ -300,10 +331,13 @@ public:
 
                 double v = crusher_.process(ch, node, bits, redux, cm);
                 if (ft > 0){
-                    if (circuit == Ladder::Clean)
-                        v = twoPole ? fltA_[ch].process(v) : fltB_[ch].process(fltA_[ch].process(v));
-                    else
+                    const double into = v;
+                    if (circuit == Ladder::Clean){
+                        for (int k = 0; k < sections; ++k) v = flt_[ch][k].process(v);
+                    } else {
                         v = ladder_[ch].process(v);
+                    }
+                    v = into + (v - into) * fmix;            // the filter's own mix
                 }
                 y[ch] = dryS * (1.0 - w) + v * w;
             }
@@ -343,7 +377,16 @@ private:
     Biquad xLP1a_[maxChannels], xLP1b_[maxChannels], xHP1a_[maxChannels], xHP1b_[maxChannels];
     Biquad xLP2a_[maxChannels], xLP2b_[maxChannels], xHP2a_[maxChannels], xHP2b_[maxChannels];
     Biquad xAP_[maxChannels];
-    Biquad fltA_[maxChannels], fltB_[maxChannels], fbTone_[maxChannels], fbHP_[maxChannels];
+    Biquad flt_[maxChannels][4], fbTone_[maxChannels], fbHP_[maxChannels];
+    RhythmMod rhythm_;
+
+    static int polesFor(float choice){ return 2 * (std::clamp(static_cast<int>(choice), 0, 3) + 1); }
+    void setCleanFilter(int ch, int type, double freq){
+        static const Biquad::Type map[] = { Biquad::AllPass, Biquad::LowPass, Biquad::HighPass,
+                                            Biquad::BandPass, Biquad::Notch, Biquad::Peaking };
+        flt_[ch][0].set(map[type], freq, sr_, mv_[Ids::get().fltQ], 9.0);
+        for (int k = 1; k < 4; ++k) flt_[ch][k].copyCoeffs(flt_[ch][0]);
+    }
     FracDelay fb_[maxChannels];
     DelayLine dry_[maxChannels];
     Ladder ladder_[maxChannels];

@@ -6,7 +6,10 @@ using namespace fracture;
 
 // value readouts formatted the way the browser version formats them
 static juce::String fmtValue(const ParamInfo& p, double v){
-    if (p.id == "l1Rate" || p.id == "l2Rate") return juce::String(v, v < 1.0 ? 2 : 1);
+    if (p.id == "l1Rate" || p.id == "l2Rate" || p.id == "rhRate") return juce::String(v, v < 1.0 ? 2 : 1);
+    if (p.unit == "deg") return juce::String(juce::roundToInt(v)) + " deg";
+    if (p.unit == "oct") return std::fabs(v) < 0.05 ? juce::String("off")
+                                                     : (v > 0 ? "+" : "") + juce::String(v, 1) + " oct";
     if (p.id == "redux") return "/" + juce::String(juce::roundToInt(v));
     if (p.id == "bits")  return juce::String(v, 1);
     if (p.id == "fltQ")  return juce::String(v, 2);
@@ -28,7 +31,7 @@ KnobBox::KnobBox(FractureProcessor& p, const juce::String& paramId, juce::Colour
     caption = info.id == "redux" ? "Downs." : juce::String(info.name);
     // the panel already says which section this is, so the caption need not
     for (const char* prefix : { "B1 ", "B2 ", "B3 ", "LFO 1 ", "LFO 2 ", "Env ",
-                                "Filter ", "Trem " })
+                                "Filter ", "Trem ", "Rhythm " })
         if (caption.startsWith(prefix)) caption = caption.substring(static_cast<int>(std::strlen(prefix)));
     slider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
     slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -327,6 +330,74 @@ void ModSources::paint(juce::Graphics& g){
 }
 
 // -------------------------------------------------------------------- editor
+// -------------------------------------------------------------- step editor
+StepEditor::StepEditor(FractureProcessor& p) : proc(p){ startTimerHz(24); }
+
+juce::Rectangle<int> StepEditor::lane() const { return getLocalBounds().reduced(10, 8).withTrimmedRight(26); }
+
+void StepEditor::paint(juce::Graphics& g){
+    auto area = getLocalBounds();
+    g.setColour(face); g.fillRect(area);
+    g.setColour(ink);  g.drawRect(area, 2);
+    const auto L = lane();
+    const int shape = static_cast<int>(proc.apvts.getRawParameterValue("rhShape")->load());
+    const bool stepsShape = shape == fracture::RhythmMod::Steps;
+    const float w = L.getWidth() / 8.0f;
+
+    double stepVals[8];
+    for (int k = 0; k < 8; ++k)
+        stepVals[k] = proc.apvts.getRawParameterValue("rhStep" + juce::String(k + 1))->load() / 100.0;
+
+    // the bars: solid when they are what plays, faint when another shape is
+    for (int k = 0; k < 8; ++k){
+        const float hgt = static_cast<float>(stepVals[k]) * L.getHeight();
+        g.setColour(stepsShape ? blue : track);
+        g.fillRect(L.getX() + k * w + 2.0f, L.getBottom() - hgt, w - 4.0f, hgt);
+    }
+    // any other shape, drawn across eight cycles from the same arithmetic the DSP uses
+    if (!stepsShape){
+        fracture::RhythmMod r;
+        r.configure(1.0, 2.0, shape, proc.apvts.getRawParameterValue("rhGroove")->load(), 0.0, 0.0, stepVals);
+        juce::Path path;
+        const int n = L.getWidth();
+        for (int x = 0; x <= n; ++x){
+            const double v = r.shapeAt(8.0 * x / n);
+            const float px = static_cast<float>(L.getX() + x), py = L.getBottom() - static_cast<float>(v) * L.getHeight();
+            if (x == 0) path.startNewSubPath(px, py); else path.lineTo(px, py);
+        }
+        g.setColour(blue); g.strokePath(path, juce::PathStrokeType(2.0f));
+    }
+    // where the rhythm is now
+    auto now = getLocalBounds().reduced(8).removeFromRight(14);
+    g.setColour(track); g.fillRect(now);
+    const float v = juce::jlimit(0.0f, 1.0f, proc.rhythmOut.load());
+    g.setColour(yellow);
+    g.fillRect(now.withTrimmedTop(juce::roundToInt((1.0f - v) * now.getHeight())));
+    g.setColour(ink); g.drawRect(now, 1);
+}
+
+void StepEditor::setFrom(juce::Point<int> pos){
+    const auto L = lane();
+    const int k = juce::jlimit(0, 7, static_cast<int>((pos.x - L.getX()) * 8 / juce::jmax(1, L.getWidth())));
+    const float v = juce::jlimit(0.0f, 1.0f, (L.getBottom() - pos.y) / static_cast<float>(juce::jmax(1, L.getHeight())));
+    if (k != dragging){
+        if (dragging >= 0)
+            if (auto* old = proc.apvts.getParameter("rhStep" + juce::String(dragging + 1))) old->endChangeGesture();
+        dragging = k;
+        if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(k + 1))) prm->beginChangeGesture();
+    }
+    if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(k + 1)))
+        prm->setValueNotifyingHost(prm->convertTo0to1(v * 100.0f));
+    repaint();
+}
+void StepEditor::mouseDown(const juce::MouseEvent& e){ setFrom(e.getPosition()); }
+void StepEditor::mouseDrag(const juce::MouseEvent& e){ setFrom(e.getPosition()); }
+void StepEditor::mouseUp(const juce::MouseEvent&){
+    if (dragging >= 0)
+        if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(dragging + 1))) prm->endChangeGesture();
+    dragging = -1;
+}
+
 static void layoutRow(juce::Rectangle<int> area, const std::vector<juce::Component*>& items, int gap = 12){
     int x = area.getX();
     for (auto* c : items){
@@ -400,9 +471,10 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     pCrush  = make<Panel>(4, "Crush & feedback", red);
     pFilter = make<Panel>(5, "Filter", blue);
     pOut    = make<Panel>(6, "Output", ink);
-    pMod    = make<Panel>(7, "Modulation", blue);
-    pScope  = make<Panel>(8, "Scope", ink);
-    pTrem   = make<Panel>(9, "Tremolo", blue);
+    pMod    = make<Panel>(8, "Modulation", blue);
+    pScope  = make<Panel>(9, "Scope", ink);
+    pTrem   = make<Panel>(10, "Tremolo", blue);
+    pRhythm = make<Panel>(7, "Filter rhythm", blue);
     panels = { pIn, pSplit, pDrive, pCrush, pFilter, pOut, pMod, pScope, pTrem };
 
     auto knob = [&](juce::Component* parent, const char* id, juce::Colour hue, bool small = false){
@@ -441,7 +513,14 @@ FractureEditor::FractureEditor(FractureProcessor& p)
                       choice(pFilter, "fltCirc", "Circuit", 116),
                       choice(pFilter, "fltPoles", "Slope", 96) };
     filterKnobRow = { knob(pFilter, "fltFreq", blue), knob(pFilter, "fltQ", blue),
-                      knob(pFilter, "fltDrive", blue), knob(pFilter, "fltDrift", blue) };
+                      knob(pFilter, "fltDrive", blue), knob(pFilter, "fltDrift", blue),
+                      knob(pFilter, "fltMix", blue) };
+    rhythmRow = { knob(pRhythm, "rhDepth", blue), choice(pRhythm, "rhDiv", "Rhythm", 104),
+                  knob(pRhythm, "rhRate", blue), choice(pRhythm, "rhShape", "Shape", 110),
+                  knob(pRhythm, "rhGroove", blue), knob(pRhythm, "rhPhase", blue),
+                  knob(pRhythm, "rhGlide", blue) };
+    steps = make<StepEditor>(proc);
+    pRhythm->addAndMakeVisible(steps);
     outRow   = { knob(pOut, "mix", ink), knob(pOut, "width", ink), knob(pOut, "outGain", ink) };
     outRow.push_back(toggle(pOut, "autoGain", yellow, 92));
     outRow.push_back(toggle(pOut, "safety", red, 92));
@@ -707,6 +786,16 @@ void FractureEditor::layoutDesign(){
         layoutRow(knobsRow, { outRow[0], outRow[1], outRow[2] });
         inner.removeFromTop(6);
         layoutRow(inner.withHeight(44), { outRow[3], outRow[4] }, 8);
+    }
+
+    area.removeFromTop(gap);
+    {   // the post filter's rhythm, full width: its controls, then its steps
+        pRhythm->setBounds(area.removeFromTop(172));
+        auto inner = pRhythm->content();
+        auto controls = inner.removeFromLeft(640);
+        layoutRow(controls.withSizeKeepingCentre(controls.getWidth(), KnobBox::h), rhythmRow, 10);
+        inner.removeFromLeft(12);
+        steps->setBounds(inner);
     }
 
     area.removeFromTop(gap);

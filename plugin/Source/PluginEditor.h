@@ -90,6 +90,24 @@ private:
     FractureProcessor& proc;
 };
 
+// the rhythm, drawn: eight steps you draw with the mouse when the shape is
+// Steps, the shape itself across eight cycles when it is anything else, and
+// where the rhythm is right now on the right. The same component CRATE has.
+class StepEditor : public juce::Component, private juce::Timer {
+public:
+    explicit StepEditor(FractureProcessor&);
+    void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+private:
+    void timerCallback() override { repaint(); }
+    juce::Rectangle<int> lane() const;
+    void setFrom(juce::Point<int>);
+    FractureProcessor& proc;
+    int dragging = -1;
+};
+
 class ModSources : public juce::Component, private juce::Timer {
 public:
     explicit ModSources(FractureProcessor&);
@@ -116,7 +134,7 @@ private:
     FractureProcessor& proc;
     bauhaus::Look look;
 
-    static constexpr int designW = 1320, designH = 1190;
+    static constexpr int designW = 1320, designH = 1376;
     bauhaus::Canvas canvas { designW, designH };       // everything is drawn on this
 
     void paintDesign(juce::Graphics&);                 // both work in design coordinates
@@ -130,10 +148,11 @@ private:
     Panel* pIn = nullptr; Panel* pSplit = nullptr; Panel* pDrive = nullptr;
     Panel* pCrush = nullptr; Panel* pFilter = nullptr; Panel* pOut = nullptr;
     Panel* pTrem = nullptr; Panel* pMod = nullptr; Panel* pScope = nullptr;
+    Panel* pRhythm = nullptr;
 
     std::vector<juce::Component*> inRow, splitRow, crushRow, outRow;
     std::vector<juce::Component*> filterTypeRow, filterKnobRow;
-    std::vector<juce::Component*> tremHeadRow, tremKnobRow;
+    std::vector<juce::Component*> tremHeadRow, tremKnobRow, rhythmRow;
     std::vector<juce::Component*> bandRow[3];
     std::vector<juce::Component*> lfoRow[2], envRow;
     std::vector<juce::Component*> matrixRow[6];
@@ -147,6 +166,7 @@ private:
     Caption* lfoCaption[2] {}; Caption* envCaption = nullptr; Caption* matrixCaption = nullptr;
     Scope* scope = nullptr;
     TremStrip* tremStrip = nullptr;
+    StepEditor* steps = nullptr;
     Meters* meters = nullptr;
     ModSources* modSources = nullptr;
 
