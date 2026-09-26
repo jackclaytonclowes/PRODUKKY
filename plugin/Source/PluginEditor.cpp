@@ -62,6 +62,8 @@ static juce::String helpFor(std::string id){
         { "trSpread", "Offsets the right channel; 180 degrees is auto-pan" },
         { "mS#", "What moves this slot's target" }, { "mD#", "What this slot moves" },
         { "mA#", "How far, either way" },
+        { "mc#", "A macro: pick it as a source in the matrix and this one knob moves everything it is routed to" },
+        { "xyX", "The pad's horizontal axis, as a matrix source" }, { "xyY", "The pad's vertical axis, as a matrix source" },
     };
     const auto it = h.find(id);
     return it != h.end() ? juce::String(it->second) : juce::String();
@@ -412,6 +414,84 @@ void ModSources::paint(juce::Graphics& g){
     }
 }
 
+// ------------------------------------------------------------------- XY pad
+// which matrix slots a source drives, as "Cutoff +45%" pieces
+static juce::StringArray routesFor(FractureProcessor& proc, int source){
+    const Params& P = Params::get();
+    juce::StringArray out;
+    for (int k = 0; k < numSlots; ++k){
+        const juce::String s(k);
+        const int src = juce::roundToInt(proc.apvts.getRawParameterValue("mS" + s)->load());
+        const int dst = juce::roundToInt(proc.apvts.getRawParameterValue("mD" + s)->load());
+        const float amt = proc.apvts.getRawParameterValue("mA" + s)->load();
+        if (src != source || dst <= 0 || amt == 0.0f) continue;
+        const auto& info = P[P.dests()[static_cast<size_t>(dst - 1)]];
+        out.add(juce::String(info.name) + " " + (amt > 0 ? "+" : "") + juce::String(juce::roundToInt(amt)) + "%");
+    }
+    return out;
+}
+
+XYPad::XYPad(FractureProcessor& p) : proc(p){ startTimerHz(24); }
+juce::Rectangle<float> XYPad::field() const { return getLocalBounds().toFloat().reduced(14.0f); }   // room for the whole dot at the edges
+void XYPad::paint(juce::Graphics& g){
+    auto area = getLocalBounds();
+    g.setColour(face); g.fillRect(area);
+    const auto f = field();
+    g.setColour(track);
+    for (int i = 1; i < 4; ++i){
+        g.fillRect(f.getX() + f.getWidth() * i / 4.0f - 0.5f, f.getY(), 1.0f, f.getHeight());
+        g.fillRect(f.getX(), f.getY() + f.getHeight() * i / 4.0f - 0.5f, f.getWidth(), 1.0f);
+    }
+    const float x = proc.apvts.getRawParameterValue("xyX")->load() / 100.0f;
+    const float y = proc.apvts.getRawParameterValue("xyY")->load() / 100.0f;
+    const float px = f.getX() + x * f.getWidth(), py = f.getBottom() - y * f.getHeight();
+    g.setColour(blue.withAlpha(0.35f));
+    g.fillRect(f.getX(), py - 0.75f, f.getWidth(), 1.5f);
+    g.fillRect(px - 0.75f, f.getY(), 1.5f, f.getHeight());
+    g.setColour(yellow); g.fillEllipse(px - 9.0f, py - 9.0f, 18.0f, 18.0f);
+    g.setColour(ink);    g.drawEllipse(px - 9.0f, py - 9.0f, 18.0f, 18.0f, 2.5f);
+    g.setColour(dim); g.setFont(mono(10.0f));
+    g.drawText("X " + juce::String(juce::roundToInt(x * 100)) + "  Y " + juce::String(juce::roundToInt(y * 100)),
+               area.reduced(8, 6), juce::Justification::topRight);
+    g.setColour(ink); g.drawRect(area, 2);
+}
+void XYPad::setFrom(juce::Point<float> pos){
+    const auto f = field();
+    const float x = juce::jlimit(0.0f, 1.0f, (pos.x - f.getX()) / f.getWidth());
+    const float y = juce::jlimit(0.0f, 1.0f, (f.getBottom() - pos.y) / f.getHeight());
+    for (auto [id, v] : { std::pair<const char*, float>{ "xyX", x }, { "xyY", y } })
+        if (auto* prm = proc.apvts.getParameter(id)) prm->setValueNotifyingHost(prm->convertTo0to1(v * 100.0f));
+    repaint();
+}
+void XYPad::mouseDown(const juce::MouseEvent& e){
+    for (const char* id : { "xyX", "xyY" }) if (auto* prm = proc.apvts.getParameter(id)) prm->beginChangeGesture();
+    dragging = true;
+    setFrom(e.position);
+}
+void XYPad::mouseDrag(const juce::MouseEvent& e){ setFrom(e.position); }
+void XYPad::mouseUp(const juce::MouseEvent&){
+    if (!dragging) return;
+    for (const char* id : { "xyX", "xyY" }) if (auto* prm = proc.apvts.getParameter(id)) prm->endChangeGesture();
+    dragging = false;
+}
+
+PerformRoutes::PerformRoutes(FractureProcessor& p) : proc(p){ startTimerHz(6); }
+void PerformRoutes::paint(juce::Graphics& g){
+    const char* names[4] = { "Macro 1", "Macro 2", "Pad X", "Pad Y" };
+    auto area = getLocalBounds();
+    const int rowH = area.getHeight() / 4;
+    for (int i = 0; i < 4; ++i){
+        auto row = area.removeFromTop(rowH);
+        drawTracked(g, names[i], row.removeFromTop(12), 8.5f, 1.4f, juce::Justification::left, ink);
+        const auto r = routesFor(proc, 6 + i);
+        g.setColour(r.isEmpty() ? dim2 : dim);
+        g.setFont(mono(10.0f));
+        g.drawFittedText(r.isEmpty() ? juce::String("not routed: pick it as a matrix source")
+                                     : r.joinIntoString(", "),
+                         row, juce::Justification::topLeft, 2, 0.9f);
+    }
+}
+
 // -------------------------------------------------------------------- editor
 // -------------------------------------------------------------- step editor
 StepEditor::StepEditor(FractureProcessor& p) : proc(p){ startTimerHz(24); }
@@ -553,12 +633,13 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     pDrive  = make<Panel>(3, "Drive", yellow);
     pCrush  = make<Panel>(4, "Crush & feedback", red);
     pFilter = make<Panel>(5, "Filter", blue);
-    pOut    = make<Panel>(10, "Output", ink);
+    pOut    = make<Panel>(11, "Output", ink);
     pMod    = make<Panel>(7, "Modulation", blue);
     pScope  = make<Panel>(8, "Scope", ink);
-    pTrem   = make<Panel>(9, "Tremolo", blue);
+    pPerform = make<Panel>(9, "Perform", yellow);
+    pTrem   = make<Panel>(10, "Tremolo", blue);
     pRhythm = make<Panel>(6, "Filter rhythm", blue);
-    panels = { pIn, pSplit, pDrive, pCrush, pFilter, pOut, pMod, pScope, pTrem, pRhythm };
+    panels = { pIn, pSplit, pDrive, pCrush, pFilter, pOut, pMod, pScope, pTrem, pRhythm, pPerform };
 
     auto knob = [&](juce::Component* parent, const char* id, juce::Colour hue, bool small = false){
         auto* k = new KnobBox(proc, id, hue, small);
@@ -668,6 +749,14 @@ FractureEditor::FractureEditor(FractureProcessor& p)
                          choice(pMod, ("mD" + s).toRawUTF8(), k == 0 ? "Target" : "", 206),
                          amt };
     }
+
+    // ---- perform: the pad, two macros, and what they move
+    pad = make<XYPad>(proc);
+    pPerform->addAndMakeVisible(pad);
+
+    performRow = { knob(pPerform, "mc1", yellow), knob(pPerform, "mc2", yellow) };
+    routes = make<PerformRoutes>(proc);
+    pPerform->addAndMakeVisible(routes);
 
     // ---- scope
     scope = make<Scope>(proc);
@@ -789,6 +878,15 @@ void FractureEditor::updateIdle(){
         const juce::String help = helpFor(P[c.param].id);
         const juce::String tip = why.isNotEmpty() ? "Inactive: " + why + ".  " + help : help;
         if (tip != c.tip){ c.set(why.isNotEmpty(), tip); c.tip = tip; }   // only on a change
+    }
+    // the pad is two controls: it dims only when neither axis is routed
+    if (pad){
+        bool xIdle = false, yIdle = false;
+        for (const auto& d : idle){ xIdle |= d.param == Ids::get().xyX; yIdle |= d.param == Ids::get().xyY; }
+        const bool both = xIdle && yIdle;
+        const juce::String tip = both ? juce::String("Inactive: nothing in the matrix uses the pad. Pick XY X or XY Y as a slot's source.")
+                                      : juce::String("Drag to move both axes at once. Each axis is a matrix source");
+        if (tip != padTip){ pad->setState(both, tip); padTip = tip; }
     }
 }
 
@@ -953,7 +1051,20 @@ void FractureEditor::layoutDesign(){
     rowC.removeFromLeft(gap);
     auto rightCol = rowC.removeFromRight(440);
     rowC.removeFromRight(gap);
+    pPerform->setBounds(rowC.removeFromBottom(236));
+    rowC.removeFromBottom(gap);
     pScope->setBounds(rowC);
+    {   // the pad is square; the macros stand beside it, and what they move under them
+        auto inner = pPerform->content();
+        pad->setBounds(inner.removeFromLeft(inner.getHeight()));
+        inner.removeFromLeft(12);
+        auto knobsCol = inner.removeFromLeft(KnobBox::w);
+        layoutRow(knobsCol.removeFromTop(KnobBox::h), { performRow[0] });
+        knobsCol.removeFromTop(8);
+        layoutRow(knobsCol.removeFromTop(KnobBox::h), { performRow[1] });
+        inner.removeFromLeft(12);
+        routes->setBounds(inner);
+    }
     pOut->setBounds(rightCol.removeFromBottom(172));
     rightCol.removeFromBottom(gap);
     pTrem->setBounds(rightCol);

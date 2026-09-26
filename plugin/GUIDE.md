@@ -68,7 +68,7 @@ The panel reads in the order the sound flows: top row first, left to right, then
 
 ## 07 Modulation
 
-- Two **LFOs** (slow wobbles) and an **Envelope follower** (which follows how loud the input is) are the sources.
+- Two **LFOs** (slow wobbles) and an **Envelope follower** (which follows how loud the input is) are the sources, along with the tremolo and the Perform controls.
 - The **Matrix** connects them: choose a **Source**, a **Target** (almost any knob), and an amount. Up to six connections.
 - The bars show what each source is doing right now.
 
@@ -76,11 +76,18 @@ The panel reads in the order the sound flows: top row first, left to right, then
 
 - The top shows the sound's spectrum. The bottom shows the current band's distortion curve: flat is clean, bent is distorted.
 
-## 09 Tremolo
+## 09 Perform
+
+- The **XY pad** and the two **Macro** knobs are for playing the plugin. Each is a source in the Matrix: pick **XY X**, **XY Y**, **Macro 1** or **Macro 2** as a slot's source, choose what it moves and how far, and one drag or one knob then moves all of it.
+- Beside the knobs, the panel lists what each control is routed to. A control nobody routes is faded and does nothing.
+- At 0 they add nothing, so routing one never changes the sound until you move it.
+- Try the presets starting with **XY —** and **Macros —**.
+
+## 10 Tremolo
 
 - A volume chopper at the very end of the chain. **Sync** locks it to your tempo. **Shape** goes from smooth to hard chop, **Edge** softens the chop, **Duty** sets how long the loud part lasts, and **Spread** offsets left and right (180 is auto-pan).
 
-## 10 Output
+## 11 Output
 
 - **Dry/wet** blends the whole effect with the original, **Width** widens or narrows the stereo image, and **Output** is the final level.
 - **Safety clip** stops anything going over 0 dB, even with extreme feedback.

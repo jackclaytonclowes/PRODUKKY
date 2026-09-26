@@ -58,6 +58,16 @@ inline const std::vector<Preset>& pluginOnlyPresets(){
           R"JSON({"bands":"1","d0a":5,"m0a":"bits","fbAmt":60,"fbMode":"sync","fbDiv":"1/32","fbThru":true,"fbTone":6000,"mix":70,"outGain":-5})JSON" },
         { "Comb on the fifth — rings on G3, half wet",
           R"JSON({"bands":"1","d0a":3,"m0a":"tape","fbAmt":65,"fbMode":"pitch","fbNote":55,"fbTone":7000,"fltType":"hp","fltFreq":120,"mix":55,"outGain":3})JSON" }
+,
+        // ---- performance: the pad and the macros are routed, and the preset is
+        // saved at the middle of their travel. Levelled at every corner of the
+        // pad and both ends of each macro, not only where it is saved
+        { "XY — drive across, cutoff up",
+          R"JSON({"bands":"1","d0a":2,"m0a":"tube","fltType":"lp","fltCirc":"analog","fltFreq":400,"fltQ":4,"mS0":"xyx","mD0":"d0a","mA0":60,"mS1":"xyy","mD1":"fltFreq","mA1":70,"xyX":50,"xyY":50})JSON" },
+        { "XY — the loop's pitch across, feedback up",
+          R"JSON({"bands":"1","d0a":3,"m0a":"soft","fbAmt":20,"fbMode":"pitch","fbNote":36,"fbTone":8000,"mS0":"xyx","mD0":"fbNote","mA0":60,"mS1":"xyy","mD1":"fbAmt","mA1":35,"outGain":-4,"xyX":50,"xyY":50})JSON" },
+        { "Macros — 1 folds and crushes, 2 widens and repeats",
+          R"JSON({"bands":"2","x1":300,"d0a":2,"d1a":2,"m1a":"fold","mS0":"mc1","mD0":"d1a","mA0":70,"mS1":"mc1","mD1":"crMix","mA1":80,"mS2":"mc2","mD2":"width","mA2":50,"mS3":"mc2","mD3":"fbAmt","mA3":50,"bits":6,"redux":4,"fbTime":80,"mc1":50,"mc2":50})JSON" }
     };
     return all;
 }

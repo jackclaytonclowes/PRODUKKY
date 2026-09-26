@@ -225,6 +225,20 @@ rather than a toggle plus a division that can disagree with each other. A divisi
 its phase from the host's song position, so the same bar sounds the same wherever you drop
 the playhead, and keeps running at the host's tempo while the transport is stopped.
 
+## Playing it: the XY pad and the macros
+
+With about 150 controls, the drive section needs a way to be played rather than set. The
+**Perform** panel has an XY pad and two macro knobs, and all four are sources in the
+modulation matrix (Macro 1, Macro 2, XY X, XY Y), appended after the existing sources so a
+saved slot keeps its meaning. Route one to as many targets as the six slots allow and a
+single gesture moves them together, which is how Thermal and Rift make depth playable.
+Beside the knobs the panel says, in words, what each control is routed to.
+
+They are unipolar and start at 0, and at 0 a routed control adds nothing, bit for bit, so
+routing one never changes a sound until it moves. An unrouted control is dimmed, and the
+pad dims only when neither axis is routed. The pad writes both axes as one host gesture,
+so a drag automates as a single move.
+
 ## The panel
 
 It is laid out wide, in three rows that follow the signal: what goes in, the split and the
@@ -340,7 +354,7 @@ opening a DAW.
 
 ## The presets
 
-Forty-one, in two groups.
+Forty-four, in two groups.
 
 **Twenty-two browser presets**, from `fx/fracture.html`, which both versions play. The first
 thirteen show off the drive section; the other nine are chosen by use rather than by
@@ -349,7 +363,7 @@ bass (**Bass — harmonics driven, sub clean**, **808**), a vocal (**Vocal — w
 presence**), a guitar-like part (**Amp — crunchy rhythm**, **Fuzz**), a mix (**Mix bus — a
 touch of tape**) or an effect (**Radio — the AM band**).
 
-**Nineteen plugin-only presets**, in `core/FactoryPresets.h`, which need what the browser does
+**Twenty-two plugin-only presets**, in `core/FactoryPresets.h`, which need what the browser does
 not have:
 - tuned feedback: **Tuned comb**, **Resonator**, **Growl**, **Kick tuned to the key** (a C1
   resonator under the low band), **Snare ring** (G4), **Comb on the fifth**
@@ -359,6 +373,10 @@ not have:
   **Random steps**, **Trance gate** (sixteenth steps at 48 dB), **Acid line** (a resonant
   ladder on drawn steps), **Notch drift** (slow, the two sides opposite)
 - the 48 dB slope and the filter's mix: **Cliff**, **Parallel crunch**
+- the Perform panel: **XY — drive across, cutoff up**, **XY — the loop's pitch across,
+  feedback up**, **Macros — 1 folds and crushes, 2 widens and repeats**. These are
+  levelled at every corner of the pad and both ends of each macro, not only where they
+  are saved, because that is where they will be dragged
 
 They use the same patch JSON and the same import as everything else. A patch copied from a
 plugin-only preset into the browser loses the parts the browser does not have. Adding a

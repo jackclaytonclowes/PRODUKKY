@@ -926,6 +926,7 @@ int main(int argc, char** argv){
         for (auto& x : in){ r = r * 1664525u + 1013904223u; x = static_cast<float>((r >> 8) / 8388608.0 - 1.0) * 0.3f; }
         const std::vector<Patch> states = [&]{
             std::vector<Patch> v(12);
+            v.reserve(13);
             v[1].v = { {"fbAmt", 40}, {"fbMode", 1} };
             v[2].v = { {"fbAmt", 40}, {"fbMode", 2}, {"fbThru", 1} };
             v[3].v = { {"fltType", 1}, {"fltCirc", 0} };
@@ -937,6 +938,7 @@ int main(int argc, char** argv){
             v[9].v = { {"mS2", 3}, {"trOn", 1}, {"trDiv", 0} };
             v[10].v = { {"fltType", 2}, {"rhDepth", -2}, {"rhDiv", 0} };
             v[11].v = { {"mS0", 2}, {"mD0", 3}, {"mA0", 0}, {"bands", 1} };
+            v.push_back({}); v.back().v = { {"mS0", 8}, {"mD0", 5}, {"mA0", 60}, {"xyX", 30} };
             return v;
         }();
         int claims = 0; std::string lies;
@@ -979,6 +981,53 @@ int main(int argc, char** argv){
               fbDimmed && !driveDimmed, std::to_string(idleNow.size()) + " dimmed");
     }
 
+    // ------------------------------------------------------- macros and XY
+    std::printf("\nMacros and XY pad\n");
+    {
+        auto destOf = [&](const char* id){
+            const auto& d = P.dests(); const int want = P.index(id);
+            for (size_t k = 0; k < d.size(); ++k) if (d[k] == want) return static_cast<float>(k + 1);
+            return 0.0f;
+        };
+        // a quiet sine, so the level can move a long way without the safety clip
+        std::vector<float> tone(24000);
+        for (size_t i = 0; i < tone.size(); ++i) tone[i] = static_cast<float>(0.05 * std::sin(i * 2.0 * M_PI * 440.0 / 48000.0));
+        auto level = [&](const Take& t){ double a = 0; for (size_t i = 4800; i < t.L.size(); ++i) a += t.L[i] * t.L[i];
+                                         return 10.0 * std::log10(a / (t.L.size() - 4800)); };
+        // Output starts at -12 dB so the move has room: the matrix clamps at the
+        // end of a range, so from 0 dB a +18 dB push stops at +12
+        Patch base; base.v = { {"bands", 0}, {"mx0", 0}, {"osFactor", 0}, {"outGain", -12} };
+        Patch routed = base;
+        routed.v["mS0"] = 6; routed.v["mD0"] = destOf("outGain"); routed.v["mA0"] = 50;   // Macro 1 -> output
+        const Take a = renderWith(base, tone, 48000.0, 128, false, 120.0, 0.0);
+        const Take b = renderWith(routed, tone, 48000.0, 128, false, 120.0, 0.0);
+        double worst = 0.0;
+        for (size_t i = 0; i < tone.size(); ++i) worst = std::max(worst, static_cast<double>(std::fabs(a.L[i] - b.L[i])));
+        check("a routed macro at 0 changes nothing", worst == 0.0, f2s(worst, 9));
+        Patch up = routed; up.v["mc1"] = 100;
+        const double rise = level(renderWith(up, tone, 48000.0, 128, false, 120.0, 0.0)) - level(a);
+        // +50% of Output's 36 dB range is 18 dB
+        check("at 100 it moves its target by the amount routed", std::fabs(rise - 18.0) < 1.0,
+              "+" + f2s(rise, 2) + " dB, want +18");
+
+        // the pad's two axes are independent: X on the output, Y on the input,
+        // each alone raises the level, both together raise it by the sum
+        Patch pad = base;
+        pad.v["mS0"] = 8; pad.v["mD0"] = destOf("outGain"); pad.v["mA0"] = 20;             // X
+        pad.v["mS1"] = 9; pad.v["mD1"] = destOf("inGain");  pad.v["mA1"] = 10;             // Y
+        auto at = [&](float x, float y){ Patch q = pad; q.v["xyX"] = x; q.v["xyY"] = y;
+                                         return level(renderWith(q, tone, 48000.0, 128, false, 120.0, 0.0)); };
+        const double c0 = at(0, 0), cx = at(100, 0) - c0, cy = at(0, 100) - c0, cxy = at(100, 100) - c0;
+        check("the pad's X and Y move different things, and add up",
+              cx > 5.0 && cy > 3.0 && std::fabs(cxy - (cx + cy)) < 1.0,
+              "X +" + f2s(cx, 1) + " dB, Y +" + f2s(cy, 1) + " dB, both +" + f2s(cxy, 1) + " dB");
+
+        // a saved slot's source number must mean what it did before these existed
+        const auto& src = P[P.index("mS0")].choiceIds;
+        check("the new sources are appended, so saved matrices keep their sources",
+              src.size() == 10 && src[1] == "lfo1" && src[5] == "trem" && src[6] == "mc1" && src[9] == "xyy");
+    }
+
     // ------------------------------------------------------- the whole menu
     std::printf("\nFactory presets\n");
     {
@@ -1003,6 +1052,38 @@ int main(int argc, char** argv){
                 e.setParam(idx, v);
             }
             e.seedFrom(0);
+            // a preset that routes the pad or a macro is also rendered at every
+            // corner of the pad and both ends of each macro: that is where it
+            // will be dragged, not only where it is saved
+            std::vector<std::pair<std::string, std::vector<std::pair<const char*, float>>>> poses;
+            {
+                bool routesPerf = false;
+                for (int s2 = 0; s2 < numSlots; ++s2)
+                    if (e.getParam(P.index(("mS" + std::to_string(s2)).c_str())) >= 5.5f) routesPerf = true;
+                if (routesPerf)
+                    for (float c : { 0.0f, 100.0f }) for (float d : { 0.0f, 100.0f })
+                        poses.push_back({ "at " + f2s(c, 0) + "/" + f2s(d, 0),
+                                          { { "xyX", c }, { "xyY", d }, { "mc1", c }, { "mc2", d } } });
+            }
+            for (const auto& pose : poses){
+                Engine e2; e2.prepare(48000.0, 128);
+                for (int i = 0; i < P.count(); ++i) e2.setParam(i, e.getParam(i));
+                for (const auto& kv : pose.second) e2.setParam(P.index(kv.first), kv.second);
+                e2.seedFrom(0);
+                audition::Stereo o2 = loop; double ppq2 = 0.0;
+                for (size_t i = 0; i < o2.l.size(); i += 128){
+                    const int m = static_cast<int>(std::min<size_t>(128, o2.l.size() - i));
+                    Transport t; t.bpm = 90; t.ppq = ppq2; t.playing = true; t.valid = true;
+                    e2.setTransport(t);
+                    float* io2[2] = { o2.l.data() + i, o2.r.data() + i };
+                    e2.process(io2, 2, m);
+                    ppq2 += m / 48000.0 * 1.5;
+                }
+                const double rel2 = db(audition::rms(o2) / dryRms), pk2 = audition::peak(o2);
+                if (std::fabs(rel2) > 6.0 || pk2 > 0.95)
+                    outOfWindow += std::string(" [") + all[k].name + " " + pose.first + " " + f2s(rel2, 1)
+                                 + " dB, peak " + f2s(pk2, 2) + "]";
+            }
             audition::Stereo o = loop; double ppq = 0.0;
             for (size_t i = 0; i < o.l.size(); i += 128){
                 const int m = static_cast<int>(std::min<size_t>(128, o.l.size() - i));
@@ -1019,8 +1100,11 @@ int main(int argc, char** argv){
             // a plugin-only preset has to use something the browser does not have
             if (k >= presets().size()){
                 auto get = [&](const char* id){ return e.getParam(P.index(id)); };
+                bool perf = false;
+                for (int s2 = 0; s2 < numSlots; ++s2)
+                    if (get(("mS" + std::to_string(s2)).c_str()) >= 5.5f) perf = true;
                 const bool uses = get("fbMode") > 0.5f || get("fbThru") > 0.5f || get("rhDepth") != 0.0f
-                               || get("fltMix") < 100.0f || get("fltPoles") > 1.5f;
+                               || get("fltMix") < 100.0f || get("fltPoles") > 1.5f || perf;
                 if (!uses) noFeature += std::string(" [") + all[k].name + "]";
             }
         }

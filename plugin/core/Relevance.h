@@ -120,6 +120,14 @@ inline std::vector<Idle> idleControls(const float* v){
             idle(rate, name + " follows its sync division, not Rate");
         }
     }
+    {   // the performance controls do nothing until a slot routes them
+        const int perf[4] = { id.mc1, id.mc2, id.xyX, id.xyY };
+        const char* names[4] = { "Macro 1", "Macro 2", "the pad's X", "the pad's Y" };
+        for (int i = 0; i < 4; ++i)
+            if (!sourceUsed({ 6 + i }))
+                idle(perf[i], std::string("Nothing in the matrix uses ") + names[i]
+                              + ": pick it as a source in a slot");
+    }
     if (!sourceUsed({ 3, 4 }))
         for (int p : { id.envAtk, id.envRel, id.envSens }) idle(p, "Nothing in the matrix uses the envelope");
 

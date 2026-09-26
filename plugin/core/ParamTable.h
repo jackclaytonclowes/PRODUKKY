@@ -37,7 +37,11 @@ inline const char* const lfoShapeNames[] = { "Sine","Triangle","Saw up","Saw dow
                                              "Random S&H","Random smooth" };
 inline const char* const filterTypeIds[] = { "off","lp","hp","bp","notch","peak" };
 inline const char* const filterTypeNames[] = { "Off","Low pass","High pass","Band pass","Notch","Peak" };
-inline const char* const modSourceNames[] = { "—","LFO 1","LFO 2","Envelope","Envelope inv","Tremolo" };
+// the performance sources were added after the first release, at the end, so a
+// saved slot's source index still means what it did
+inline const char* const modSourceNames[] = { "—","LFO 1","LFO 2","Envelope","Envelope inv","Tremolo",
+                                              "Macro 1","Macro 2","XY X","XY Y" };
+inline constexpr int numModSources = 10;
 inline const char* const circuitIds[]   = { "clean","analog","vintage" };
 inline const char* const circuitNames[] = { "Clean","Analogue","Vintage" };
 // 36 and 48 were added later, at the end, so a saved 12 or 24 keeps its index
@@ -212,6 +216,14 @@ private:
         f("fbNote", "FB pitch", 24, 96, 57, false, true, "note");     // A3, 220 Hz
         c("fbDiv",  "FB division", divNames + 1, numDivs - 1, 9, -1, divIds + 1);
         b("fbThru", "FB through drive", false);
+        // performance: two macro knobs and an XY pad. They are matrix SOURCES,
+        // not targets: assign one in the matrix and a single gesture moves
+        // everything it is routed to. At 0 they add nothing, so no patch that
+        // does not route them changes
+        f("mc1", "Macro 1", 0, 100, 0, false, false, "%");
+        f("mc2", "Macro 2", 0, 100, 0, false, false, "%");
+        f("xyX", "XY X", 0, 100, 0, false, false, "%");
+        f("xyY", "XY Y", 0, 100, 0, false, false, "%");
 
         // the matrix destination list is every modulatable parameter above
         for (size_t i = 0; i < info_.size(); ++i)
@@ -224,10 +236,11 @@ private:
         std::vector<const char*> destPtrs, destIdPtrs;
         for (auto& s : destNames) destPtrs.push_back(s.c_str());
         for (auto& s : destIds) destIdPtrs.push_back(s.c_str());
-        static const char* const srcIds[] = { "", "lfo1", "lfo2", "env", "env-", "trem" };
+        static const char* const srcIds[] = { "", "lfo1", "lfo2", "env", "env-", "trem",
+                                              "mc1", "mc2", "xyx", "xyy" };
         for (int k = 0; k < numSlots; ++k){
             const std::string s = std::to_string(k);
-                c("mS" + s, "Mod " + std::to_string(k + 1) + " source", modSourceNames, 6, 0, -1, srcIds);
+                c("mS" + s, "Mod " + std::to_string(k + 1) + " source", modSourceNames, numModSources, 0, -1, srcIds);
             c("mD" + s, "Mod " + std::to_string(k + 1) + " target",
               destPtrs.data(), static_cast<int>(destPtrs.size()), 0, -1, destIdPtrs.data());
             f("mA" + s, "Mod " + std::to_string(k + 1) + " amount", -100, 100, 0, false, false, "%");
@@ -269,7 +282,7 @@ struct Ids {
     int bits, redux, crMix, fbAmt, fbTime, fbTone;
     int fltType, fltFreq, fltQ, fltCirc, fltPoles, fltDrive, fltDrift;
     int trOn, trDiv, trRate, trDepth, trShape, trEdge, trDuty, trSpread;
-    int fbMode, fbNote, fbDiv, fbThru;
+    int fbMode, fbNote, fbDiv, fbThru, mc1, mc2, xyX, xyY;
     int fltMix, rhDepth, rhDiv, rhRate, rhShape, rhGroove, rhPhase, rhGlide, rhStep[8];
     int mix, width, outGain, autoGain, safety, osFactor;
     int l1Rate, l1Div, l1Shape, l1Depth, l2Rate, l2Div, l2Shape, l2Depth;
@@ -291,6 +304,7 @@ private:
         fltDrive = I("fltDrive"); fltDrift = I("fltDrift");
         trOn = I("trOn"); trDiv = I("trDiv"); trRate = I("trRate"); trDepth = I("trDepth");
         trShape = I("trShape"); trEdge = I("trEdge"); trDuty = I("trDuty"); trSpread = I("trSpread");
+        mc1 = I("mc1"); mc2 = I("mc2"); xyX = I("xyX"); xyY = I("xyY");
         fbMode = I("fbMode"); fbNote = I("fbNote"); fbDiv = I("fbDiv"); fbThru = I("fbThru");
         fltMix = I("fltMix"); rhDepth = I("rhDepth"); rhDiv = I("rhDiv"); rhRate = I("rhRate");
         rhShape = I("rhShape"); rhGroove = I("rhGroove"); rhPhase = I("rhPhase"); rhGlide = I("rhGlide");

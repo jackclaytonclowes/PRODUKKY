@@ -113,6 +113,34 @@ private:
     int dragging = -1;
 };
 
+// the XY pad: drag anywhere and both axes move together. Each axis is a matrix
+// source, and the pad's edges say what it is routed to
+class XYPad : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
+public:
+    explicit XYPad(FractureProcessor&);
+    void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); setTooltip(tip); }
+private:
+    void timerCallback() override { repaint(); }
+    juce::Rectangle<float> field() const;
+    void setFrom(juce::Point<float>);
+    FractureProcessor& proc;
+    bool dragging = false;
+};
+
+// what each performance control moves, in words, read from the matrix
+class PerformRoutes : public juce::Component, private juce::Timer {
+public:
+    explicit PerformRoutes(FractureProcessor&);
+    void paint(juce::Graphics&) override;
+private:
+    void timerCallback() override { repaint(); }
+    FractureProcessor& proc;
+};
+
 class ModSources : public juce::Component, private juce::Timer {
 public:
     explicit ModSources(FractureProcessor&);
@@ -178,7 +206,7 @@ private:
     Panel* pIn = nullptr; Panel* pSplit = nullptr; Panel* pDrive = nullptr;
     Panel* pCrush = nullptr; Panel* pFilter = nullptr; Panel* pOut = nullptr;
     Panel* pTrem = nullptr; Panel* pMod = nullptr; Panel* pScope = nullptr;
-    Panel* pRhythm = nullptr;
+    Panel* pRhythm = nullptr; Panel* pPerform = nullptr;
 
     std::vector<juce::Component*> inRow, splitRow, crushRow, outRow, fbRow;
     std::vector<juce::Component*> filterTypeRow, filterKnobRow;
@@ -197,6 +225,10 @@ private:
     Scope* scope = nullptr;
     TremStrip* tremStrip = nullptr;
     StepEditor* steps = nullptr;
+    XYPad* pad = nullptr;
+    PerformRoutes* routes = nullptr;
+    std::vector<juce::Component*> performRow;
+    juce::String padTip;
     Meters* meters = nullptr;
     ModSources* modSources = nullptr;
 

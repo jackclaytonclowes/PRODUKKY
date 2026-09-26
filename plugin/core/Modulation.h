@@ -64,13 +64,18 @@ public:
         const double k = 1.0 - std::exp(-dt / (target > env_ ? atk : rel));
         env_ += (target - env_) * k;
         envOut_ = env_ * v[id.envSens] / 100.0;
+        // the performance controls, 0..1, read like any other parameter: the
+        // host smooths nothing here, but the matrix result is ramped per block
+        perf_[0] = v[id.mc1] / 100.0; perf_[1] = v[id.mc2] / 100.0;
+        perf_[2] = v[id.xyX] / 100.0; perf_[3] = v[id.xyY] / 100.0;
     }
 
     // the tremolo lives outside this class but is a source like any other; it
     // hands over its value once a block, which is the rate the matrix runs at
     void setTrem(double v){ trem_ = v; }
 
-    // matrix source index: 0 none, 1 lfo1, 2 lfo2, 3 env, 4 env inverted, 5 tremolo
+    // matrix source index: 0 none, 1 lfo1, 2 lfo2, 3 env, 4 env inverted, 5 tremolo,
+    // 6 macro 1, 7 macro 2, 8 XY X, 9 XY Y (unipolar: 0 adds nothing)
     double source(int i) const {
         switch (i){
         case 1: return out_[0];
@@ -78,9 +83,11 @@ public:
         case 3: return envOut_;
         case 4: return -envOut_;
         case 5: return trem_;
+        case 6: case 7: case 8: case 9: return perf_[i - 6];
         default: return 0.0;
         }
     }
+    double perf(int i) const { return perf_[i & 3]; }
     double lfo(int i) const { return out_[i & 1]; }
     double env() const { return envOut_; }
 
@@ -105,6 +112,7 @@ private:
     double sr_ = 44100.0;
     double ph_[2] = { 0, 0 }, last_[2] = { 0, 0 }, next_[2] = { 0, 0 }, out_[2] = { 0, 0 };
     double env_ = 0.0, envOut_ = 0.0, trem_ = 0.0;
+    double perf_[4] = { 0, 0, 0, 0 };
     uint64_t rng_ = 0x9E3779B97F4A7C15ull;
 };
 
