@@ -18,6 +18,13 @@ public:
     void reset(){ for (auto& ch : s_) for (auto& v : ch) v = 0.0; }
 
     void configure(double cutoffHz, double resonance, double drive){
+        setCutoff(cutoffHz);
+        res_ = resonance < 0.0 ? 0.0 : (resonance > 1.0 ? 1.0 : resonance);
+        drive_ = drive;
+    }
+
+    // cheap enough to call per sample, which is what the hit envelope does
+    inline void setCutoff(double cutoffHz){
         const double marked = cutoffHz < 20.0 ? 20.0 : cutoffHz;
         // four identical one-poles are (1+r^2)^-2, which is -3 dB at r = 0.435,
         // so the pole sits well above the mark. Getting this wrong puts the
@@ -25,8 +32,6 @@ public:
         const double pole = marked / 0.4350;
         const double nyq = sr_ * 0.49;
         g_ = 1.0 - std::exp(-2.0 * M_PI * (pole > nyq ? nyq : pole) / sr_);
-        res_ = resonance < 0.0 ? 0.0 : (resonance > 1.0 ? 1.0 : resonance);
-        drive_ = drive;
     }
 
     inline double process(int ch, double x){

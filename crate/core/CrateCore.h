@@ -2,7 +2,8 @@
 // and is measured with a bare compiler (crate/tests/test_core.cpp).
 //
 //   in ─ gain ─┬─ dry ────────────────────────────────────┐
-//              └─ + dust ─ converter ─ four-pole ─ wet ────┤
+//              ├─ + dust ─ converter ─ four-pole ─ wet ────┤
+//              └─ hit detector ─ envelope ──┘ (cutoff)     │
 //                                       mix ─ feel (swing, push) ─ out gain ─ clip
 //
 // Two ordering decisions worth knowing:
@@ -23,6 +24,7 @@
 #include "Ladder.h"
 #include "Feel.h"
 #include "Dust.h"
+#include "HitEnv.h"
 
 namespace crate {
 
@@ -55,12 +57,13 @@ public:
         conv_.prepare(sampleRate);
         ladder_.prepare(sampleRate);
         dust_.prepare(sampleRate);
+        hit_.prepare(sampleRate);
         feel_.prepare(sampleRate, 320.0);
         feel_.setGrid(gridSteps(static_cast<int>(v_[static_cast<size_t>(Ids::get().grid)])));
         reset();
     }
     void reset(){
-        conv_.reset(); ladder_.reset(); feel_.reset();
+        conv_.reset(); ladder_.reset(); feel_.reset(); hit_.reset();
         first_ = true;
         inPeak = outPeak = 0.0f;
     }
@@ -69,6 +72,8 @@ public:
     float getParam(int i) const { return v_[static_cast<size_t>(i)]; }
     int latencySamples() const { return feel_.latencySamples(); }
     void seedFrom(int64_t playheadSamples){ dust_.seedFrom(playheadSamples); }
+    long hitCount() const { return hit_.hits; }            // for the tests
+    double hitEnvelope() const { return hit_.value(); }    // what the editor could draw
 
     // the transport, for the grid. With nothing playing, swing does nothing.
     void setTransport(bool playing, double ppqAtBlockStart, double bpm){
@@ -93,8 +98,10 @@ public:
                         v_[static_cast<size_t>(id.machine)] > 0.5f ? Machine::S900 : Machine::SP,
                         v_[static_cast<size_t>(id.trick)]);
         const double drive = v_[static_cast<size_t>(id.fltDrive)];
-        ladder_.configure(v_[static_cast<size_t>(id.fltFreq)],
-                          v_[static_cast<size_t>(id.fltReso)] / 100.0, drive);
+        const double cutoff = v_[static_cast<size_t>(id.fltFreq)];
+        ladder_.configure(cutoff, v_[static_cast<size_t>(id.fltReso)] / 100.0, drive);
+        const double envOct = v_[static_cast<size_t>(id.fltEnv)];
+        hit_.setDecay(v_[static_cast<size_t>(id.fltDecay)]);
         dust_.configure(v_[static_cast<size_t>(id.dust)] / 100.0,
                         v_[static_cast<size_t>(id.dustTone)]);
         feel_.setGrid(gridSteps(static_cast<int>(v_[static_cast<size_t>(id.grid)])));
@@ -124,6 +131,10 @@ public:
                 const double s = (dryIn[0] + dryIn[1]) * 0.5;
                 dryIn[0] = dryIn[1] = s;
             }
+            // one envelope for both channels, so a hit opens both sides together.
+            // It always runs, so turning Env up mid-bar lands on the right phase
+            const double e = hit_.process(nch == 2 ? (dryIn[0] + dryIn[1]) * 0.5 : dryIn[0]);
+            if (envOct > 0.0) ladder_.setCutoff(cutoff * std::exp2(envOct * e));
             for (int ch = 0; ch < nch; ++ch){
                 const double dry = dryIn[ch];
                 double wet = dry + dust_.process(ch);
@@ -153,6 +164,7 @@ private:
     Converter conv_;
     Ladder ladder_;
     Dust dust_;
+    HitEnv hit_;
     Feel feel_;
     Ramp inG_, outG_, mix_;
 };

@@ -27,6 +27,15 @@ inline const std::vector<Preset>& presets(){
             { "machine", 0 }, { "fltFreq", 7500 }, { "fltReso", 0 } } },
         { "SP, outputs 7-8 raw", {
             { "machine", 0 }, { "aa", 0 }, { "fltReso", 0 }, { "inGain", 3 } } },
+        // outputs 1 and 2: the SSM2044 opened by each hit and shut again within
+        // milliseconds, which is the dark, thumping kick with a bright attack
+        { "SP, outputs 1-2", {
+            { "machine", 0 }, { "fltFreq", 260 }, { "fltReso", 15 }, { "fltEnv", 5 },
+            { "fltDecay", 25 }, { "fltDrive", 2 } } },
+        // the same envelope, slower and higher, for a sampled bass line
+        { "Filtered bass line", {
+            { "machine", 0 }, { "trick", 5 }, { "fltFreq", 180 }, { "fltReso", 30 },
+            { "fltEnv", 3 }, { "fltDecay", 120 }, { "mono", 1 } } },
         // the rack sampler at its top rate: twelve bits and a steep band limit
         { "S900, forty kilohertz", {
             { "machine", 1 }, { "clock", 40000 }, { "aa", 25 }, { "fltReso", 0 } } },

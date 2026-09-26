@@ -8,6 +8,8 @@ static juce::String fmtValue(const ParamInfo& p, double v){
     if (p.id == "bits")  return juce::String(v, 1);
     if (p.id == "tune")  return (v > 0 ? "+" : "") + juce::String(v, 1);
     if (p.id == "fltDrive") return juce::String(v, 1) + "x";
+    if (p.id == "fltDecay") return juce::String(juce::roundToInt(v)) + " ms";   // a time, not an offset
+    if (p.unit == "oct") return v <= 0.0 ? juce::String("off") : "+" + juce::String(v, 1) + " oct";
     if (p.unit == "Hz")  return v >= 1000.0 ? juce::String(v / 1000.0, v < 10000.0 ? 2 : 1) + "k"
                                             : juce::String(juce::roundToInt(v));
     if (p.unit == "dB")  return (v > 0 ? "+" : "") + juce::String(v, 1);
@@ -227,10 +229,11 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
                   knob(pConv, "bits", yellow), knob(pConv, "compand", yellow),
                   knob(pConv, "aa", yellow) };
     filterRow = { knob(pFilter, "fltFreq", blue), knob(pFilter, "fltReso", blue),
-                  knob(pFilter, "fltDrive", blue) };
+                  knob(pFilter, "fltDrive", blue), knob(pFilter, "fltEnv", blue),
+                  knob(pFilter, "fltDecay", blue) };
     dustRow   = { knob(pDust, "dust", red), knob(pDust, "dustTone", red) };
     outRow    = { knob(pOut, "mix", ink), knob(pOut, "outGain", ink),
-                  toggle(pOut, "safety", red, 100) };
+                  toggle(pOut, "safety", red, 88) };
     feelRow   = { knob(pFeel, "swing", ink), choice(pFeel, "grid", "Grid", 96),
                   knob(pFeel, "push", ink) };
 
@@ -319,18 +322,18 @@ void CrateEditor::layoutDesign(){
 
     area.removeFromTop(gap);
     auto rowB = area.removeFromTop(132);
-    pFilter->setBounds(rowB.removeFromLeft(cols(4)));
+    pFilter->setBounds(rowB.removeFromLeft(cols(5)));
     rowB.removeFromLeft(gap);
     pDust->setBounds(rowB.removeFromLeft(cols(3)));
     rowB.removeFromLeft(gap);
-    pOut->setBounds(rowB.removeFromLeft(cols(5)));
+    pOut->setBounds(rowB.removeFromLeft(cols(4)));
     layoutRow(pFilter->content().withHeight(KnobBox::h), filterRow);
     layoutRow(pDust->content().withHeight(KnobBox::h), dustRow);
     {
         auto inner = pOut->content();
-        meters->setBounds(inner.removeFromRight(92));
-        inner.removeFromRight(10);
-        layoutRow(inner.withHeight(KnobBox::h), outRow);
+        meters->setBounds(inner.removeFromRight(64));
+        inner.removeFromRight(6);
+        layoutRow(inner.withHeight(KnobBox::h), outRow, 8);
     }
 
     area.removeFromTop(gap);

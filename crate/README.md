@@ -31,7 +31,8 @@ rebuilt from first principles.
 
 ```
 in ─ gain ─┬─ dry ────────────────────────────────────────────────┐
-           └─ + dust ─ converter ─ four-pole ────────── wet ───────┤
+           ├─ + dust ─ converter ─ four-pole ────────── wet ───────┤
+           └─ hit detector ─ envelope ──┘ (opens the cutoff)       │
                                         mix ─ feel (swing, push) ─ out ─ clip
 ```
 
@@ -70,6 +71,18 @@ other controls would make every knob a liar. The presets set them.
   grid that does not divide evenly. 45 against 33 is 5.2 semitones; +5 or +6 is the usual
   advice.
 
+**The four-pole can be opened by every hit**, the way the SP's outputs 1 and 2 were: an
+SSM2044 there was opened by each note and snapped shut within milliseconds, which is the
+murky, thumping kick and the filtered bass line — a bright attack on a dark body. **Env**
+is how many octaves above Cutoff a hit opens it, **Decay** is the time constant it falls
+back with, and Cutoff stays the resting point it closes down to. At Env 0 (the default)
+the filter is exactly the static one it always was.
+
+A bus has no notes, so the hits are found in the audio: a fast envelope against a slow
+one, triggering when the fast one is 6 dB clear, with a 40 ms hold so one hit's ringing
+cannot retrigger it and a -50 dBFS floor so dust and hiss never count. Both channels share
+one envelope, so a hit opens both sides together.
+
 **Twelve bits, linear, by default.** Both machines stored linear PCM. The first version of
 this plugin defaulted to µ-law companding and called it the character, which was a guess
 and was wrong. **Compand** is kept as an extra colour: it spends resolution on quiet
@@ -106,7 +119,7 @@ deciding you like it.
 
 ## What is verified, and how
 
-`npm run test:crate` — 44 assertions, no JUCE needed (`VERBOSE=1` prints the measured
+`npm run test:crate` — 50 assertions, no JUCE needed (`VERBOSE=1` prints the measured
 value behind every one). These are measurements, not smoke
 tests, because nobody involved in building this has heard it:
 
@@ -123,6 +136,10 @@ tests, because nobody involved in building this has heard it:
   **adds inharmonic residue** the plain converter does not have (about 11 dB at +6), and
   **lowers the effective sample rate**, so a 10 kHz tone folds to 8.4 kHz at +6 where the
   plain converter puts nothing
+- **the hit envelope counts hits**: eight snare-like bursts in are eight triggers out, and
+  a sustained tone triggers once at most. Each hit brings the first 10 ms through about
+  15 dB brighter against the resting filter, the tail 250 ms later is the resting filter
+  to within 0.01 dB, and Decay is the time constant it claims (0.368 after one of them)
 - **tune leaves the pitch alone** (the fundamental stays put, nothing appears an octave down)
 - **the filter's marked cutoff is its -3 dB point** and the slope is about 24 dB an octave
   where it settles. The first version was 3 dB out because four cascaded one-poles reach
@@ -136,9 +153,9 @@ tests, because nobody involved in building this has heard it:
 - dust is bit-identical across two renders of the same bar, and silent at zero
 - 44.1 / 48 / 96 kHz, block sizes 16 to 1024, and everything at once: finite and bounded
 
-`host_smoke` adds 28 more at the host level, including a synthetic transport: the plugin
+`host_smoke` adds 30 more at the host level, including a synthetic transport: the plugin
 sees the tempo, notices when playback stops, re-declares its latency when the grid changes,
-recalls all fourteen presets, round-trips its state, and paints its editor to a PNG — twice,
+recalls all sixteen presets, round-trips its state, and paints its editor to a PNG — twice,
 the second time at half size, checking the corner panels are scaled rather than cropped.
 
 ## Honest gaps
@@ -153,9 +170,10 @@ the second time at half size, checking the corner panels are scaled rather than 
   sample on the fixed clock. The two produce the same kind of irregular repeat and the
   same drop in effective rate; whether they are indistinguishable has not been listened
   for.
-- The SP's outputs 1 and 2 ran through an SSM2044 whose envelope snapped the cutoff down
-  within milliseconds of each hit — the murky filtered kicks and bass. The four-pole here
-  has no envelope yet, so it gets the static filters of outputs 3 to 6 but not that one.
+- The hit envelope is causal: it hears a hit as it arrives, so the first fraction of a
+  millisecond of each attack passes through the closed filter. The hardware knew about
+  the note before the sound did; matching that needs lookahead, and so latency. It also
+  merges hits closer than 40 ms (flams, fast rolls) into one.
 - The S900 filter is modelled as its response, not its circuit: switched-capacitor
   clock feedthrough and the MF6's own noise are not in it.
 - Swing is grid-locked, so it moves everything sitting on an off-beat, not individual hits.
@@ -172,6 +190,7 @@ core/           the DSP. No JUCE, no dependencies, no allocation in the audio pa
   Ladder.h      the four-pole
   Feel.h        swing and push against the host grid
   Dust.h        hiss and crackle, seeded from the transport
+  HitEnv.h      finds hits in the audio and gives the four-pole its envelope
   ParamTable.h  one table, shared by the DSP, the host and the editor
   CrateCore.h   the whole processor
 Source/         the JUCE wrapper and the interface

@@ -77,6 +77,10 @@ private:
         f("fltFreq",  "Cutoff", 200, 18000, 18000, true, "Hz");
         f("fltReso",  "Reso",   0, 100, 10, false, "%");
         f("fltDrive", "Drive",  1, 8, 1, false);
+        // the envelope on the SP's outputs 1 and 2: each hit opens the filter
+        // this many octaves above Cutoff, and it falls back over Decay
+        f("fltEnv",   "Env",    0, 6, 0, false, "oct");
+        f("fltDecay", "Decay",  5, 500, 40, true, "ms");
         // feel
         f("swing", "Swing", 50, 80, 50, false, "%");
         c("grid",  "Grid", { "1/8", "1/16", "1/32" }, 1);
@@ -95,7 +99,7 @@ private:
 struct Ids {
     static const Ids& get(){ static Ids i; return i; }
     int inGain, mono, machine, tune, trick, clock, bits, compand, aa;
-    int fltFreq, fltReso, fltDrive, swing, grid, push, dust, dustTone, mix, outGain, safety;
+    int fltFreq, fltReso, fltDrive, fltEnv, fltDecay, swing, grid, push, dust, dustTone, mix, outGain, safety;
 private:
     Ids(){
         const Params& p = Params::get();
@@ -103,6 +107,7 @@ private:
         inGain = I("inGain"); mono = I("mono"); machine = I("machine"); tune = I("tune"); trick = I("trick"); clock = I("clock");
         bits = I("bits"); compand = I("compand"); aa = I("aa");
         fltFreq = I("fltFreq"); fltReso = I("fltReso"); fltDrive = I("fltDrive");
+        fltEnv = I("fltEnv"); fltDecay = I("fltDecay");
         swing = I("swing"); grid = I("grid"); push = I("push");
         dust = I("dust"); dustTone = I("dustTone");
         mix = I("mix"); outGain = I("outGain"); safety = I("safety");

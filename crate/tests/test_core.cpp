@@ -156,7 +156,7 @@ int main(){
     const Params& P = Params::get();
 
     std::printf("\nParameters\n");
-    check("the table is complete", P.count() == 20, std::to_string(P.count()) + " parameters");
+    check("the table is complete", P.count() == 22, std::to_string(P.count()) + " parameters");
     check("the clock defaults to the rate the hardware ran at",
           std::fabs(P[P.index("clock")].def - 26040.0f) < 1.0f);
     check("twelve bits by default", std::fabs(P[P.index("bits")].def - 12.0f) < 0.01f);
@@ -328,6 +328,91 @@ int main(){
     }
 
     // ----------------------------------------------------------------- the feel
+    // -------------------------------------------------------- the hit envelope
+    std::printf("\nHit envelope\n");
+    {
+        // eight drum-like hits, half a second apart: a noise burst that decays
+        // with a 60 ms time constant, which is roughly a snare
+        const int spacing = static_cast<int>(0.5 * sr);
+        std::vector<float> hits(static_cast<size_t>(spacing * 8 + spacing / 2), 0.0f);
+        std::mt19937 rng(7);
+        std::uniform_real_distribution<float> d(-1.0f, 1.0f);
+        for (int h = 0; h < 8; ++h)
+            for (int i = 0; i < spacing; ++i)
+                hits[static_cast<size_t>(h * spacing + i)] =
+                    static_cast<float>(0.5 * std::exp(-i / (0.060 * sr))) * d(rng);
+
+        const Patch shut = { {"fltFreq", 250}, {"fltReso", 0}, {"clock", 48000},
+                             {"aa", 100}, {"bits", 16} };
+        Patch open = shut; open["fltEnv"] = 5; open["fltDecay"] = 30;
+
+        {
+            Engine e; e.prepare(sr, 128); applyPatch(e, open);
+            std::vector<float> l = hits, r = hits;
+            for (int i = 0; i < static_cast<int>(l.size()); i += 128){
+                const int m = std::min(128, static_cast<int>(l.size()) - i);
+                e.setTransport(false, 0.0, 120.0);
+                float* io[2] = { l.data() + i, r.data() + i };
+                e.process(io, 2, m);
+            }
+            check("eight hits in, eight triggers", e.hitCount() == 8,
+                  std::to_string(e.hitCount()) + " triggers");
+        }
+        {
+            // a sustained tone is not a string of hits
+            Engine e; e.prepare(sr, 128); applyPatch(e, open);
+            auto l = sine(220, 0.4, 2.0, sr), r = l;
+            for (int i = 0; i < static_cast<int>(l.size()); i += 128){
+                const int m = std::min(128, static_cast<int>(l.size()) - i);
+                float* io[2] = { l.data() + i, r.data() + i };
+                e.process(io, 2, m);
+            }
+            check("a sustained tone triggers once at most", e.hitCount() <= 1,
+                  std::to_string(e.hitCount()) + " triggers");
+        }
+
+        Engine probe; probe.prepare(sr, 128); applyPatch(probe, open);
+        const int lat = probe.latencySamples();
+        const auto a = run(shut, hits), b = run(open, hits);
+        auto windowPower = [&](const std::vector<float>& x, double fromMs, double toMs){
+            double p = 0.0; int n = 0;
+            for (int h = 1; h < 8; ++h){            // skip the first, while the envelopes settle
+                const int base = h * spacing + lat;
+                for (int i = base + static_cast<int>(fromMs * sr / 1000.0);
+                     i < base + static_cast<int>(toMs * sr / 1000.0); ++i){
+                    p += static_cast<double>(x[static_cast<size_t>(i)]) * x[static_cast<size_t>(i)]; ++n;
+                }
+            }
+            return 10.0 * std::log10(std::max(1e-20, p / std::max(1, n)));
+        };
+        const double attackGain = windowPower(b.l, 1, 10) - windowPower(a.l, 1, 10);
+        const double tailGain = windowPower(b.l, 250, 400) - windowPower(a.l, 250, 400);
+        check("each hit opens the filter: the attack comes through brighter",
+              attackGain > 10.0, "+" + f2s(attackGain) + " dB in the first 10 ms");
+        check("and it closes again: the tail is the resting filter",
+              std::fabs(tailGain) < 1.0, f2s(tailGain) + " dB, 250-400 ms after");
+
+        Patch wild = open; wild["fltReso"] = 100; wild["fltDrive"] = 8;
+        wild["fltEnv"] = 6; wild["fltDecay"] = 5; wild["inGain"] = 12;
+        const auto w = run(wild, hits);
+        check("wide open, fast and resonant stays finite and bounded",
+              w.bad == 0 && w.peak <= 1.0, f2s(w.peak, 3));
+    }
+    {
+        // the decay knob is a time constant: 1/e of the way down after that long
+        HitEnv h; h.prepare(sr); h.setDecay(50);
+        int peakAt = -1;
+        std::vector<double> v;
+        for (int i = 0; i < static_cast<int>(sr); ++i){
+            const double x = i < 480 ? 0.5 * ((i * 7919) % 13 - 6) / 6.0 : 0.0;
+            v.push_back(h.process(x));
+            if (peakAt < 0 && v.back() >= 1.0) peakAt = i;
+        }
+        const double after = peakAt >= 0 ? v[static_cast<size_t>(peakAt + static_cast<int>(0.050 * sr))] : -1.0;
+        check("Decay is the time constant it says", std::fabs(after - std::exp(-1.0)) < 0.03,
+              f2s(after, 3) + " after 50 ms, want 0.368");
+    }
+
     std::printf("\nFeel\n");
     {
         // mix at zero leaves only the timing section in circuit, which is what
