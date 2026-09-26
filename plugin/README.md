@@ -242,6 +242,14 @@ one: it does to under 0.001 dB at 269 points, and fails by 7.5 dB if the ladder'
 is left out of the model. What the curve does not show is drive's saturation and the
 channel drift, which depend on the signal rather than the knobs.
 
+The Filter panel has the same curve in its own display, laid out in three columns (what the
+filter is, the curve it makes, the knobs that move it) the way the hardware-shaped
+rhythmic filters are. The display is also a handle: dragging across moves the cutoff and up
+and down the resonance, relative to where they were, as one host gesture each; Shift makes
+it fine and a double-click resets both. Both drawings call one function, so the panel and
+the Scope cannot disagree about where the filter is. The canvas grew to 1760 x 990 for it;
+a 1440 x 900 screen shows it at 77%.
+
 ## Playing it: the XY pad and the macros
 
 With about 150 controls, the drive section needs a way to be played rather than set. The
@@ -262,7 +270,7 @@ It is laid out wide, in three rows that follow the signal: what goes in, the spl
 drive; the crush and feedback loop, the filter and its rhythm; then modulation, the scope,
 and the tremolo and output that end the chain. It used to be one tall column at
 1320 x 1376, which on a 1440 x 900 laptop opened at 57% and set its 9-point captions at
-about 5 points. At 1680 x 990 the same screen opens it at 79%.
+about 5 points. At 1760 x 990 the same screen opens it at 77%.
 
 **Controls that do nothing right now are dimmed**, and their tooltip says why: FB pitch
 while the loop is timed in milliseconds, the filter's Drive and Drift on the clean
@@ -352,7 +360,7 @@ opening a DAW.
 - The tremolo's shape is drawn on the panel from the same arithmetic the DSP uses, but the
   drawing does not know about modulation of depth or duty, so a heavily modulated tremolo
   is shown at its unmodulated shape.
-- GUI resizing is uniform scaling only: the interface is laid out once at 1680 x 990 and
+- GUI resizing is uniform scaling only: the interface is laid out once at 1760 x 990 and
   the whole canvas is scaled to the window, so nothing is ever cropped, but nothing
   reflows either. The aspect ratio is fixed and the window opens smaller than the design
   size on a screen that cannot fit it.

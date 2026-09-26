@@ -52,6 +52,7 @@ The panel reads in the order the sound flows: top row first, left to right, then
 
 ## 05 Filter
 
+- The display in the middle shows the filter's curve as it is right now, and the frequency it sits at. **Drag it**: across moves the cutoff, up and down the resonance. Hold Shift for fine moves; double-click puts both back.
 - **Type** is low pass, high pass, band pass, notch or peak. **Off** bypasses it.
 - **Circuit**: **Clean** is precise. **Analogue** and **Vintage** behave like a hardware filter that squelches when you push it.
 - **Slope** is how steep, from gentle 12 dB to very steep 48 dB.

@@ -131,6 +131,25 @@ private:
     bool dragging = false;
 };
 
+// the Filter panel's own display: the live response, and a handle to play it.
+// Drag across to move the cutoff, up and down for the resonance; double-click
+// puts both back where they started
+class FilterView : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
+public:
+    explicit FilterView(FractureProcessor&);
+    void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void mouseDoubleClick(const juce::MouseEvent&) override;
+    void setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); setTooltip(tip); }
+private:
+    void timerCallback() override { repaint(); }
+    FractureProcessor& proc;
+    float startFreqNorm = 0.0f, startQNorm = 0.0f;
+    bool dragging = false;
+};
+
 // what each performance control moves, in words, read from the matrix
 class PerformRoutes : public juce::Component, private juce::Timer {
 public:
@@ -167,7 +186,7 @@ private:
     FractureProcessor& proc;
     bauhaus::Look look;
 
-    static constexpr int designW = 1680, designH = 990;
+    static constexpr int designW = 1760, designH = 990;
     bauhaus::Canvas canvas { designW, designH };       // everything is drawn on this
 
     void paintDesign(juce::Graphics&);                 // both work in design coordinates
@@ -226,6 +245,7 @@ private:
     TremStrip* tremStrip = nullptr;
     StepEditor* steps = nullptr;
     XYPad* pad = nullptr;
+    FilterView* filterView = nullptr;
     PerformRoutes* routes = nullptr;
     std::vector<juce::Component*> performRow;
     juce::String padTip;

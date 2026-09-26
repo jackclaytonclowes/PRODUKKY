@@ -222,6 +222,64 @@ void Scope::timerCallback(){
     }
     repaint();
 }
+// The post filter's response, drawn from its own coefficients (FilterResponse.h)
+// on a 20 Hz - 20 kHz log axis, +18 to -36 dB. Shared by the Scope, which draws
+// it over the spectrum, and the Filter panel's own display, so the two can
+// never disagree about where the filter is.
+static void drawFilterCurve(juce::Graphics& g, juce::Rectangle<float> fr, const FilterState& st,
+                            double srNow, bool labels){
+    const float top = 18.0f, bottom = -36.0f;
+    auto yOf = [&](double dB){
+        const double t = (top - juce::jlimit(static_cast<double>(bottom), static_cast<double>(top), dB)) / (top - bottom);
+        return fr.getY() + static_cast<float>(t) * fr.getHeight();
+    };
+    auto xOf = [&](double f){ return fr.getX() + static_cast<float>(std::log(f / 20.0) / std::log(1000.0)) * fr.getWidth(); };
+    g.setColour(dim2);
+    {
+        juce::Path zero; zero.startNewSubPath(fr.getX(), yOf(0.0)); zero.lineTo(fr.getRight(), yOf(0.0));
+        const float dashes[] = { 3.0f, 4.0f }; juce::Path dashed;
+        juce::PathStrokeType(1.0f).createDashedStroke(dashed, zero, dashes, 2);
+        g.fillPath(dashed);
+    }
+    if (labels){
+        g.setFont(mono(9.0f));
+        for (const auto& [f, label] : { std::pair<double, const char*>{ 100.0, "100" }, { 1000.0, "1k" }, { 10000.0, "10k" } })
+            g.drawText(label, juce::Rectangle<float>(xOf(f) + 3.0f, fr.getBottom() - 12.0f, 30.0f, 11.0f), juce::Justification::left);
+    }
+    if (st.type <= 0){
+        if (!labels){
+            g.setColour(dim); g.setFont(mono(10.0f));
+            g.drawText("Filter off", fr, juce::Justification::centred);
+        }
+        return;
+    }
+    juce::Path curve, fill;
+    const int n = juce::roundToInt(fr.getWidth());
+    for (int px = 0; px <= n; ++px){
+        const double f = 20.0 * std::pow(1000.0, px / static_cast<double>(n));
+        const double dB = 20.0 * std::log10(std::max(1e-9, std::abs(filterResponse(st, f, srNow))));
+        const float x = fr.getX() + static_cast<float>(px), y = yOf(dB);
+        if (px == 0){ curve.startNewSubPath(x, y); fill.startNewSubPath(x, yOf(0.0)); }
+        else curve.lineTo(x, y);
+        fill.lineTo(x, y);
+    }
+    fill.lineTo(fr.getRight(), yOf(0.0)); fill.closeSubPath();
+    g.setColour(blue.withAlpha(0.14f)); g.fillPath(fill);
+    g.setColour(blue); g.strokePath(curve, juce::PathStrokeType(2.25f));
+    const float cx = xOf(juce::jlimit(20.0, 20000.0, st.freq));
+    g.setColour(blue.withAlpha(0.6f));
+    g.fillRect(cx - 0.75f, fr.getY(), 1.5f, fr.getHeight());
+    const juce::String hz = st.freq >= 1000.0 ? juce::String(st.freq / 1000.0, st.freq < 10000.0 ? 2 : 1) + " kHz"
+                                              : juce::String(juce::roundToInt(st.freq)) + " Hz";
+    const juce::String text = labels ? juce::String(filterTypeLabel(st.type)) + " · " + hz : hz;
+    g.setFont(mono(labels ? 11.0f : 10.0f));
+    const float tw = juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), text) + 12.0f;
+    auto tag = juce::Rectangle<float>(juce::jlimit(fr.getX(), fr.getRight() - tw, cx - tw * 0.5f), fr.getY() + 4.0f, tw, 17.0f);
+    g.setColour(face); g.fillRect(tag);
+    g.setColour(blue); g.drawRect(tag, 1.5f);
+    g.drawText(text, tag, juce::Justification::centred);
+}
+
 void Scope::paint(juce::Graphics& g){
     auto area = getLocalBounds();
     auto specArea = area.removeFromTop(area.getHeight() * 55 / 100);
@@ -255,58 +313,9 @@ void Scope::paint(juce::Graphics& g){
     }
 
     // ---- the post filter's response over the spectrum, on the same log axis:
-    // computed from the filter's own coefficients (FilterResponse.h), live, so a
-    // notch sits where it is heard and moves when the rhythm or an LFO moves it
-    {
-        const auto st = proc.filterState();
-        const auto fr = specArea.reduced(3).toFloat();
-        const double srNow = proc.getSampleRate() > 0 ? proc.getSampleRate() : 48000.0;
-        const float top = 18.0f, bottom = -36.0f;                     // dB shown
-        auto yOf = [&](double dB){
-            const double t = (top - juce::jlimit(static_cast<double>(bottom), static_cast<double>(top), dB)) / (top - bottom);
-            return fr.getY() + static_cast<float>(t) * fr.getHeight();
-        };
-        auto xOf = [&](double f){ return fr.getX() + static_cast<float>(std::log(f / 20.0) / std::log(1000.0)) * fr.getWidth(); };
-        // 0 dB, and the frequency labels the grid lines already stand for
-        g.setColour(dim2);
-        {
-            juce::Path zero; zero.startNewSubPath(fr.getX(), yOf(0.0)); zero.lineTo(fr.getRight(), yOf(0.0));
-            const float dashes[] = { 3.0f, 4.0f }; juce::Path dashed;
-            juce::PathStrokeType(1.0f).createDashedStroke(dashed, zero, dashes, 2);
-            g.fillPath(dashed);
-        }
-        g.setFont(mono(9.0f));
-        for (const auto& [f, label] : { std::pair<double, const char*>{ 100.0, "100" }, { 1000.0, "1k" }, { 10000.0, "10k" } })
-            g.drawText(label, juce::Rectangle<float>(xOf(f) + 3.0f, fr.getBottom() - 12.0f, 30.0f, 11.0f), juce::Justification::left);
-        if (st.type > 0){
-            juce::Path curve, fill;
-            const int n = juce::roundToInt(fr.getWidth());
-            for (int px = 0; px <= n; ++px){
-                const double f = 20.0 * std::pow(1000.0, px / static_cast<double>(n));
-                const double dB = 20.0 * std::log10(std::max(1e-9, std::abs(filterResponse(st, f, srNow))));
-                const float x = fr.getX() + static_cast<float>(px), y = yOf(dB);
-                if (px == 0){ curve.startNewSubPath(x, y); fill.startNewSubPath(x, yOf(0.0)); }
-                else curve.lineTo(x, y);
-                fill.lineTo(x, y);
-            }
-            fill.lineTo(fr.getRight(), yOf(0.0)); fill.closeSubPath();
-            g.setColour(blue.withAlpha(0.14f)); g.fillPath(fill);
-            g.setColour(blue); g.strokePath(curve, juce::PathStrokeType(2.25f));
-            // the frequency the filter is set to, and what it is
-            const float cx = xOf(juce::jlimit(20.0, 20000.0, st.freq));
-            g.setColour(blue.withAlpha(0.6f));
-            g.fillRect(cx - 0.75f, fr.getY(), 1.5f, fr.getHeight());
-            const juce::String hz = st.freq >= 1000.0 ? juce::String(st.freq / 1000.0, st.freq < 10000.0 ? 2 : 1) + " kHz"
-                                                      : juce::String(juce::roundToInt(st.freq)) + " Hz";
-            const juce::String text = juce::String(filterTypeLabel(st.type)) + " · " + hz;
-            g.setFont(mono(11.0f));
-            const float tw = juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), text) + 12.0f;
-            auto tag = juce::Rectangle<float>(juce::jlimit(fr.getX(), fr.getRight() - tw, cx - tw * 0.5f), fr.getY() + 4.0f, tw, 17.0f);
-            g.setColour(face); g.fillRect(tag);
-            g.setColour(blue); g.drawRect(tag, 1.5f);
-            g.drawText(text, tag, juce::Justification::centred);
-        }
-    }
+    // live, so a notch sits where it is heard and moves when it is modulated
+    drawFilterCurve(g, specArea.reduced(3).toFloat(), proc.filterState(),
+                    proc.getSampleRate() > 0 ? proc.getSampleRate() : 48000.0, true);
 
     // ---- transfer curve of the selected band, computed from the parameters
     g.setColour(face); g.fillRect(curveArea);
@@ -466,6 +475,44 @@ void ModSources::paint(juce::Graphics& g){
         if (v >= 0) g.fillRect(centre, static_cast<float>(bar.getY() + 2), std::max(1.5f, v * half), static_cast<float>(bar.getHeight() - 4));
         else        g.fillRect(centre + v * half, static_cast<float>(bar.getY() + 2), std::max(1.5f, -v * half), static_cast<float>(bar.getHeight() - 4));
     }
+}
+
+// -------------------------------------------------------------- filter view
+FilterView::FilterView(FractureProcessor& p) : proc(p){ startTimerHz(30); }
+void FilterView::paint(juce::Graphics& g){
+    auto area = getLocalBounds();
+    g.setColour(face); g.fillRect(area);
+    drawFilterCurve(g, area.reduced(4).toFloat(), proc.filterState(),
+                    proc.getSampleRate() > 0 ? proc.getSampleRate() : 48000.0, false);
+    g.setColour(ink); g.drawRect(area, 2);
+}
+// the drag is relative, like a knob: across the display is the whole cutoff
+// range, its height the whole resonance range, from wherever they were
+void FilterView::mouseDown(const juce::MouseEvent&){
+    auto* f = proc.apvts.getParameter("fltFreq"); auto* q = proc.apvts.getParameter("fltQ");
+    if (!f || !q) return;
+    startFreqNorm = f->getValue(); startQNorm = q->getValue();
+    f->beginChangeGesture(); q->beginChangeGesture();
+    dragging = true;
+}
+void FilterView::mouseDrag(const juce::MouseEvent& e){
+    if (!dragging) return;
+    auto* f = proc.apvts.getParameter("fltFreq"); auto* q = proc.apvts.getParameter("fltQ");
+    const float fine = e.mods.isShiftDown() ? 0.25f : 1.0f;             // shift for fine moves
+    f->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, startFreqNorm + fine * e.getDistanceFromDragStartX() / (float) getWidth()));
+    q->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, startQNorm - fine * e.getDistanceFromDragStartY() / (float) getHeight()));
+}
+void FilterView::mouseUp(const juce::MouseEvent&){
+    if (!dragging) return;
+    if (auto* f = proc.apvts.getParameter("fltFreq")) f->endChangeGesture();
+    if (auto* q = proc.apvts.getParameter("fltQ")) q->endChangeGesture();
+    dragging = false;
+}
+void FilterView::mouseDoubleClick(const juce::MouseEvent&){
+    for (const char* id : { "fltFreq", "fltQ" })
+        if (auto* p = dynamic_cast<juce::RangedAudioParameter*>(proc.apvts.getParameter(id))){
+            p->beginChangeGesture(); p->setValueNotifyingHost(p->getDefaultValue()); p->endChangeGesture();
+        }
 }
 
 // ------------------------------------------------------------------- XY pad
@@ -743,6 +790,10 @@ FractureEditor::FractureEditor(FractureProcessor& p)
                   knob(pRhythm, "rhRate", blue), choice(pRhythm, "rhShape", "Shape", 110),
                   knob(pRhythm, "rhGroove", blue), knob(pRhythm, "rhPhase", blue),
                   knob(pRhythm, "rhGlide", blue) };
+    filterView = make<FilterView>(proc);
+    pFilter->addAndMakeVisible(filterView);
+    filterView->setTooltip("The filter as it is now. Drag across for the cutoff, up and down for the resonance; "
+                           "hold Shift for fine moves, double-click to reset");
     steps = make<StepEditor>(proc);
     pRhythm->addAndMakeVisible(steps);
     reg("rhStep1", steps);                            // the eight steps dim together
@@ -1044,7 +1095,7 @@ void FractureEditor::layoutDesign(){
     if (guide) guide->setBounds(guideArea);
     // Three rows across a wide canvas. It was one tall column at 1320 x 1376,
     // which on a 1440 x 900 screen opened at 57% and set 9-point captions at
-    // about 5; at 1680 x 990 the same screen shows it at 79%.
+    // about 5; at 1760 x 990 the same screen shows it at 77%.
     const int gap = 14;
 
     // ---- row 1: what goes in, how it is split, and the drive
@@ -1073,23 +1124,29 @@ void FractureEditor::layoutDesign(){
     // ---- row 2: crush and the loop, the filter, and the filter's rhythm
     area.removeFromTop(gap);
     auto rowB = area.removeFromTop(190);
-    pCrush->setBounds(rowB.removeFromLeft(520));
+    pCrush->setBounds(rowB.removeFromLeft(502));
     rowB.removeFromLeft(gap);
-    pFilter->setBounds(rowB.removeFromLeft(372));
+    pFilter->setBounds(rowB.removeFromLeft(rowB.getWidth() - gap - 612));
     rowB.removeFromLeft(gap);
     pRhythm->setBounds(rowB);
     {   // the loop's length is a time, a pitch or a division, and the row
         // under the knobs says which, and whether it goes back through the drive
         auto inner = pCrush->content();
-        layoutRow(inner.removeFromTop(KnobBox::h), crushRow, 8);
+        layoutRow(inner.removeFromTop(KnobBox::h), crushRow, 5);
         inner.removeFromTop(12);
         layoutRow(inner.withHeight(44), fbRow, 10);
     }
-    {   // the filter carries its circuit above its knobs
-        auto inner = pFilter->content();
-        layoutRow(inner.removeFromTop(44), filterTypeRow, 8);
-        inner.removeFromTop(12);
-        layoutRow(inner.withHeight(KnobBox::h), filterKnobRow, 8);
+    {   // three columns, like the hardware-shaped filters it is after: what it
+        // is, the curve it makes, and the knobs that move it
+        auto inner = pFilter->content().withTrimmedTop(4);
+        auto choices = inner.removeFromLeft(116);
+        for (auto* c : filterTypeRow){ c->setBounds(choices.removeFromTop(44).withWidth(116)); choices.removeFromTop(4); }
+        inner.removeFromLeft(12);
+        auto knobs = inner.removeFromRight(3 * KnobBox::w + 2 * 8);
+        inner.removeFromRight(12);
+        filterView->setBounds(inner.withTrimmedBottom(2));
+        layoutRow(knobs.removeFromTop(KnobBox::h), { filterKnobRow[0], filterKnobRow[1], filterKnobRow[2] }, 8);
+        layoutRow(knobs.removeFromTop(KnobBox::h), { filterKnobRow[3], filterKnobRow[4] }, 8);
     }
     {   // the rhythm's controls, and under them the steps it plays
         auto inner = pRhythm->content();
