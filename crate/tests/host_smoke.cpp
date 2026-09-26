@@ -190,9 +190,15 @@ int main(int argc, char** argv){
                         png.writeImageToStream(small, *stream);
                     }
                 }
-                check("shrunk editor keeps the design proportions",
-                      std::abs(sw / (double) sh - (1080 / (double) 620)) < 0.02,
-                      juce::String(sw / (double) sh, 3) + " vs " + juce::String((1080 / (double) 620), 3));
+                // what a user's drag is held to: the window's own resize
+                // constraint must be the design's ratio. (This used to compare
+                // the size it had just set against a hard-coded 1080 x 620,
+                // which passed whatever the design was.)
+                const double want = w / (double) h;
+                const double fixed = editor->getConstrainer() != nullptr
+                                   ? editor->getConstrainer()->getFixedAspectRatio() : 0.0;
+                check("resizing is held to the design's proportions", std::abs(fixed - want) < 0.01,
+                      juce::String(fixed, 3) + " vs " + juce::String(want, 3));
                 editor->setSize(w, h);
             }
 
@@ -203,6 +209,35 @@ int main(int argc, char** argv){
                 png.writeImageToStream(shot, *stream);
                 std::printf("  screenshot %s\n", file.getFullPathName().toRawUTF8());
             }
+
+            // the Tips switch and the built-in guide
+            if (auto* ce = dynamic_cast<CrateEditor*>(editor.get())){
+                const bool was = ce->tipsOn();
+                ce->setTips(false);
+                const bool off = !ce->tipsOn();
+                ce->setTips(true);
+                check("the Tips switch turns tooltips off and on", off && ce->tipsOn());
+                ce->setTips(was);                            // leave the preference as it was
+
+                ce->setGuideOpen(true);
+                const int gh = ce->guideHeight();
+                check("the guide opens, laid out from GUIDE.md, longer than the window so it scrolls",
+                      gh > h, juce::String(gh) + " px of guide");
+                juce::Image gshot(juce::Image::ARGB, w, h, true);
+                {
+                    juce::Graphics g(gshot);
+                    editor->paintEntireComponent(g, true);
+                }
+                juce::File gfile(juce::File::getCurrentWorkingDirectory().getChildFile(shotPath)
+                                     .withFileExtension("").getFullPathName() + "-guide.png");
+                gfile.deleteFile();
+                if (auto stream = std::unique_ptr<juce::FileOutputStream>(gfile.createOutputStream())){
+                    juce::PNGImageFormat png;
+                    png.writeImageToStream(gshot, *stream);
+                }
+                ce->setGuideOpen(false);
+                check("and closes again", ce->guideHeight() == 0);
+            } else check("the editor is a CrateEditor", false);
         }
     }
 

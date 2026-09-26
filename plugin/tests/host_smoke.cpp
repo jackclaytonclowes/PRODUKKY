@@ -122,7 +122,7 @@ int main(int argc, char** argv){
             // bottom-right corner of the design has to still be drawn. Render at
             // half size and compare the far corner against a blank one.
             {
-                editor->setSize(660, 595);
+                editor->setSize(w / 2, h / 2);
                 const int sw = editor->getWidth(), sh = editor->getHeight();
                 juce::Image small(juce::Image::ARGB, sw, sh, true);
                 {
@@ -151,9 +151,15 @@ int main(int argc, char** argv){
                         png.writeImageToStream(small, *stream);
                     }
                 }
-                check("shrunk editor keeps the design proportions",
-                      std::abs(sw / (double) sh - (1320 / (double) 1190)) < 0.02,
-                      juce::String(sw / (double) sh, 3) + " vs " + juce::String((1320 / (double) 1190), 3));
+                // what a user's drag is held to: the window's own resize
+                // constraint must be the design's ratio. (This used to compare
+                // the size it had just set against a hard-coded 1320 x 1190,
+                // which passed whatever the design was.)
+                const double want = w / (double) h;
+                const double fixed = editor->getConstrainer() != nullptr
+                                   ? editor->getConstrainer()->getFixedAspectRatio() : 0.0;
+                check("resizing is held to the design's proportions", std::abs(fixed - want) < 0.01,
+                      juce::String(fixed, 3) + " vs " + juce::String(want, 3));
                 editor->setSize(w, h);
             }
 
@@ -164,6 +170,35 @@ int main(int argc, char** argv){
                 png.writeImageToStream(shot, *stream);
                 std::printf("  screenshot %s\n", file.getFullPathName().toRawUTF8());
             }
+
+            // the Tips switch and the built-in guide
+            if (auto* fe = dynamic_cast<FractureEditor*>(editor.get())){
+                const bool was = fe->tipsOn();
+                fe->setTips(false);
+                const bool off = !fe->tipsOn();
+                fe->setTips(true);
+                check("the Tips switch turns tooltips off and on", off && fe->tipsOn());
+                fe->setTips(was);
+
+                fe->setGuideOpen(true);
+                const int gh = fe->guideHeight();
+                check("the guide opens, laid out from GUIDE.md, longer than the window so it scrolls",
+                      gh > h, juce::String(gh) + " px of guide");
+                juce::Image gshot(juce::Image::ARGB, w, h, true);
+                {
+                    juce::Graphics g(gshot);
+                    editor->paintEntireComponent(g, true);
+                }
+                juce::File gfile(juce::File::getCurrentWorkingDirectory().getChildFile(shotPath)
+                                     .withFileExtension("").getFullPathName() + "-guide.png");
+                gfile.deleteFile();
+                if (auto stream = std::unique_ptr<juce::FileOutputStream>(gfile.createOutputStream())){
+                    juce::PNGImageFormat png;
+                    png.writeImageToStream(gshot, *stream);
+                }
+                fe->setGuideOpen(false);
+                check("and closes again", fe->guideHeight() == 0);
+            } else check("the editor is a FractureEditor", false);
         }
     }
 

@@ -4,6 +4,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
 #include "Bauhaus.h"
+#include "Guide.h"
 
 // ---------------------------------------------------------------- primitives
 class KnobBox : public juce::Component {
@@ -156,7 +157,22 @@ private:
                              [box](bool i, const juce::String& t){ box->setState(i, t); }, {} });
     }
     void updateIdle();
-    juce::TooltipWindow tips { this, 500 };
+
+    // the two header buttons: tooltips on or off (remembered on this machine,
+    // not in the session, because it is a preference and not a sound), and
+    // the built-in guide
+    juce::TextButton tipsButton { "Tips" }, guideButton { "Guide" };
+    std::unique_ptr<juce::TooltipWindow> tips;
+    std::unique_ptr<bauhaus::GuideOverlay> guide;
+    juce::Rectangle<int> guideArea;
+    std::unique_ptr<juce::PropertiesFile> prefs;
+public:
+    // for the host-level test
+    bool tipsOn() const { return tips != nullptr; }
+    void setTips(bool on);
+    void setGuideOpen(bool open);
+    int guideHeight() const { return guide ? guide->contentHeight() : 0; }
+private:
     std::vector<Panel*> panels;
 
     Panel* pIn = nullptr; Panel* pSplit = nullptr; Panel* pDrive = nullptr;

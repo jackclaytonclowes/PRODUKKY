@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 #include "Presets.h"
 #include "Relevance.h"
+#include "FractureGuide.h"
 #include <map>
 
 using namespace bauhaus;
@@ -679,6 +680,24 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     getConstrainer()->setFixedAspectRatio(static_cast<double>(designW) / designH);
     const auto open = bauhaus::Canvas::openingSize(designW, designH);
     setSize(open.getWidth(), open.getHeight());
+    // ---- tooltips and the guide
+    {
+        juce::PropertiesFile::Options o;
+        o.applicationName = "FRACTURE"; o.folderName = "FRACTURE";
+        o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+        prefs = std::make_unique<juce::PropertiesFile>(o);
+    }
+    for (auto* b : { &tipsButton, &guideButton }){
+        b->setClickingTogglesState(true);
+        b->setColour(juce::TextButton::buttonOnColourId, ink);
+        canvas.addAndMakeVisible(*b);
+    }
+    tipsButton.setTooltip("Show a note about each control when the mouse rests on it");
+    guideButton.setTooltip("How FRACTURE works, panel by panel");
+    tipsButton.onClick = [this]{ setTips(tipsButton.getToggleState()); };
+    guideButton.onClick = [this]{ setGuideOpen(guideButton.getToggleState()); };
+    setTips(prefs->getBoolValue("tooltips", true));
+
     built = true;
     layoutDesign();
     updateIdle();                                     // so the first paint is already right
@@ -739,6 +758,24 @@ void FractureEditor::selectBand(int band){
     }
     if (scope) scope->getProperties().set("band", band);
     layoutDesign();          // the canvas keeps its size, so lay out on it directly
+}
+
+void FractureEditor::setTips(bool on){
+    tipsButton.setToggleState(on, juce::dontSendNotification);
+    if (on && !tips) tips = std::make_unique<juce::TooltipWindow>(this, 500);
+    if (!on) tips.reset();
+    if (prefs){ prefs->setValue("tooltips", on); prefs->saveIfNeeded(); }
+}
+
+void FractureEditor::setGuideOpen(bool open){
+    guideButton.setToggleState(open, juce::dontSendNotification);
+    if (open && !guide){
+        guide = std::make_unique<bauhaus::GuideOverlay>(
+            juce::String::fromUTF8(FractureGuide::GUIDE_md, FractureGuide::GUIDE_mdSize));
+        canvas.addAndMakeVisible(*guide);
+        guide->setBounds(guideArea);
+    }
+    if (!open) guide.reset();
 }
 
 void FractureEditor::updateIdle(){
@@ -837,7 +874,11 @@ void FractureEditor::layoutDesign(){
     if (! built) return;                               // selectBand() runs before the panels do
     auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
     auto header = area.removeFromTop(46);
-    auto right = header.removeFromRight(520);
+    auto right = header.removeFromRight(690);
+    tipsButton.setBounds(right.removeFromLeft(70).withSizeKeepingCentre(70, 30));
+    right.removeFromLeft(8);
+    guideButton.setBounds(right.removeFromLeft(84).withSizeKeepingCentre(84, 30));
+    right.removeFromLeft(16);
     presetBox.setBounds(right.removeFromLeft(250).withSizeKeepingCentre(250, 30));
     right.removeFromLeft(8);
     copyButton.setBounds(right.removeFromLeft(120).withSizeKeepingCentre(120, 30));
@@ -847,6 +888,8 @@ void FractureEditor::layoutDesign(){
     area.removeFromTop(10);
     area.removeFromTop(8);                                   // the ribbon, painted below
     area.removeFromTop(12);
+    guideArea = area;                                // the guide covers everything under the header
+    if (guide) guide->setBounds(guideArea);
     // Three rows across a wide canvas. It was one tall column at 1320 x 1376,
     // which on a 1440 x 900 screen opened at 57% and set 9-point captions at
     // about 5; at 1680 x 990 the same screen shows it at 79%.

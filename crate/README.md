@@ -1,5 +1,9 @@
 # CRATE — twelve-bit drum processor
 
+**New to it? Read [`GUIDE.md`](GUIDE.md)** — how CRATE works, control by control, in plain
+words. It is also built into the plugin (the Guide button at the top), and ships on the
+disk image as "How it works.md". This README is the engineering detail behind it.
+
 A drum bus processor after the sound of the late-1980s sampling boxes and the records
 made on them: a 26.04 kHz sample clock, linear twelve-bit conversion, a switch between the
 drum machine's filters and the rack sampler's, the "45 on 33" pitch trick, a four-pole
@@ -156,7 +160,10 @@ deciding you like it.
 Env is off, Dust tone with no dust, Rate while the rhythm follows a division, the whole
 rhythm while its Mod is off, everything on the wet path at 0% mix. They still work, so a
 value can be set up before it matters. The rules are in `core/Relevance.h`, and the test
-suite holds them to it. Every control has a one-line tooltip.
+suite holds them to it. Every control has a one-line tooltip. **Tips**, at the
+top, turns tooltips off and on; the choice is saved as a preference on the machine rather
+than in the session, because it is not part of the sound. **Guide** opens `GUIDE.md` over
+the panel. It is compiled in from the same file, so the two cannot say different things.
 
 ## What is verified, and how
 
@@ -211,7 +218,7 @@ tests, because nobody involved in building this has heard it:
 - dust is bit-identical across two renders of the same bar, and silent at zero
 - 44.1 / 48 / 96 kHz, block sizes 16 to 1024, and everything at once: finite and bounded
 
-`host_smoke` adds 35 more at the host level, including a synthetic transport: the plugin
+`host_smoke` adds 38 more at the host level, including a synthetic transport: the plugin
 sees the tempo, notices when playback stops, re-declares its latency when the grid changes,
 recalls all twenty-one presets, round-trips its state, and paints its editor to a PNG — twice,
 the second time at half size, checking the corner panels are scaled rather than cropped.

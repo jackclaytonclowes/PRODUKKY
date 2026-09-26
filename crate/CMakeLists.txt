@@ -54,6 +54,9 @@ target_sources(Crate PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp)
 
+# GUIDE.md, compiled in: the Guide button shows the same file people read on disk
+juce_add_binary_data(CrateGuide NAMESPACE CrateGuide HEADER_NAME CrateGuide.h SOURCES GUIDE.md)
+
 target_include_directories(Crate PRIVATE core Source)
 
 target_compile_definitions(Crate PUBLIC
@@ -63,7 +66,7 @@ target_compile_definitions(Crate PUBLIC
     JUCE_STRICT_REFCOUNTEDPOINTER=1)
 
 target_link_libraries(Crate
-    PRIVATE juce::juce_audio_utils juce::juce_dsp
+    PRIVATE CrateGuide juce::juce_audio_utils juce::juce_dsp
     PUBLIC  juce::juce_recommended_config_flags
             juce::juce_recommended_lto_flags
             juce::juce_recommended_warning_flags)
@@ -85,5 +88,5 @@ target_compile_definitions(host_smoke PUBLIC
     JucePlugin_ManufacturerCode=0x46726374
     JucePlugin_PluginCode=0x43727431)
 target_link_libraries(host_smoke
-    PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_gui_basics
+    PRIVATE CrateGuide juce::juce_audio_utils juce::juce_dsp juce::juce_gui_basics
     PUBLIC  juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)

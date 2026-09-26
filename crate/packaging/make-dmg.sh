@@ -36,6 +36,7 @@ ditto "$au" "$stage/CRATE.component"
 cp "$here/install.command" "$stage/Install CRATE.command"
 chmod +x "$stage/Install CRATE.command"
 cp "$here/READ ME FIRST.txt" "$stage/READ ME FIRST.txt"
+cp "$here/../GUIDE.md" "$stage/How it works.md"      # the same guide the Guide button shows
 ln -s /Applications "$stage/Applications"
 
 mkdir -p "$stage/.background"
@@ -72,6 +73,7 @@ tell application "Finder"
         set background picture of opts to file ".background:background.png"
         set position of item "Install CRATE.command" of container window to {196, 200}
         set position of item "READ ME FIRST.txt" of container window to {530, 200}
+        set position of item "How it works.md" of container window to {363, 200}
         set position of item "CRATE.component" of container window to {110, 360}
         try
             set position of item "CRATE.vst3" of container window to {250, 360}

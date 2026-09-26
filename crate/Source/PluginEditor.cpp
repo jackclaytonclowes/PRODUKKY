@@ -4,6 +4,7 @@
 using namespace bauhaus;
 #include <map>
 #include "Relevance.h"
+#include "CrateGuide.h"
 using namespace crate;
 
 // one line per control, for its tooltip: what it does, in the terms the
@@ -384,10 +385,46 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     getConstrainer()->setFixedAspectRatio(static_cast<double>(designW) / designH);
     const auto open = bauhaus::Canvas::openingSize(designW, designH);
     setSize(open.getWidth(), open.getHeight());
+    // ---- tooltips and the guide
+    {
+        juce::PropertiesFile::Options o;
+        o.applicationName = "CRATE"; o.folderName = "CRATE";
+        o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+        prefs = std::make_unique<juce::PropertiesFile>(o);
+    }
+    for (auto* b : { &tipsButton, &guideButton }){
+        b->setClickingTogglesState(true);
+        b->setColour(juce::TextButton::buttonOnColourId, ink);
+        canvas.addAndMakeVisible(*b);
+    }
+    tipsButton.setTooltip("Show a note about each control when the mouse rests on it");
+    guideButton.setTooltip("How CRATE works, panel by panel");
+    tipsButton.onClick = [this]{ setTips(tipsButton.getToggleState()); };
+    guideButton.onClick = [this]{ setGuideOpen(guideButton.getToggleState()); };
+    setTips(prefs->getBoolValue("tooltips", true));
+
     updateIdle();                   // so the first paint is already right
     startTimerHz(20);
 }
 CrateEditor::~CrateEditor(){ setLookAndFeel(nullptr); }
+
+void CrateEditor::setTips(bool on){
+    tipsButton.setToggleState(on, juce::dontSendNotification);
+    if (on && !tips) tips = std::make_unique<juce::TooltipWindow>(this, 500);
+    if (!on) tips.reset();
+    if (prefs){ prefs->setValue("tooltips", on); prefs->saveIfNeeded(); }
+}
+
+void CrateEditor::setGuideOpen(bool open){
+    guideButton.setToggleState(open, juce::dontSendNotification);
+    if (open && !guide){
+        guide = std::make_unique<bauhaus::GuideOverlay>(
+            juce::String::fromUTF8(CrateGuide::GUIDE_md, CrateGuide::GUIDE_mdSize));
+        canvas.addAndMakeVisible(*guide);
+        guide->setBounds(guideArea);
+    }
+    if (!open) guide.reset();
+}
 
 void CrateEditor::updateIdle(){
     const Params& P = Params::get();
@@ -457,9 +494,15 @@ void CrateEditor::layoutDesign(){
     auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
     auto header = area.removeFromTop(44);
     presetBox.setBounds(header.removeFromRight(260).withSizeKeepingCentre(260, 30));
+    header.removeFromRight(10);
+    guideButton.setBounds(header.removeFromRight(84).withSizeKeepingCentre(84, 30));
+    header.removeFromRight(8);
+    tipsButton.setBounds(header.removeFromRight(70).withSizeKeepingCentre(70, 30));
     area.removeFromTop(10);
     area.removeFromTop(8);
     area.removeFromTop(12);
+    guideArea = area;               // the guide covers everything under the header
+    if (guide) guide->setBounds(guideArea);
 
     const int gap = 14;
     const int col = (area.getWidth() - 11 * gap) / 12;

@@ -1,5 +1,9 @@
 # FRACTURE — VST3 / AU plugin
 
+**New to it? Read [`GUIDE.md`](GUIDE.md)** — how FRACTURE works, control by control, in plain
+words. It is also built into the plugin (the Guide button at the top), and ships on the
+disk image as "How it works.md". This README is the engineering detail behind it.
+
 A native port of `../fx/fracture.html`. Same signal path, same fourteen shapers, same
 parameter ids, same thirteen presets — so a patch copied out of the browser version loads
 here and means the same thing.
@@ -233,7 +237,10 @@ while the loop is timed in milliseconds, the filter's Drive and Drift on the cle
 circuit, an LFO that no matrix slot uses, the whole rhythm while its Mod is off. They still
 work, so a value can be set up before it matters. The rules live in `core/Relevance.h`, and
 they take modulation into account: a section switched off by a base value of zero comes
-back to life if the matrix is moving that value. Every control has a one-line tooltip.
+back to life if the matrix is moving that value. Every control has a one-line tooltip. **Tips**, at the
+top, turns tooltips off and on; the choice is saved as a preference on the machine rather
+than in the session, because it is not part of the sound. **Guide** opens `GUIDE.md` over
+the panel. It is compiled in from the same file, so the two cannot say different things.
 
 ## What is verified, and where
 
@@ -285,7 +292,7 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   40 dB more third harmonic than without; and the worst case (wrap at full drive, 85%,
   through the drive) stays inside the rails
 
-`host_smoke` — 29 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 32 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
 and comes back out unchanged, a half-size editor still draws its bottom-right corner, and
 **the editor renders to a PNG** at both sizes so the interface can be looked at without

@@ -75,3 +75,10 @@ WHAT WOULD BE USEFUL TO HEAR BACK
   – what is missing before you would reach for it instead of a stock plugin?
 
 Thanks for trying it.
+
+HOW IT WORKS
+------------
+"How it works.md" on this disk explains every control in plain words. The
+same guide is inside the plugin: press Guide at the top of its window. Rest
+the mouse on any control for a one-line note (Tips turns those on and off),
+and a faded control is one that does nothing with the current settings.
