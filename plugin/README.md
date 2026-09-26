@@ -5,7 +5,7 @@ words. It is also built into the plugin (the Guide button at the top), and ships
 disk image as "How it works.md". This README is the engineering detail behind it.
 
 A native port of `../fx/fracture.html`. Same signal path, same fourteen shapers, same
-parameter ids, same thirteen presets — so a patch copied out of the browser version loads
+parameter ids, same thirteen browser presets — so a patch copied out of the browser version loads
 here and means the same thing.
 
 ## Getting an Audio Unit for Logic
@@ -94,6 +94,7 @@ core/               the DSP. No JUCE, no dependencies, no allocation in the audi
   RhythmMod.h       the filter's rhythm: shapes, steps, groove, phase, glide
   ParamTable.h      ONE parameter table — the DSP, the host and patch import share it
   Presets.h         generated from the browser presets; do not edit
+  FactoryPresets.h  the menu: those thirteen, then ten that use what only the plugin has
   FractureCore.h    the whole processor
 Source/             the JUCE wrapper: parameters, state, latency, and the interface
 tests/              the DSP tests, the host-level smoke test, and the reference data
@@ -257,6 +258,10 @@ measured):
 - one, two and three bands audible; muting every band silences the wet path; solo works
 - reported latency is the measured latency; the three bands sum flat
 - a seeded render is bit-identical twice over
+- **every factory preset is levelled**: over the audition loop each one sits within 6 dB of
+  the dry signal and off the ceiling, no two sound the same, and each of the ten
+  plugin-only presets uses something the browser does not have. The level check fails on
+  the presets as they were before, which were 25 dB down, 12 dB down and 10 dB over
 - all thirteen browser presets load and render, and every value in every browser patch
   maps to a plugin parameter
 - 44.1 / 48 / 96 kHz, and block sizes from 16 to 1024
@@ -332,6 +337,22 @@ opening a DAW.
 - The JUCE splash screen is left on, since disabling it needs a JUCE licence. `AGPL`/GPL
   or a paid licence also decides whether you can distribute a build; the VST3 SDK is
   separately dual-licensed by Steinberg.
+
+## The presets
+
+The menu is the thirteen browser presets, then ten of the plugin's own, which show off what
+the browser cannot do: tuned feedback (**Tuned comb**, **Resonator**, **Growl**), synced
+feedback (**Dub echo**, **Tape slap**), the filter rhythm (**Gated sixteenths**, **Wah on
+the quarter note**, **Swung notch**, **Random steps**) and the 48 dB slope (**Cliff**). They
+are written in the same patch JSON as the rest, in `core/FactoryPresets.h`, and appended
+after the browser ones so a saved program number still points at the preset it did. A patch
+copied from one of them into the browser loses the parts the browser does not have.
+
+Every preset was levelled on the audition loop (`npm run audition`) to within a few dB of
+the dry signal, so switching presets compares sounds, not volumes. Three browser presets
+were far out (Speaker in a bin 25 dB down, Harmonic pan 12 dB down, Rift-ish 10 dB over and
+into the limiter); they were fixed in `fx/fracture.html` itself and regenerated, so the
+browser and the plugin still agree, and the browser suite still passes.
 
 ## Regenerating the reference data
 

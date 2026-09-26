@@ -86,7 +86,27 @@ inline const std::vector<Preset>& presets(){
             { "bits", 6 }, { "tune", -9 }, { "aa", 0 }, { "compand", 100 },
             { "fltFreq", 3000 }, { "fltReso", 40 }, { "mono", 1 } } },
         { "Whole bus, gently", {
-            { "mix", 45 }, { "compand", 50 }, { "aa", 60 }, { "dust", 15 } } }
+            { "mix", 45 }, { "compand", 50 }, { "aa", 60 }, { "dust", 15 } } },
+        // ---- starting points for a whole beat, added last so saved program
+        // numbers keep pointing where they did. Levelled on the audition loop.
+        // the rack sampler at a low rate across the drum bus, a little dust, a little swing
+        { "Lo-fi bus, S900 at 22 kHz", {
+            { "machine", 1 }, { "clock", 22050 }, { "dust", 25 }, { "dustTone", 3000 },
+            { "fltFreq", 9000 }, { "swing", 56 }, { "mix", 80 } } },
+        // a break sampled sped up off a dusty record, out of the 7.5 kHz outputs
+        { "Chopped soul break", {
+            { "machine", 0 }, { "trick", 5 }, { "fltFreq", 7500 }, { "fltReso", 0 },
+            { "dust", 30 }, { "dustTone", 2600 }, { "swing", 58 } } },
+        // heavy swing and everything a little late
+        { "Drunk sixteenths", {
+            { "swing", 64 }, { "push", 10 }, { "tune", -2 } } },
+        // the filter opens on every beat and closes before the next: a saw
+        // down on 1/4, four octaves up from 400 Hz
+        { "Quarter-note filter pump", {
+            { "fltFreq", 400 }, { "fltReso", 10 }, { "rhShape", 3 }, { "rhDiv", 6 }, { "rhDepth", 4 } } },
+        // as rough as the box goes while still being drums
+        { "Eight bits, sped up seven", {
+            { "bits", 8 }, { "trick", 7 }, { "aa", 5 }, { "mono", 1 } } }
     };
     return all;
 }

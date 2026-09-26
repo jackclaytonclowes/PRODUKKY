@@ -11,6 +11,7 @@
 #include "CrateCore.h"
 #include "Relevance.h"
 #include "../Source/Presets.h"
+#include "../../tools/audition/common.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -748,6 +749,35 @@ int main(){
                 if (outs[a] == outs[b]) same += " [" + names[a] + " = " + names[b] + "]";
         check("every preset sounds different from every other (" + std::to_string(outs.size()) + ")",
               same.empty(), same);
+
+        // and every preset, over the audition loop (drums at 90 BPM, transport
+        // running), sits within 6 dB of the dry loop and off the ceiling. The
+        // renders found one of these 14.5 dB down; this keeps it from recurring
+        const auto loop = audition::makeLoop(sr, false);
+        auto leftRms = [](const std::vector<float>& x, size_t from, size_t n){
+            double acc = 0.0, pk = 0.0;
+            for (size_t i = from; i < from + n; ++i){ acc += static_cast<double>(x[i]) * x[i]; pk = std::max(pk, static_cast<double>(std::fabs(x[i]))); }
+            return std::make_pair(std::sqrt(acc / static_cast<double>(n)), pk);
+        };
+        const double dry = leftRms(loop.l, 0, loop.l.size()).first;
+        std::string out;
+        for (const auto& p : presets()){
+            Patch patch;
+            for (const auto& kv : p.values) patch[kv.first] = kv.second;
+            // the grid, and so the latency, is settled by the first block
+            Engine e; e.prepare(sr, 128); applyPatch(e, patch);
+            std::vector<float> z(128, 0.0f); float* io[2] = { z.data(), z.data() };
+            e.process(io, 1, 128);
+            const size_t lat = static_cast<size_t>(e.latencySamples());
+            // run on past the end by the latency and drop it from the front, as a host would
+            std::vector<float> padded = loop.l;
+            padded.resize(loop.l.size() + lat, 0.0f);
+            const auto r = run(patch, padded, sr, 128, true, 90.0);
+            const auto [rms, pk] = leftRms(r.l, lat, loop.l.size());
+            const double rel = dBOf(rms / dry);
+            if (std::fabs(rel) > 6.0 || pk > 0.95) out += std::string(" [") + p.name + " " + f2s(rel, 1) + " dB, peak " + f2s(pk, 2) + "]";
+        }
+        check("every preset sits within 6 dB of the dry loop, off the ceiling", out.empty(), out);
     }
 
     std::printf("\nFeel\n");

@@ -7,6 +7,7 @@ Everything runs left to right and top to bottom on the panel, which is also the 
 ## Quick start
 
 - Open the preset menu at the top right and try **SP, 45 on 33**, **Dusty break** and **S900, forty kilohertz**. Between them they cover most of what CRATE does.
+- For a whole beat, try **Lo-fi bus, S900 at 22 kHz** or **Chopped soul break**. Presets are levelled, so switching compares sounds, not volumes.
 - Turn **Mix** down to blend the effect with your clean drums.
 - If it gets too loud, turn **Output** down. **Safety clip** stops anything going over 0 dB.
 

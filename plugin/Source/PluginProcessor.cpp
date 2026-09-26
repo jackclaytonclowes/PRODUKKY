@@ -1,6 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
-#include "Presets.h"
+#include "FactoryPresets.h"
 
 using namespace fracture;
 
@@ -135,14 +135,14 @@ bool FractureProcessor::copyScopeSpectrum(std::array<float, scopeSize / 2>& dest
 }
 
 // ------------------------------------------------------------------ presets
-int FractureProcessor::getNumPrograms(){ return static_cast<int>(presets().size()); }
+int FractureProcessor::getNumPrograms(){ return static_cast<int>(factoryPresets().size()); }
 const juce::String FractureProcessor::getProgramName(int index){
-    const auto& all = presets();
+    const auto& all = factoryPresets();
     if (index < 0 || index >= static_cast<int>(all.size())) return {};
     return all[static_cast<size_t>(index)].name;
 }
 void FractureProcessor::setCurrentProgram(int index){
-    const auto& all = presets();
+    const auto& all = factoryPresets();
     if (index < 0 || index >= static_cast<int>(all.size())) return;
     currentProgram = index;
     loadBrowserPatch(all[static_cast<size_t>(index)].json);   // one import path for everything

@@ -6,7 +6,7 @@
 //   cmake --build build --target host_smoke && ./build/host_smoke shot.png
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
-#include "Presets.h"
+#include "FactoryPresets.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 static int passed = 0;
@@ -61,7 +61,10 @@ int main(int argc, char** argv){
     check("output stays inside full scale", peak <= 1.0, juce::String(peak, 3));
 
     std::printf("\nPresets\n");
-    check("thirteen factory presets", proc.getNumPrograms() == 13,
+    // the host must see the whole menu: the browser's presets and the plugin's own
+    check("the host sees every factory preset",
+          proc.getNumPrograms() == static_cast<int>(fracture::factoryPresets().size())
+              && proc.getNumPrograms() > static_cast<int>(fracture::presets().size()),
           juce::String(proc.getNumPrograms()));
     for (int i = 0; i < proc.getNumPrograms(); ++i){
         proc.setCurrentProgram(i);

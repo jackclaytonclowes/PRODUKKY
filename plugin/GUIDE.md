@@ -9,7 +9,9 @@ The panel reads in the order the sound flows: top row first, left to right, then
 - Pick a preset from the menu at the top right and change **Drive A** in the Drive panel. That is the heart of the plugin.
 - Turn **Dry/wet** (in Output, bottom right) down to blend with the clean sound.
 - **Auto gain** keeps the level steady as you add drive, so you hear the character, not just loudness.
-- **Copy patch** and **Paste patch** move a sound between the plugin and the browser version.
+- The presets after **Harmonic pan** use what only the plugin has: feedback that rings at a note, echoes locked to your tempo, and the filter rhythm. Start with **Tuned comb**, **Dub echo** and **Gated sixteenths on the ladder**.
+- Presets are levelled, so switching between them compares sounds, not volumes.
+- **Copy patch** and **Paste patch** move a sound between the plugin and the browser version. The browser version does not have the newer features, so those parts stay behind.
 
 ## Faded controls and tooltips
 

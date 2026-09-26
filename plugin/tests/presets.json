@@ -44,7 +44,7 @@
    "mA0": 45,
    "l1Rate": 0.35,
    "mix": 85,
-   "outGain": -3
+   "outGain": -12
   }
  },
  {
@@ -61,11 +61,11 @@
    "t1": -6,
    "mx0": 100,
    "mx1": 100,
-   "lv1": -4,
+   "lv1": 0,
    "fltType": "bp",
    "fltFreq": 1400,
-   "fltQ": 2.2,
-   "outGain": -4
+   "fltQ": 1.2,
+   "outGain": 12
   }
  },
  {
@@ -253,7 +253,7 @@
    "mS0": "trem",
    "mD0": "fltFreq",
    "mA0": 25,
-   "outGain": -2
+   "outGain": 6
   }
  }
 ]

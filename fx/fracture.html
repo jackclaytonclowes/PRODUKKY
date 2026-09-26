@@ -1031,10 +1031,10 @@ const PRESETS = [
   { name:'Rift-ish — serial fold into filter',
     v:{ bands:'1', d0a:9, m0a:'fold', sb0:true, d0b:5, m0b:'wrap', t0:-2, mx0:100,
         fltType:'lp', fltFreq:3000, fltQ:4, mS0:'lfo1', mD0:'fltFreq', mA0:45, l1Rate:0.35,
-        mix:85, outGain:-3 } },
+        mix:85, outGain:-12 } },
   { name:'Speaker in a bin',
     v:{ bands:'2', x1:400, d0a:14, m0a:'diode', d1a:20, m1a:'gap', preHP:180, preLP:4200,
-        t1:-6, mx0:100, mx1:100, lv1:-4, fltType:'bp', fltFreq:1400, fltQ:2.2, outGain:-4 } },
+        t1:-6, mx0:100, mx1:100, lv1:0, fltType:'bp', fltFreq:1400, fltQ:1.2, outGain:12 } },
   { name:'Bit rot',
     v:{ bands:'1', d0a:3, m0a:'soft', bits:4.5, redux:6, crMix:85, fltType:'lp', fltFreq:6000,
         mS0:'env', mD0:'redux', mA0:55, mix:100, outGain:-3 } },
@@ -1067,7 +1067,7 @@ const PRESETS = [
     v:{ bands:'2', x1:500, d0a:4, m0a:'tape', d1a:6, m1a:'tube',
         fltType:'bp', fltCirc:'analog', fltFreq:1200, fltQ:2.5, fltDrive:2,
         trOn:true, trDiv:'1/4', trDepth:70, trShape:20, trEdge:35, trSpread:180,
-        mS0:'trem', mD0:'fltFreq', mA0:25, outGain:-2 } }
+        mS0:'trem', mD0:'fltFreq', mA0:25, outGain:6 } }
 ];
 
 /* -------------------------------------------------------------------- state */

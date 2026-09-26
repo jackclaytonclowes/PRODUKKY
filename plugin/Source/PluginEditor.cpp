@@ -1,5 +1,5 @@
 #include "PluginEditor.h"
-#include "Presets.h"
+#include "FactoryPresets.h"
 #include "Relevance.h"
 #include "FractureGuide.h"
 #include <map>
@@ -528,7 +528,7 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     addAndMakeVisible(canvas);
 
     // ---- header
-    for (const auto& preset : presets()) presetBox.addItem(preset.name, presetBox.getNumItems() + 1);
+    for (const auto& preset : factoryPresets()) presetBox.addItem(preset.name, presetBox.getNumItems() + 1);
     presetBox.setSelectedItemIndex(proc.getCurrentProgram(), juce::dontSendNotification);
     presetBox.onChange = [this]{ proc.setCurrentProgram(presetBox.getSelectedItemIndex()); };
     canvas.addAndMakeVisible(presetBox);

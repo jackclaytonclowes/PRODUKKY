@@ -220,8 +220,23 @@ tests, because nobody involved in building this has heard it:
 
 `host_smoke` adds 38 more at the host level, including a synthetic transport: the plugin
 sees the tempo, notices when playback stops, re-declares its latency when the grid changes,
-recalls all twenty-one presets, round-trips its state, and paints its editor to a PNG — twice,
+recalls all twenty-six presets, round-trips its state, and paints its editor to a PNG — twice,
 the second time at half size, checking the corner panels are scaled rather than cropped.
+
+## The presets
+
+Twenty-six, grouped by what they demonstrate: the machines and their outputs (**SP,
+outputs 1-2 / 3-4 / 7-8**, **S900, forty kilohertz**, **S950, bass lifted out**), the pitch
+trick (**SP, 45 on 33**), the filter rhythm (the five **Rhythm:** presets), feel (**Off the
+grid**, **Behind the beat**, **Drunk sixteenths**), and starting points for a whole beat
+(**Lo-fi bus, S900 at 22 kHz**, **Chopped soul break**, **Quarter-note filter pump**). New
+ones are appended, so a saved program number keeps pointing where it did.
+
+Every preset is levelled on the audition loop to within 6 dB of the dry drums and kept off
+the ceiling, and the test suite fails if one drifts or if two become the same sound. The
+listening renders found both: "Twelve bit, straight" had become a copy of Init once the
+default went linear (it is now "Twelve bit, companded", the old default's sound), and
+"Rhythm: swung band pass" sat 14.5 dB down.
 
 ## Honest gaps
 

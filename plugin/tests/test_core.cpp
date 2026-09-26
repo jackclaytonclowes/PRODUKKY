@@ -6,6 +6,8 @@
 //   npm run test:core
 #include "FractureCore.h"
 #include "Relevance.h"
+#include "FactoryPresets.h"
+#include "../../tools/audition/common.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -971,6 +973,64 @@ int main(int argc, char** argv){
         }
         check("at the defaults the feedback controls are dimmed and the drive is not",
               fbDimmed && !driveDimmed, std::to_string(idleNow.size()) + " dimmed");
+    }
+
+    // ------------------------------------------------------- the whole menu
+    std::printf("\nFactory presets\n");
+    {
+        // Every preset in the plugin's menu, over the audition loop (drums, bass
+        // and a chord at 90 BPM, transport running), must land within 6 dB of
+        // the dry loop and stay off the ceiling. The renders found three browser
+        // presets 12 to 25 dB out; this keeps it from happening again.
+        const auto loop = audition::makeLoop(48000.0, true);
+        const double dryRms = audition::rms(loop);
+        std::string badValue, outOfWindow, notDistinct, noFeature;
+        std::vector<std::vector<float>> outs;
+        const auto& all = factoryPresets();
+        for (size_t k = 0; k < all.size(); ++k){
+            Engine e; e.prepare(48000.0, 128);
+            for (int i = 0; i < P.count(); ++i) e.setParam(i, P[i].def);
+            for (const auto& kv : audition::parseFlatJson(all[k].json)){
+                const int idx = P.index(kv.first);
+                float v = 0.0f; const auto& j = kv.second;
+                if (idx < 0 || !patchValueToParam(P[idx], j.text, j.isNumber, j.number, j.isBool, j.boolean, v)){
+                    badValue += std::string(" [") + all[k].name + ": " + kv.first + "]"; continue;
+                }
+                e.setParam(idx, v);
+            }
+            e.seedFrom(0);
+            audition::Stereo o = loop; double ppq = 0.0;
+            for (size_t i = 0; i < o.l.size(); i += 128){
+                const int m = static_cast<int>(std::min<size_t>(128, o.l.size() - i));
+                Transport t; t.bpm = 90; t.ppq = ppq; t.playing = true; t.valid = true;
+                e.setTransport(t);
+                float* io[2] = { o.l.data() + i, o.r.data() + i };
+                e.process(io, 2, m);
+                ppq += m / 48000.0 * 1.5;
+            }
+            const double rel = db(audition::rms(o) / dryRms), pk = audition::peak(o);
+            if (std::fabs(rel) > 6.0 || pk > 0.95 || !std::isfinite(rel))
+                outOfWindow += std::string(" [") + all[k].name + " " + f2s(rel, 1) + " dB, peak " + f2s(pk, 2) + "]";
+            outs.push_back(o.l);
+            // a plugin-only preset has to use something the browser does not have
+            if (k >= presets().size()){
+                auto get = [&](const char* id){ return e.getParam(P.index(id)); };
+                const bool uses = get("fbMode") > 0.5f || get("fbThru") > 0.5f || get("rhDepth") != 0.0f
+                               || get("fltMix") < 100.0f || get("fltPoles") > 1.5f;
+                if (!uses) noFeature += std::string(" [") + all[k].name + "]";
+            }
+        }
+        for (size_t a = 0; a < outs.size(); ++a)
+            for (size_t b = a + 1; b < outs.size(); ++b)
+                if (outs[a] == outs[b]) notDistinct += std::string(" [") + all[a].name + " = " + all[b].name + "]";
+        check("the menu is the browser's presets, then the plugin's own",
+              all.size() == presets().size() + pluginOnlyPresets().size() && pluginOnlyPresets().size() >= 10,
+              std::to_string(presets().size()) + " + " + std::to_string(pluginOnlyPresets().size()));
+        check("every value in every factory preset is a real parameter", badValue.empty(), badValue);
+        check("every factory preset sits within 6 dB of the dry loop, off the ceiling",
+              outOfWindow.empty(), outOfWindow);
+        check("no two factory presets sound the same", notDistinct.empty(), notDistinct);
+        check("each plugin-only preset uses something only the plugin has", noFeature.empty(), noFeature);
     }
 
     std::printf("\nTempo sync\n");

@@ -116,7 +116,8 @@ int main(int argc, char** argv){
     }
 
     std::printf("\nPresets\n");
-    check("twenty-one starting points", proc.getNumPrograms() == 21, juce::String(proc.getNumPrograms()));
+    check("the host sees every preset", proc.getNumPrograms() == static_cast<int>(crate::presets().size()),
+          juce::String(proc.getNumPrograms()));
     for (int i = 0; i < proc.getNumPrograms(); ++i){
         proc.setCurrentProgram(i);
         const bool ok = runBlocks(proc, ph, 12, 256, peak, bad);

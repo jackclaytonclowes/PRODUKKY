@@ -15,8 +15,8 @@ inline const std::vector<Preset>& presets(){
     static const std::vector<Preset> all = {
         { "Init", R"JSON({})JSON" },
         { "Thermal-ish — three bands, gentle", R"JSON({"bands":"3","x1":180,"x2":2600,"d0a":6,"m0a":"tube","d1a":5,"m1a":"tape","d2a":3,"m2a":"soft","t0":2,"t2":-3,"mx0":70,"mx1":85,"mx2":55,"lv2":-2,"mix":100,"autoGain":true})JSON" },
-        { "Rift-ish — serial fold into filter", R"JSON({"bands":"1","d0a":9,"m0a":"fold","sb0":true,"d0b":5,"m0b":"wrap","t0":-2,"mx0":100,"fltType":"lp","fltFreq":3000,"fltQ":4,"mS0":"lfo1","mD0":"fltFreq","mA0":45,"l1Rate":0.35,"mix":85,"outGain":-3})JSON" },
-        { "Speaker in a bin", R"JSON({"bands":"2","x1":400,"d0a":14,"m0a":"diode","d1a":20,"m1a":"gap","preHP":180,"preLP":4200,"t1":-6,"mx0":100,"mx1":100,"lv1":-4,"fltType":"bp","fltFreq":1400,"fltQ":2.2,"outGain":-4})JSON" },
+        { "Rift-ish — serial fold into filter", R"JSON({"bands":"1","d0a":9,"m0a":"fold","sb0":true,"d0b":5,"m0b":"wrap","t0":-2,"mx0":100,"fltType":"lp","fltFreq":3000,"fltQ":4,"mS0":"lfo1","mD0":"fltFreq","mA0":45,"l1Rate":0.35,"mix":85,"outGain":-12})JSON" },
+        { "Speaker in a bin", R"JSON({"bands":"2","x1":400,"d0a":14,"m0a":"diode","d1a":20,"m1a":"gap","preHP":180,"preLP":4200,"t1":-6,"mx0":100,"mx1":100,"lv1":0,"fltType":"bp","fltFreq":1400,"fltQ":1.2,"outGain":12})JSON" },
         { "Bit rot", R"JSON({"bands":"1","d0a":3,"m0a":"soft","bits":4.5,"redux":6,"crMix":85,"fltType":"lp","fltFreq":6000,"mS0":"env","mD0":"redux","mA0":55,"mix":100,"outGain":-3})JSON" },
         { "Screaming lead", R"JSON({"bands":"1","d0a":22,"m0a":"tube","sb0":true,"d0b":8,"m0b":"sine","preHP":120,"t0":3,"fltType":"peak","fltFreq":2400,"fltQ":3,"fbAmt":22,"fbTime":9,"fbTone":5200,"outGain":-6})JSON" },
         { "Sub warmer, top untouched", R"JSON({"bands":"3","x1":120,"x2":1800,"d0a":12,"m0a":"warm","mx0":60,"d1a":2,"mx1":20,"d2a":1,"mx2":0,"t0":4,"outGain":-1})JSON" },
@@ -25,7 +25,7 @@ inline const std::vector<Preset>& presets(){
         { "Ladder sweep, on the half note", R"JSON({"bands":"1","d0a":5,"m0a":"tube","mx0":100,"fltType":"lp","fltCirc":"analog","fltPoles":"24","fltFreq":600,"fltQ":7,"fltDrive":3,"fltDrift":45,"mS0":"lfo1","mD0":"fltFreq","mA0":55,"l1Div":"1/2","l1Shape":"tri","outGain":-2})JSON" },
         { "Squelch — vintage, a turn from singing", R"JSON({"bands":"1","d0a":3,"m0a":"warm","fltType":"lp","fltCirc":"vintage","fltFreq":320,"fltQ":13,"fltDrive":6,"fltDrift":70,"mS0":"env","mD0":"fltFreq","mA0":45,"envAtk":6,"envRel":160,"outGain":-4})JSON" },
         { "Chop — eighths with the edges left on", R"JSON({"bands":"1","d0a":2,"m0a":"soft","trOn":true,"trDiv":"1/8","trDepth":100,"trShape":100,"trEdge":85,"trDuty":45})JSON" },
-        { "Harmonic pan — the tremolo across the image", R"JSON({"bands":"2","x1":500,"d0a":4,"m0a":"tape","d1a":6,"m1a":"tube","fltType":"bp","fltCirc":"analog","fltFreq":1200,"fltQ":2.5,"fltDrive":2,"trOn":true,"trDiv":"1/4","trDepth":70,"trShape":20,"trEdge":35,"trSpread":180,"mS0":"trem","mD0":"fltFreq","mA0":25,"outGain":-2})JSON" },
+        { "Harmonic pan — the tremolo across the image", R"JSON({"bands":"2","x1":500,"d0a":4,"m0a":"tape","d1a":6,"m1a":"tube","fltType":"bp","fltCirc":"analog","fltFreq":1200,"fltQ":2.5,"fltDrive":2,"trOn":true,"trDiv":"1/4","trDepth":70,"trShape":20,"trEdge":35,"trSpread":180,"mS0":"trem","mD0":"fltFreq","mA0":25,"outGain":6})JSON" },
     };
     return all;
 }
