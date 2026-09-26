@@ -1,7 +1,7 @@
 // fracture.cpp — every FRACTURE preset over a loop, written as WAV files.
 //   fracture-audition <outDir> [input.wav]
 #include "FractureCore.h"
-#include "Presets.h"
+#include "FactoryPresets.h"
 #include "common.h"
 using namespace fracture;
 
@@ -53,7 +53,7 @@ int main(int argc, char** argv){
     std::printf("[\n  {\"name\":\"Dry\",\"file\":\"dry.wav\",\"rms\":%.6f,\"peak\":%.6f}",
                 audition::rms(in), audition::peak(in));
     int k = 0;
-    for (const auto& p : presets()){
+    for (const auto& p : factoryPresets()){
         const auto out = render(p, in, bpm);
         char file[160];
         std::snprintf(file, sizeof file, "%02d-%s.wav", k++, audition::slug(p.name).c_str());
