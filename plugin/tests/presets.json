@@ -255,5 +255,126 @@
    "mA0": 25,
    "outGain": 6
   }
+ },
+ {
+  "name": "Drum bus — glue and crunch",
+  "v": {
+   "bands": "2",
+   "x1": 150,
+   "d0a": 2,
+   "m0a": "soft",
+   "d1a": 6,
+   "m1a": "tape",
+   "mx1": 60,
+   "preHP": 30,
+   "mix": 70
+  }
+ },
+ {
+  "name": "Kick & snare — grit on the top only",
+  "v": {
+   "bands": "3",
+   "x1": 120,
+   "x2": 3000,
+   "d0a": 1.5,
+   "m0a": "soft",
+   "d1a": 5,
+   "m1a": "diode",
+   "d2a": 8,
+   "m2a": "hard",
+   "mx2": 70
+  }
+ },
+ {
+  "name": "Bass — harmonics driven, sub clean",
+  "v": {
+   "bands": "2",
+   "x1": 120,
+   "d0a": 1,
+   "mx0": 0,
+   "d1a": 10,
+   "m1a": "tube",
+   "t1": 2
+  }
+ },
+ {
+  "name": "808 — saturated so it reads on small speakers",
+  "v": {
+   "bands": "1",
+   "d0a": 6,
+   "m0a": "harm",
+   "fltType": "lp",
+   "fltFreq": 4000
+  }
+ },
+ {
+  "name": "Vocal — warm presence",
+  "v": {
+   "bands": "3",
+   "x1": 250,
+   "x2": 3500,
+   "d0a": 1,
+   "mx0": 0,
+   "d1a": 3,
+   "m1a": "tape",
+   "mx1": 50,
+   "d2a": 2,
+   "m2a": "soft",
+   "mx2": 40,
+   "mix": 60
+  }
+ },
+ {
+  "name": "Amp — crunchy rhythm",
+  "v": {
+   "bands": "1",
+   "preHP": 90,
+   "preLP": 7000,
+   "d0a": 12,
+   "m0a": "tube",
+   "sb0": true,
+   "d0b": 4,
+   "m0b": "hard",
+   "fltType": "peak",
+   "fltFreq": 1800,
+   "fltQ": 1,
+   "outGain": -9
+  }
+ },
+ {
+  "name": "Fuzz — gated and square",
+  "v": {
+   "bands": "1",
+   "d0a": 30,
+   "m0a": "hard",
+   "sb0": true,
+   "d0b": 6,
+   "m0b": "gap",
+   "fltType": "lp",
+   "fltFreq": 5000,
+   "outGain": -6
+  }
+ },
+ {
+  "name": "Mix bus — a touch of tape",
+  "v": {
+   "bands": "1",
+   "d0a": 1.5,
+   "m0a": "tape",
+   "mix": 35
+  }
+ },
+ {
+  "name": "Radio — the AM band",
+  "v": {
+   "bands": "1",
+   "preHP": 400,
+   "preLP": 3200,
+   "d0a": 6,
+   "m0a": "diode",
+   "bits": 10,
+   "crMix": 30,
+   "outGain": 10
+  }
  }
 ]

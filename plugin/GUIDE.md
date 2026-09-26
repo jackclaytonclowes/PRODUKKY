@@ -9,7 +9,8 @@ The panel reads in the order the sound flows: top row first, left to right, then
 - Pick a preset from the menu at the top right and change **Drive A** in the Drive panel. That is the heart of the plugin.
 - Turn **Dry/wet** (in Output, bottom right) down to blend with the clean sound.
 - **Auto gain** keeps the level steady as you add drive, so you hear the character, not just loudness.
-- The presets after **Harmonic pan** use what only the plugin has: feedback that rings at a note, echoes locked to your tempo, and the filter rhythm. Start with **Tuned comb**, **Dub echo** and **Gated sixteenths on the ladder**.
+- Presets named for a job (**Drum bus**, **Bass**, **808**, **Vocal**, **Amp**, **Mix bus**) are the quickest way in: pick the one that matches the track.
+- The presets from **Tuned comb** onward use what only the plugin has: feedback that rings at a note, echoes locked to your tempo, and the filter rhythm. Start with **Tuned comb**, **Dub echo**, **Trance gate** and **Acid line**.
 - Presets are levelled, so switching between them compares sounds, not volumes.
 - **Copy patch** and **Paste patch** move a sound between the plugin and the browser version. The browser version does not have the newer features, so those parts stay behind.
 

@@ -5,7 +5,7 @@ words. It is also built into the plugin (the Guide button at the top), and ships
 disk image as "How it works.md". This README is the engineering detail behind it.
 
 A native port of `../fx/fracture.html`. Same signal path, same fourteen shapers, same
-parameter ids, same thirteen browser presets — so a patch copied out of the browser version loads
+parameter ids, same browser presets — so a patch copied out of the browser version loads
 here and means the same thing.
 
 ## Getting an Audio Unit for Logic
@@ -94,7 +94,7 @@ core/               the DSP. No JUCE, no dependencies, no allocation in the audi
   RhythmMod.h       the filter's rhythm: shapes, steps, groove, phase, glide
   ParamTable.h      ONE parameter table — the DSP, the host and patch import share it
   Presets.h         generated from the browser presets; do not edit
-  FactoryPresets.h  the menu: those thirteen, then ten that use what only the plugin has
+  FactoryPresets.h  the menu: the browser's presets, then the ones only the plugin can play
   FractureCore.h    the whole processor
 Source/             the JUCE wrapper: parameters, state, latency, and the interface
 tests/              the DSP tests, the host-level smoke test, and the reference data
@@ -259,10 +259,10 @@ measured):
 - reported latency is the measured latency; the three bands sum flat
 - a seeded render is bit-identical twice over
 - **every factory preset is levelled**: over the audition loop each one sits within 6 dB of
-  the dry signal and off the ceiling, no two sound the same, and each of the ten
+  the dry signal and off the ceiling, no two sound the same, and each of the
   plugin-only presets uses something the browser does not have. The level check fails on
   the presets as they were before, which were 25 dB down, 12 dB down and 10 dB over
-- all thirteen browser presets load and render, and every value in every browser patch
+- every browser preset loads and renders, and every value in every browser patch
   maps to a plugin parameter
 - 44.1 / 48 / 96 kHz, and block sizes from 16 to 1024
 
@@ -340,13 +340,30 @@ opening a DAW.
 
 ## The presets
 
-The menu is the thirteen browser presets, then ten of the plugin's own, which show off what
-the browser cannot do: tuned feedback (**Tuned comb**, **Resonator**, **Growl**), synced
-feedback (**Dub echo**, **Tape slap**), the filter rhythm (**Gated sixteenths**, **Wah on
-the quarter note**, **Swung notch**, **Random steps**) and the 48 dB slope (**Cliff**). They
-are written in the same patch JSON as the rest, in `core/FactoryPresets.h`, and appended
-after the browser ones so a saved program number still points at the preset it did. A patch
-copied from one of them into the browser loses the parts the browser does not have.
+Forty-one, in two groups.
+
+**Twenty-two browser presets**, from `fx/fracture.html`, which both versions play. The first
+thirteen show off the drive section; the other nine are chosen by use rather than by
+feature, for what goes on a drum bus (**Drum bus — glue and crunch**, **Kick & snare**), a
+bass (**Bass — harmonics driven, sub clean**, **808**), a vocal (**Vocal — warm
+presence**), a guitar-like part (**Amp — crunchy rhythm**, **Fuzz**), a mix (**Mix bus — a
+touch of tape**) or an effect (**Radio — the AM band**).
+
+**Nineteen plugin-only presets**, in `core/FactoryPresets.h`, which need what the browser does
+not have:
+- tuned feedback: **Tuned comb**, **Resonator**, **Growl**, **Kick tuned to the key** (a C1
+  resonator under the low band), **Snare ring** (G4), **Comb on the fifth**
+- synced feedback: **Dub echo**, **Tape slap**, **Quarter-note echo into the fold**,
+  **Stutter** (1/32 echoes back through the drive)
+- the filter rhythm: **Gated sixteenths**, **Wah on the quarter note**, **Swung notch**,
+  **Random steps**, **Trance gate** (sixteenth steps at 48 dB), **Acid line** (a resonant
+  ladder on drawn steps), **Notch drift** (slow, the two sides opposite)
+- the 48 dB slope and the filter's mix: **Cliff**, **Parallel crunch**
+
+They use the same patch JSON and the same import as everything else. A patch copied from a
+plugin-only preset into the browser loses the parts the browser does not have. Adding a
+browser preset moves the plugin-only ones down the menu, which is harmless: a host saves the
+plugin's whole state with a session, not the number of the preset it started from.
 
 Every preset was levelled on the audition loop (`npm run audition`) to within a few dB of
 the dry signal, so switching presets compares sounds, not volumes. Three browser presets

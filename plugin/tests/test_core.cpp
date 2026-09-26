@@ -380,7 +380,11 @@ int main(int argc, char** argv){
                 ++count;
                 pos = braceClose;
             }
-            check("all thirteen browser presets load and render", count == 13 && rendered == 13,
+            // presets.json and core/Presets.h are both generated from fx/fracture.html;
+            // they must agree, and every one must load and render
+            const int expected = static_cast<int>(presets().size());
+            check("every browser preset (" + std::to_string(expected) + ") loads and renders",
+                  count == expected && rendered == expected,
                   std::to_string(rendered) + "/" + std::to_string(count));
             check("every value in every browser patch maps to a plugin parameter",
                   unknown == 0, unknownIds);

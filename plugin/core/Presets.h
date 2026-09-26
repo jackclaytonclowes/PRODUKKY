@@ -26,6 +26,15 @@ inline const std::vector<Preset>& presets(){
         { "Squelch — vintage, a turn from singing", R"JSON({"bands":"1","d0a":3,"m0a":"warm","fltType":"lp","fltCirc":"vintage","fltFreq":320,"fltQ":13,"fltDrive":6,"fltDrift":70,"mS0":"env","mD0":"fltFreq","mA0":45,"envAtk":6,"envRel":160,"outGain":-4})JSON" },
         { "Chop — eighths with the edges left on", R"JSON({"bands":"1","d0a":2,"m0a":"soft","trOn":true,"trDiv":"1/8","trDepth":100,"trShape":100,"trEdge":85,"trDuty":45})JSON" },
         { "Harmonic pan — the tremolo across the image", R"JSON({"bands":"2","x1":500,"d0a":4,"m0a":"tape","d1a":6,"m1a":"tube","fltType":"bp","fltCirc":"analog","fltFreq":1200,"fltQ":2.5,"fltDrive":2,"trOn":true,"trDiv":"1/4","trDepth":70,"trShape":20,"trEdge":35,"trSpread":180,"mS0":"trem","mD0":"fltFreq","mA0":25,"outGain":6})JSON" },
+        { "Drum bus — glue and crunch", R"JSON({"bands":"2","x1":150,"d0a":2,"m0a":"soft","d1a":6,"m1a":"tape","mx1":60,"preHP":30,"mix":70})JSON" },
+        { "Kick & snare — grit on the top only", R"JSON({"bands":"3","x1":120,"x2":3000,"d0a":1.5,"m0a":"soft","d1a":5,"m1a":"diode","d2a":8,"m2a":"hard","mx2":70})JSON" },
+        { "Bass — harmonics driven, sub clean", R"JSON({"bands":"2","x1":120,"d0a":1,"mx0":0,"d1a":10,"m1a":"tube","t1":2})JSON" },
+        { "808 — saturated so it reads on small speakers", R"JSON({"bands":"1","d0a":6,"m0a":"harm","fltType":"lp","fltFreq":4000})JSON" },
+        { "Vocal — warm presence", R"JSON({"bands":"3","x1":250,"x2":3500,"d0a":1,"mx0":0,"d1a":3,"m1a":"tape","mx1":50,"d2a":2,"m2a":"soft","mx2":40,"mix":60})JSON" },
+        { "Amp — crunchy rhythm", R"JSON({"bands":"1","preHP":90,"preLP":7000,"d0a":12,"m0a":"tube","sb0":true,"d0b":4,"m0b":"hard","fltType":"peak","fltFreq":1800,"fltQ":1,"outGain":-9})JSON" },
+        { "Fuzz — gated and square", R"JSON({"bands":"1","d0a":30,"m0a":"hard","sb0":true,"d0b":6,"m0b":"gap","fltType":"lp","fltFreq":5000,"outGain":-6})JSON" },
+        { "Mix bus — a touch of tape", R"JSON({"bands":"1","d0a":1.5,"m0a":"tape","mix":35})JSON" },
+        { "Radio — the AM band", R"JSON({"bands":"1","preHP":400,"preLP":3200,"d0a":6,"m0a":"diode","bits":10,"crMix":30,"outGain":10})JSON" },
     };
     return all;
 }
