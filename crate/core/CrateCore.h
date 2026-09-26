@@ -1,9 +1,9 @@
 // CrateCore.h — the whole processor, with no dependency on JUCE, so it builds
 // and is measured with a bare compiler (crate/tests/test_core.cpp).
 //
-//   in ─ gain ─┬─ dry ────────────────────────────────────┐
-//              ├─ + dust ─ converter ─ four-pole ─ wet ────┤
-//              └─ hit detector ─ envelope ──┘ (cutoff)     │
+//   in ─ gain ─┬─ dry ─ delay (matches the 4x) ───────────────────┐
+//              ├─ + dust ─ converter ─ [ four-pole at 4x ] ─ wet ──┤
+//              └─ hit detector ─ envelope ──┘ (cutoff)             │
 //                                       mix ─ feel (swing, push) ─ out gain ─ clip
 //
 // Two ordering decisions worth knowing:
@@ -25,6 +25,7 @@
 #include "Feel.h"
 #include "Dust.h"
 #include "HitEnv.h"
+#include "Oversampler.h"
 
 namespace crate {
 
@@ -55,7 +56,9 @@ public:
         v_.assign(static_cast<size_t>(P.count()), 0.0f);
         for (int i = 0; i < P.count(); ++i) v_[static_cast<size_t>(i)] = P[i].def;
         conv_.prepare(sampleRate);
-        ladder_.prepare(sampleRate);
+        os_[0].prepare(osFactor_); os_[1].prepare(osFactor_);
+        ladder_.prepare(sampleRate * osFactor_);
+        for (auto& d : dryDelay_){ d.prepare(64); d.setDelay(os_[0].latencySamples()); }
         dust_.prepare(sampleRate);
         hit_.prepare(sampleRate);
         feel_.prepare(sampleRate, 320.0);
@@ -64,13 +67,19 @@ public:
     }
     void reset(){
         conv_.reset(); ladder_.reset(); feel_.reset(); hit_.reset();
+        for (auto& o : os_) o.reset();
+        for (auto& d : dryDelay_) d.reset();
         first_ = true;
         inPeak = outPeak = 0.0f;
     }
 
     void setParam(int i, float value){ if (i >= 0 && i < static_cast<int>(v_.size())) v_[static_cast<size_t>(i)] = value; }
     float getParam(int i) const { return v_[static_cast<size_t>(i)]; }
-    int latencySamples() const { return feel_.latencySamples(); }
+    // the feel section's fixed delay, plus the four-pole's oversampling
+    int latencySamples() const { return feel_.latencySamples() + os_[0].latencySamples(); }
+    // 1, 2 or 4. Takes effect at the next prepare(); the tests use it to
+    // measure what the oversampling is buying
+    void setOversampling(int factor){ osFactor_ = factor == 1 ? 1 : (factor == 2 ? 2 : 4); }
     void seedFrom(int64_t playheadSamples){ dust_.seedFrom(playheadSamples); }
     long hitCount() const { return hit_.hits; }            // for the tests
     double hitEnvelope() const { return hit_.value(); }    // what the editor could draw
@@ -136,10 +145,10 @@ public:
             const double e = hit_.process(nch == 2 ? (dryIn[0] + dryIn[1]) * 0.5 : dryIn[0]);
             if (envOct > 0.0) ladder_.setCutoff(cutoff * std::exp2(envOct * e));
             for (int ch = 0; ch < nch; ++ch){
-                const double dry = dryIn[ch];
-                double wet = dry + dust_.process(ch);
+                const double dry = dryDelay_[ch].process(dryIn[ch]);   // in step with the wet path
+                double wet = dryIn[ch] + dust_.process(ch);
                 wet = conv_.process(ch, wet);
-                wet = ladder_.process(ch, wet) * driveComp;
+                wet = os_[ch].process(wet, [&](double v){ return ladder_.process(ch, v); }) * driveComp;
                 feel_.write(ch, dry * (1.0 - m) + wet * m);
             }
             feel_.advance();
@@ -165,6 +174,9 @@ private:
     Ladder ladder_;
     Dust dust_;
     HitEnv hit_;
+    Oversampler os_[maxChannels];
+    DelayLine dryDelay_[maxChannels];
+    int osFactor_ = 4;
     Feel feel_;
     Ramp inG_, outG_, mix_;
 };

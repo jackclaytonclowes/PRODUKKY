@@ -328,6 +328,64 @@ int main(){
     }
 
     // ----------------------------------------------------------------- the feel
+    // ------------------------------------------------------ the oversampling
+    std::printf("\nOversampling\n");
+    {
+        // 5 kHz driven hard into the four-pole, with the converter out of the
+        // way. At drive 8 the ladder is close to a hard clipper, so its odd
+        // harmonics fall away slowly and at a 48 kHz host rate the ones past
+        // 24 kHz fold back into the audible band — 35 kHz lands on 13 kHz, 45 on
+        // 3 kHz — as tones no analogue filter makes. The true harmonic at 15 kHz
+        // is the yardstick. (25 kHz folds to 23 kHz and sits in the half-band
+        // filter's transition, where no practical oversampler removes it; it is
+        // above hearing, so it is not what is measured here.)
+        const Patch hot = { {"clock", 48000}, {"aa", 100}, {"bits", 16},
+                            {"fltFreq", 18000}, {"fltReso", 0}, {"fltDrive", 8} };
+        auto audibleAlias = [&](int factor){
+            Engine e; e.setOversampling(factor); e.prepare(sr, 128); applyPatch(e, hot);
+            auto l = sine(5000, 0.8, 0.5, sr), r = l;
+            for (int i = 0; i < static_cast<int>(l.size()); i += 128){
+                const int m = std::min(128, static_cast<int>(l.size()) - i);
+                float* io[2] = { l.data() + i, r.data() + i };
+                e.process(io, 2, m);
+            }
+            const double h = goertzel(l, 15000, sr, 4800);
+            const double al = std::max(goertzel(l, 13000, sr, 4800), goertzel(l, 3000, sr, 4800));
+            return dBOf(al) - dBOf(h);
+        };
+        const double a1 = audibleAlias(1), a2 = audibleAlias(2), a4 = audibleAlias(4);
+        check("at the host rate, the drive folds harmonics back into the audible band",
+              a1 > -20.0, "worst of 3 and 13 kHz " + f2s(a1) + " dB against the 15 kHz harmonic");
+        // why 4x and not 2x: printed, not asserted, since a better filter should
+        // never fail a test for being better
+        std::printf("        (2x leaves %s dB, which is why the default is 4x)\n", f2s(a2).c_str());
+        check("four times, the default, puts them 60 dB under the harmonic",
+              a4 < -60.0, f2s(a4) + " dB at 4x");
+        Engine dflt; dflt.prepare(sr, 128);
+        Engine at4; at4.setOversampling(4); at4.prepare(sr, 128);
+        check("and four times is what the plugin runs", dflt.latencySamples() == at4.latencySamples());
+    }
+    {
+        // the dry path is delayed by exactly the oversampling latency, so a half
+        // mix of a clean patch sums in phase instead of comb-filtering
+        const Patch clean = { {"clock", 48000}, {"aa", 100}, {"bits", 16},
+                              {"fltFreq", 18000}, {"fltReso", 0}, {"mix", 50} };
+        double worst = 0.0;
+        for (double f : { 2000.0, 6000.0, 9000.0 }){
+            const auto r = run(clean, sine(f, 0.25, 0.5, sr));
+            const auto full = run({ {"clock", 48000}, {"aa", 100}, {"bits", 16},
+                                    {"fltFreq", 18000}, {"fltReso", 0}, {"mix", 100} },
+                                  sine(f, 0.25, 0.5, sr));
+            // a half mix should sit between the dry level (0 dB) and the wet
+            // level, never below both, which is what a timing error does
+            const double half = dBOf(goertzel(r.l, f, sr, 9600) / 0.25);
+            const double wet = dBOf(goertzel(full.l, f, sr, 9600) / 0.25);
+            worst = std::min(worst, half - std::min(0.0, wet));
+        }
+        check("dry and wet stay in step at a half mix", worst > -0.5,
+              f2s(worst) + " dB below the quieter of the two, at worst");
+    }
+
     // -------------------------------------------------------- the hit envelope
     std::printf("\nHit envelope\n");
     {

@@ -71,6 +71,15 @@ other controls would make every knob a liar. The presets set them.
   grid that does not divide evenly. 45 against 33 is 5.2 semitones; +5 or +6 is the usual
   advice.
 
+**The four-pole runs at four times the host rate.** Its saturation sits inside a feedback
+loop, and at full drive it is nearly a hard clipper whose harmonics run past the host's
+Nyquist and fold back as tones no analogue filter makes. That is an artefact of this
+plugin, not a sound of the hardware, so it is removed. The converter is deliberately left
+at the host rate, since its aliasing *is* the sound. Twice the rate was tried and measured:
+it still leaves a 13 kHz alias of a 5 kHz tone only 21 dB under the real harmonic, and 4x
+puts it 65 dB under. It costs about 3% of one core for stereo at 48 kHz, and the dry path
+is delayed to match so Mix never comb-filters.
+
 **The four-pole can be opened by every hit**, the way the SP's outputs 1 and 2 were: an
 SSM2044 there was opened by each note and snapped shut within milliseconds, which is the
 murky, thumping kick and the filtered bass line — a bright attack on a dark body. **Env**
@@ -99,7 +108,8 @@ seeded from the transport, so the same bar renders the same crackle every time.
 the swing knob does nothing, and the panel says so rather than leaving you to wonder.
 
 **It reports latency, deliberately.** The whole plugin sits behind a fixed delay (120 ms on
-the 1/16 grid) so Push can pull hits *earlier* as well as later. The host compensates it
+the 1/16 grid, plus 1 ms for the four-pole's oversampling) so Push can pull hits *earlier*
+as well as later. The host compensates it
 away; the only thing you hear is the relative movement. Changing the grid changes the base
 delay and the plugin re-declares it.
 
@@ -119,7 +129,7 @@ deciding you like it.
 
 ## What is verified, and how
 
-`npm run test:crate` — 50 assertions, no JUCE needed (`VERBOSE=1` prints the measured
+`npm run test:crate` — 54 assertions, no JUCE needed (`VERBOSE=1` prints the measured
 value behind every one). These are measurements, not smoke
 tests, because nobody involved in building this has heard it:
 
@@ -136,6 +146,10 @@ tests, because nobody involved in building this has heard it:
   **adds inharmonic residue** the plain converter does not have (about 11 dB at +6), and
   **lowers the effective sample rate**, so a 10 kHz tone folds to 8.4 kHz at +6 where the
   plain converter puts nothing
+- **oversampling does its job**: at drive 8, a 5 kHz tone's audible aliases (3 and 13 kHz)
+  sit 10 dB under the 15 kHz harmonic at the host rate and 65 dB under at 4x; dry and wet
+  stay in step at a half mix to within 0.1 dB; reported latency still matches the measured
+  latency sample for sample
 - **the hit envelope counts hits**: eight snare-like bursts in are eight triggers out, and
   a sustained tone triggers once at most. Each hit brings the first 10 ms through about
   15 dB brighter against the resting filter, the tail 250 ms later is the resting filter
@@ -162,18 +176,21 @@ the second time at half size, checking the corner panels are scaled rather than 
 
 - **Nothing here has been heard.** No audio device in the machine that built it. Every
   number on the panel is verified; whether it sounds good is not.
-- The four-pole runs at the host rate with no oversampling. Its saturation will alias at
-  high drive with bright material. If that turns out to matter, the fix is the same
-  oversampler the other product uses.
 - The pitch trick is a streaming model of drop-sample playback, not a replay of it: the
   SP read a stored sample at a fractional step, whereas this holds the latest input
   sample on the fixed clock. The two produce the same kind of irregular repeat and the
   same drop in effective rate; whether they are indistinguishable has not been listened
   for.
-- The hit envelope is causal: it hears a hit as it arrives, so the first fraction of a
-  millisecond of each attack passes through the closed filter. The hardware knew about
-  the note before the sound did; matching that needs lookahead, and so latency. It also
-  merges hits closer than 40 ms (flams, fast rolls) into one.
+- The hit envelope has only a little lookahead: the detector hears the input before the
+  oversampler's filters do, which gives it about half a millisecond, enough to bring the
+  first millisecond of each hit through 2.5 dB brighter than a detector with none. The
+  hardware knew about the note before the sound did; matching that fully needs real
+  lookahead, and so more latency. It also merges hits closer than 40 ms (flams, fast
+  rolls) into one.
+- The oversampler removes the audible aliases of the four-pole's drive but not a
+  harmonic sitting just past the host's Nyquist: 25 kHz folds to 23 kHz at 48 kHz, in
+  the half-band filter's transition. Inaudible at 48 kHz; at 44.1 kHz the same harmonic
+  lands near 19 kHz.
 - The S900 filter is modelled as its response, not its circuit: switched-capacitor
   clock feedthrough and the MF6's own noise are not in it.
 - Swing is grid-locked, so it moves everything sitting on an off-beat, not individual hits.
@@ -191,6 +208,7 @@ core/           the DSP. No JUCE, no dependencies, no allocation in the audio pa
   Feel.h        swing and push against the host grid
   Dust.h        hiss and crackle, seeded from the transport
   HitEnv.h      finds hits in the audio and gives the four-pole its envelope
+  Oversampler.h runs the four-pole at 4x, and keeps the dry path in step
   ParamTable.h  one table, shared by the DSP, the host and the editor
   CrateCore.h   the whole processor
 Source/         the JUCE wrapper and the interface
