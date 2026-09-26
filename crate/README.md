@@ -1,7 +1,8 @@
 # CRATE — twelve-bit drum processor
 
 A drum bus processor after the sound of the late-1980s sampling boxes and the records
-made on them: a 26.04 kHz sample clock, companded twelve-bit conversion, a four-pole
+made on them: a 26.04 kHz sample clock, linear twelve-bit conversion, a switch between the
+drum machine's filters and the rack sampler's, the "45 on 33" pitch trick, a four-pole
 filter, the noise floor of the record the break came off, and a swing section that pulls
 the off-beats late against the host's grid.
 
@@ -35,20 +36,45 @@ in ─ gain ─┬─ dry ──────────────────
 ```
 
 **The converter** is where nearly all of the character lives, and it is four separate
-things: a *gentle* anti-alias filter (not a brickwall — content above half the clock is
-supposed to fold back), a slow sample clock, companded twelve-bit quantisation, and
+things: an anti-alias filter, a slow sample clock, twelve-bit quantisation, and
 zero-order-hold reconstruction. The last one is why the top end droops and why there is
 image content above the clock.
 
-**Tune moves the clock without moving the pitch.** On the hardware, pitching a sample down
-slowed the clock and the audio together. On a bus you only want the first half of that, so
-Tune scales the sample clock and leaves your tempo alone: down twelve semitones is a 13 kHz
-clock, which is the classic "pitched down for grit" sound with the loop still in time.
+**Machine decides the filters around the quantiser**, which is the real difference between
+the two families of box:
 
-**Compand is a trade, not an amount of dirt.** µ-law spends resolution on quiet signals and
-takes it from loud ones, so hits get grainier as they get louder while tails stay clean —
-the opposite of a linear twelve-bit converter. At 0 you get the linear one. Both directions
-are measured in the test suite.
+- **SP** — a *gentle* anti-alias filter, so content above half the clock folds back, and a
+  mild output stage that leaves the staircase's images in. Bright, gritty, aliased. This is
+  what the plugin always did, so older patches are unchanged.
+- **S900** — a six-pole Butterworth on the way in and another on the way out, near 0.4 of
+  the clock. That is the response of the MF6 switched-capacitor filters the rack samplers
+  used (36 dB an octave, no resonance; the S950 shows its "bandwidth" as the rate divided
+  by 2.5). Almost nothing folds back and the images are removed, leaving twelve bits and a
+  band limit: darker, rounder, cleaner.
+
+The switch does not move Clock, Bits or Compand, because a switch that quietly moved three
+other controls would make every knob a liar. The presets set them.
+
+**The two machines pitched differently, so there are two pitch controls.**
+
+- **Tune** moves the sample clock, which is how the S900 pitched: every voice had its own
+  variable DAC clock. On a bus only half of that is wanted, so Tune scales the clock and
+  leaves pitch and tempo alone. Down twelve semitones is a 13 kHz clock.
+- **Pitch trick** is how the SP pitched, and it is the "45 on 33" trick: speed the record
+  up, sample it, tune it back down on the machine. The SP's output clock never moved; it
+  pitched down by reading memory with a fractional step and no interpolation, repeating
+  some samples and not others (Yeh, Nolting and Smith, ICMC 2007). Those irregular repeats
+  are inharmonic, and they are the grit. On a bus it streams: at +N semitones, samples are
+  taken at clock / 2^(N/12) and read onto the fixed clock by holding the latest one. Pitch
+  and tempo come out unchanged, the effective sample rate drops, and the timing snaps to a
+  grid that does not divide evenly. 45 against 33 is 5.2 semitones; +5 or +6 is the usual
+  advice.
+
+**Twelve bits, linear, by default.** Both machines stored linear PCM. The first version of
+this plugin defaulted to µ-law companding and called it the character, which was a guess
+and was wrong. **Compand** is kept as an extra colour: it spends resolution on quiet
+signals and takes it from loud ones, so hits get grainier as they get louder while tails
+stay clean. Both directions are measured in the test suite.
 
 **Dust goes in before the converter**, because that is the order it happened in: someone
 sampled a noisy pressing and the sampler crushed the noise along with the drums. It is
@@ -80,7 +106,8 @@ deciding you like it.
 
 ## What is verified, and how
 
-`npm run test:crate` — 36 assertions, no JUCE needed. These are measurements, not smoke
+`npm run test:crate` — 44 assertions, no JUCE needed (`VERBOSE=1` prints the measured
+value behind every one). These are measurements, not smoke
 tests, because nobody involved in building this has heard it:
 
 - **the hold droops the top end** the way a sample-and-hold does, and 1 kHz passes at unity
@@ -88,6 +115,14 @@ tests, because nobody involved in building this has heard it:
   the anti-alias control moves it by more than 10 dB — so that knob does what it says
 - **six decibels a bit**: 16 → 12 and 12 → 8 each cost about 24 dB of noise floor
 - **companding makes loud hits grainier and quiet tails cleaner** — both directions
+- **the S900 filters do their job**: 1 kHz at unity, a 20 kHz tone the SP folds back to
+  6 kHz at about -4 dB is 20+ dB lower (the measured -72 dB flatters it: near the host's
+  Nyquist the digital filter is steeper than the analogue one), and a hold image the SP
+  leaves at -12 dB is taken below -40
+- **the pitch trick keeps the pitch and the level** (1 kHz in, 1 kHz out, within 0.1 dB),
+  **adds inharmonic residue** the plain converter does not have (about 11 dB at +6), and
+  **lowers the effective sample rate**, so a 10 kHz tone folds to 8.4 kHz at +6 where the
+  plain converter puts nothing
 - **tune leaves the pitch alone** (the fundamental stays put, nothing appears an octave down)
 - **the filter's marked cutoff is its -3 dB point** and the slope is about 24 dB an octave
   where it settles. The first version was 3 dB out because four cascaded one-poles reach
@@ -101,9 +136,9 @@ tests, because nobody involved in building this has heard it:
 - dust is bit-identical across two renders of the same bar, and silent at zero
 - 44.1 / 48 / 96 kHz, block sizes 16 to 1024, and everything at once: finite and bounded
 
-`host_smoke` adds 23 more at the host level, including a synthetic transport: the plugin
+`host_smoke` adds 28 more at the host level, including a synthetic transport: the plugin
 sees the tempo, notices when playback stops, re-declares its latency when the grid changes,
-recalls all nine presets, round-trips its state, and paints its editor to a PNG — twice,
+recalls all fourteen presets, round-trips its state, and paints its editor to a PNG — twice,
 the second time at half size, checking the corner panels are scaled rather than cropped.
 
 ## Honest gaps
@@ -113,6 +148,16 @@ the second time at half size, checking the corner panels are scaled rather than 
 - The four-pole runs at the host rate with no oversampling. Its saturation will alias at
   high drive with bright material. If that turns out to matter, the fix is the same
   oversampler the other product uses.
+- The pitch trick is a streaming model of drop-sample playback, not a replay of it: the
+  SP read a stored sample at a fractional step, whereas this holds the latest input
+  sample on the fixed clock. The two produce the same kind of irregular repeat and the
+  same drop in effective rate; whether they are indistinguishable has not been listened
+  for.
+- The SP's outputs 1 and 2 ran through an SSM2044 whose envelope snapped the cutoff down
+  within milliseconds of each hit — the murky filtered kicks and bass. The four-pole here
+  has no envelope yet, so it gets the static filters of outputs 3 to 6 but not that one.
+- The S900 filter is modelled as its response, not its circuit: switched-capacitor
+  clock feedthrough and the MF6's own noise are not in it.
 - Swing is grid-locked, so it moves everything sitting on an off-beat, not individual hits.
   Per-hit humanising needs transient detection and is a separate build.
 - No tempo-synced dust, no per-band anything, no MIDI.

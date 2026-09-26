@@ -2,7 +2,7 @@ CRATE — twelve-bit drum processor
 =================================
 
 A drum bus processor after the sound of the late-80s sampling boxes: a 26.04 kHz
-sample clock, companded twelve-bit conversion, a four-pole filter, the noise
+sample clock, linear twelve-bit conversion, a four-pole filter, the noise
 floor of the record it came off, and a swing section that moves the off-beats
 against the host grid.
 

@@ -16,7 +16,25 @@ inline const std::vector<Preset>& presets(){
     static const std::vector<Preset> all = {
         { "Init", {} },
         { "Twelve bit, straight", {
-            { "compand", 60 }, { "aa", 25 }, { "mix", 100 } } },
+            { "compand", 0 }, { "aa", 25 }, { "mix", 100 } } },
+        // the record sped up about five semitones going in and tuned back down on
+        // the machine: 45 rpm against 33 is a ratio of 1.35, 5.2 semitones
+        { "SP, 45 on 33", {
+            { "machine", 0 }, { "trick", 5 }, { "aa", 10 }, { "dust", 20 } } },
+        // the SP's outputs 3 and 4 had a fixed lowpass around 7.5 kHz; 7 and 8
+        // had none at all, and no reconstruction filter either
+        { "SP, outputs 3-4", {
+            { "machine", 0 }, { "fltFreq", 7500 }, { "fltReso", 0 } } },
+        { "SP, outputs 7-8 raw", {
+            { "machine", 0 }, { "aa", 0 }, { "fltReso", 0 }, { "inGain", 3 } } },
+        // the rack sampler at its top rate: twelve bits and a steep band limit
+        { "S900, forty kilohertz", {
+            { "machine", 1 }, { "clock", 40000 }, { "aa", 25 }, { "fltReso", 0 } } },
+        // the S950 trick for lifting a bass line out of a loop: a low rate and
+        // the four-pole shut right down on top of the six-pole
+        { "S950, bass lifted out", {
+            { "machine", 1 }, { "clock", 16000 }, { "fltFreq", 350 }, { "fltReso", 0 },
+            { "fltDrive", 2 }, { "mono", 1 } } },
         { "Pitched down for grit", {
             { "tune", -5 }, { "aa", 10 }, { "compand", 75 }, { "fltFreq", 9000 } } },
         { "Dusty break", {

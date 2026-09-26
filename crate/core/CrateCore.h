@@ -89,7 +89,9 @@ public:
         conv_.configure(v_[static_cast<size_t>(id.clock)] * std::pow(2.0, tune / 12.0),
                         v_[static_cast<size_t>(id.aa)] / 100.0,
                         v_[static_cast<size_t>(id.bits)],
-                        v_[static_cast<size_t>(id.compand)] / 100.0);
+                        v_[static_cast<size_t>(id.compand)] / 100.0,
+                        v_[static_cast<size_t>(id.machine)] > 0.5f ? Machine::S900 : Machine::SP,
+                        v_[static_cast<size_t>(id.trick)]);
         const double drive = v_[static_cast<size_t>(id.fltDrive)];
         ladder_.configure(v_[static_cast<size_t>(id.fltFreq)],
                           v_[static_cast<size_t>(id.fltReso)] / 100.0, drive);

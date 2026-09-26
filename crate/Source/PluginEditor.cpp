@@ -222,7 +222,8 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     };
 
     inRow     = { knob(pIn, "inGain", ink), toggle(pIn, "mono", ink, 88) };
-    convRow   = { knob(pConv, "tune", yellow), knob(pConv, "clock", yellow),
+    convRow   = { choice(pConv, "machine", "Machine", 96), knob(pConv, "tune", yellow),
+                  knob(pConv, "trick", yellow), knob(pConv, "clock", yellow),
                   knob(pConv, "bits", yellow), knob(pConv, "compand", yellow),
                   knob(pConv, "aa", yellow) };
     filterRow = { knob(pFilter, "fltFreq", blue), knob(pFilter, "fltReso", blue),

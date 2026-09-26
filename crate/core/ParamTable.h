@@ -65,11 +65,13 @@ private:
 
         f("inGain", "Input", -24, 24, 0, false, "dB");
         b("mono", "Mono", false);
-        // the converter
+        // the converter. Machine is first because it decides what the rest mean
+        c("machine", "Machine", { "SP", "S900" }, 0);
         f("tune",    "Tune",       -12, 12, 0, false, "st");
+        f("trick",   "Pitch trick", 0, 12, 0, false, "st");
         f("clock",   "Clock",      8000, 48000, 26040, true, "Hz");
         f("bits",    "Bits",       4, 16, 12, false);
-        f("compand", "Compand",    0, 100, 60, false, "%");
+        f("compand", "Compand",    0, 100, 0, false, "%");
         f("aa",      "Anti-alias", 0, 100, 25, false, "%");
         // the four-pole
         f("fltFreq",  "Cutoff", 200, 18000, 18000, true, "Hz");
@@ -92,13 +94,13 @@ private:
 
 struct Ids {
     static const Ids& get(){ static Ids i; return i; }
-    int inGain, mono, tune, clock, bits, compand, aa;
+    int inGain, mono, machine, tune, trick, clock, bits, compand, aa;
     int fltFreq, fltReso, fltDrive, swing, grid, push, dust, dustTone, mix, outGain, safety;
 private:
     Ids(){
         const Params& p = Params::get();
         auto I = [&](const char* s){ return p.index(s); };
-        inGain = I("inGain"); mono = I("mono"); tune = I("tune"); clock = I("clock");
+        inGain = I("inGain"); mono = I("mono"); machine = I("machine"); tune = I("tune"); trick = I("trick"); clock = I("clock");
         bits = I("bits"); compand = I("compand"); aa = I("aa");
         fltFreq = I("fltFreq"); fltReso = I("fltReso"); fltDrive = I("fltDrive");
         swing = I("swing"); grid = I("grid"); push = I("push");

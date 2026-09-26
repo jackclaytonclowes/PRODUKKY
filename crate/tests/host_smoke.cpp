@@ -116,7 +116,7 @@ int main(int argc, char** argv){
     }
 
     std::printf("\nPresets\n");
-    check("nine starting points", proc.getNumPrograms() == 9, juce::String(proc.getNumPrograms()));
+    check("fourteen starting points", proc.getNumPrograms() == 14, juce::String(proc.getNumPrograms()));
     for (int i = 0; i < proc.getNumPrograms(); ++i){
         proc.setCurrentProgram(i);
         const bool ok = runBlocks(proc, ph, 12, 256, peak, bad);

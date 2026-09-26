@@ -10,6 +10,7 @@
 //   npm run test:crate
 #include "CrateCore.h"
 #include <cstdio>
+#include <cstdlib>
 #include <cmath>
 #include <vector>
 #include <string>
@@ -21,7 +22,7 @@ using namespace crate;
 static int passed = 0;
 static std::vector<std::string> failures;
 static void check(const std::string& name, bool ok, const std::string& detail = ""){
-    if (ok){ ++passed; std::printf("  ok    %s\n", name.c_str()); }
+    if (ok){ ++passed; std::printf("  ok    %s%s\n", name.c_str(), std::getenv("VERBOSE") && !detail.empty() ? (" — " + detail).c_str() : ""); }
     else {
         failures.push_back(name + (detail.empty() ? "" : " — " + detail));
         std::printf("  FAIL  %s%s\n", name.c_str(), detail.empty() ? "" : (" — " + detail).c_str());
@@ -155,20 +156,26 @@ int main(){
     const Params& P = Params::get();
 
     std::printf("\nParameters\n");
-    check("the table is complete", P.count() == 18, std::to_string(P.count()) + " parameters");
+    check("the table is complete", P.count() == 20, std::to_string(P.count()) + " parameters");
     check("the clock defaults to the rate the hardware ran at",
           std::fabs(P[P.index("clock")].def - 26040.0f) < 1.0f);
     check("twelve bits by default", std::fabs(P[P.index("bits")].def - 12.0f) < 0.01f);
+    // the SP and the S900 both stored linear PCM; companding is an extra, not the default
+    check("and linear by default, the format the hardware stored",
+          P[P.index("compand")].def == 0.0f);
+    check("the machine defaults to SP, so older patches sound the same",
+          P[P.index("machine")].def == 0.0f && P[P.index("trick")].def == 0.0f);
 
     // ----------------------------------------------------------- the converter
     // measured on its own. Through the whole box the four-pole's saturation
     // colours every reading, which is fine for music and useless for a metre.
     std::printf("\nConverter\n");
     auto throughConverter = [&](double freq, double amp, double clock, double aa,
-                                double bits, double compand){
+                                double bits, double compand,
+                                Machine machine = Machine::SP, double trick = 0.0){
         Converter c;
         c.prepare(sr);
-        c.configure(clock, aa, bits, compand);
+        c.configure(clock, aa, bits, compand, machine, trick);
         auto in = sine(freq, amp, 0.5, sr);
         for (auto& v : in) v = static_cast<float>(c.process(0, v));
         return in;
@@ -224,6 +231,68 @@ int main(){
               loudMu - loudLin > 3.0, f2s(loudMu - loudLin) + " dB");
         check("and quiet tails cleaner",
               quietLin - quietMu > 3.0, f2s(quietLin - quietMu) + " dB");
+    }
+
+    // ------------------------------------------------------------ the machines
+    std::printf("\nMachine\n");
+    {
+        const auto r = throughConverter(1000, 0.25, 26040, 0.25, 16, 0.0, Machine::S900);
+        const double g = dBOf(goertzel(r, 1000, sr, 4800) / 0.25);
+        check("S900: a 1 kHz tone comes through at unity", std::fabs(g) < 0.6, f2s(g) + " dB");
+    }
+    {
+        // 20 kHz on a 26.04 kHz clock folds to 6.04 kHz. The SP's gentle filter
+        // lets it through; the S900's six-pole, at 0.46 of the clock with the
+        // knob open, should take at least 20 dB more of it out
+        const double fold = 26040.0 - 20000.0;
+        const auto sp = throughConverter(20000, 0.25, 26040, 0.0, 16, 0.0, Machine::SP);
+        const auto s9 = throughConverter(20000, 0.25, 26040, 0.0, 16, 0.0, Machine::S900);
+        const double fsp = dBOf(goertzel(sp, fold, sr, 4800) / 0.25);
+        const double fs9 = dBOf(goertzel(s9, fold, sr, 4800) / 0.25);
+        check("S900: its anti-alias filter stops what the SP folds back",
+              fsp - fs9 > 20.0, "SP " + f2s(fsp) + " dB, S900 " + f2s(fs9) + " dB at 6.04 kHz");
+    }
+    {
+        // 5 kHz on a 16 kHz clock leaves an image of the hold at 11 kHz. The SP
+        // keeps it; the S900's reconstruction filter removes it
+        const auto sp = throughConverter(5000, 0.25, 16000, 1.0, 16, 0.0, Machine::SP);
+        const auto s9 = throughConverter(5000, 0.25, 16000, 1.0, 16, 0.0, Machine::S900);
+        const double isp = dBOf(goertzel(sp, 11000, sr, 4800) / 0.25);
+        const double is9 = dBOf(goertzel(s9, 11000, sr, 4800) / 0.25);
+        check("S900: its reconstruction filter removes the images the SP leaves in",
+              isp - is9 > 20.0, "SP " + f2s(isp) + " dB, S900 " + f2s(is9) + " dB at 11 kHz");
+    }
+
+    // ------------------------------------------------------- the pitch trick
+    std::printf("\nPitch trick\n");
+    {
+        // sped up six semitones and read back onto the fixed clock: the pitch
+        // and the level must come out where they went in...
+        const auto plain = throughConverter(1000, 0.25, 26040, 1.0, 16, 0.0, Machine::SP, 0.0);
+        const auto trick = throughConverter(1000, 0.25, 26040, 1.0, 16, 0.0, Machine::SP, 6.0);
+        const double fund = dBOf(goertzel(trick, 1000, sr, 4800) / 0.25);
+        const double down = dBOf(goertzel(trick, 707.1, sr, 4800) / 0.25);
+        check("the pitch trick leaves the pitch and the level alone",
+              std::fabs(fund) < 1.0 && down < -40.0,
+              "1 kHz " + f2s(fund) + " dB, 707 Hz " + f2s(down) + " dB");
+        // ...and what it adds is the drop-sample grit: irregular repeats that are
+        // not harmonics of anything, measured as what is left once the tone is fit
+        const double nPlain = 10.0 * std::log10(std::max(1e-14, residualPower(plain, 1000, sr, 4800)));
+        const double nTrick = 10.0 * std::log10(std::max(1e-14, residualPower(trick, 1000, sr, 4800)));
+        check("and adds grit that the plain converter does not have",
+              nTrick - nPlain > 6.0, f2s(nTrick - nPlain) + " dB more residue");
+    }
+    {
+        // the record was sampled sped up, so the effective rate drops: at +6 it
+        // is 26040 / 1.414 = 18413 Hz, and 10 kHz now folds to 8413 Hz, where
+        // the plain converter (half-clock 13 kHz) puts nothing
+        const double eff = 26040.0 / std::pow(2.0, 0.5), fold = eff - 10000.0;
+        const auto plain = throughConverter(10000, 0.25, 26040, 0.0, 16, 0.0, Machine::SP, 0.0);
+        const auto trick = throughConverter(10000, 0.25, 26040, 0.0, 16, 0.0, Machine::SP, 6.0);
+        const double a = dBOf(goertzel(plain, fold, sr, 4800) / 0.25);
+        const double b = dBOf(goertzel(trick, fold, sr, 4800) / 0.25);
+        check("it lowers the effective sample rate, so fold-back lands lower",
+              b > -30.0 && b - a > 20.0, "plain " + f2s(a) + " dB, trick " + f2s(b) + " dB at " + f2s(fold, 0) + " Hz");
     }
     {
         // tune moves the clock without moving the pitch
