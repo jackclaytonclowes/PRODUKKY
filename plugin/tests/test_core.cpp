@@ -84,6 +84,38 @@ static Result render(const Patch& patch, double seconds = 0.3, double sr = 48000
     return r;
 }
 
+// ------------------------------------------------------------- zipper noise
+// A host moves a knob once per block. A control whose coefficients jump at
+// each block edge puts energy between the harmonics of whatever passes
+// through; one that glides does not. The yardstick is the same sweep sent in
+// 16-sample blocks, the smoothest a host can manage: a moving filter always
+// modulates what passes through it, and that part is not zipper.
+static void fftInPlace(std::vector<std::complex<double>>& a){
+    const size_t n = a.size();
+    for (size_t i = 1, j = 0; i < n; ++i){ size_t b = n >> 1; for (; j & b; b >>= 1) j ^= b; j ^= b; if (i < j) std::swap(a[i], a[j]); }
+    for (size_t len = 2; len <= n; len <<= 1){
+        const std::complex<double> wl = std::polar(1.0, -2.0 * M_PI / static_cast<double>(len));
+        for (size_t i = 0; i < n; i += len){
+            std::complex<double> w = 1.0;
+            for (size_t k = 0; k < len / 2; ++k){ const auto u = a[i + k], v = a[i + k + len / 2] * w; a[i + k] = u + v; a[i + k + len / 2] = u - v; w *= wl; }
+        }
+    }
+}
+// energy further than 4 bins from any harmonic of f0, against the total, in dB
+static double inharmonicDb(const std::vector<float>& x, double f0, double sr){
+    const size_t n = 65536;
+    std::vector<std::complex<double>> a(n);
+    for (size_t i = 0; i < n; ++i) a[i] = x[x.size() - n + i] * (0.5 - 0.5 * std::cos(2.0 * M_PI * i / (n - 1)));
+    fftInPlace(a);
+    double tot = 0.0, bad = 0.0; const double binHz = sr / n;
+    for (size_t k = 1; k < n / 2; ++k){
+        const double p = std::norm(a[k]); tot += p;
+        const double h = k * binHz / f0;
+        if (std::fabs(h - std::round(h)) * f0 / binHz > 4.0) bad += p;
+    }
+    return 10.0 * std::log10(std::max(bad, 1e-30) / tot);
+}
+
 // ------------------------------------------------------- shaper parity vs JS
 static double db(double gain){ return 20.0 * std::log10(std::max(gain, 1.0e-12)); }
 
@@ -979,6 +1011,49 @@ int main(int argc, char** argv){
         }
         check("at the defaults the feedback controls are dimmed and the drive is not",
               fbDimmed && !driveDimmed, std::to_string(idleNow.size()) + " dimmed");
+    }
+
+    std::printf("\nZipper noise\n");
+    {
+        struct Case { const char* name; std::map<std::string, float> base; const char* id; float from, to; };
+        const std::vector<Case> cases = {
+            { "Cutoff (clean)", { {"fltType", 1}, {"fltQ", 4} }, "fltFreq", 300, 8000 },
+            { "Cutoff (analogue)", { {"fltType", 1}, {"fltCirc", 1}, {"fltQ", 4} }, "fltFreq", 300, 8000 },
+            { "Output", {}, "outGain", -24, 6 },
+            { "Drive A", {}, "d0a", 1, 30 },
+            { "Dry/wet", {}, "mix", 0, 100 },
+            { "Band tone", {}, "t0", -12, 12 },
+            { "Split 1", { {"bands", 1} }, "x1", 100, 1000 },
+            { "Filter mix", { {"fltType", 4}, {"fltFreq", 1000} }, "fltMix", 0, 100 },
+            { "Macro 1 on cutoff", { {"fltType", 1}, {"mS0", 6}, {"mA0", 60} }, "mc1", 0, 100 },
+        };
+        const int destCut = [&]{ const auto& d = P.dests(); for (size_t k = 0; k < d.size(); ++k) if (P[d[k]].id == "fltFreq") return static_cast<int>(k + 1); return 0; }();
+        std::string worstName; double worst = -99.0;
+        for (const auto& c : cases){
+            double r[2];
+            for (int pass = 0; pass < 2; ++pass){
+                const int blk = pass ? 512 : 16;
+                Engine e; e.prepare(48000.0, 512);
+                for (int i = 0; i < P.count(); ++i) e.setParam(i, P[i].def);
+                e.setParam(P.index("bands"), 0); e.setParam(P.index("m0a"), 0); e.setParam(P.index("d0a"), 2);
+                for (const auto& kv : c.base) e.setParam(P.index(kv.first), kv.second);
+                if (std::string(c.id) == "mc1") e.setParam(P.index("mD0"), static_cast<float>(destCut));
+                const int n = 96000;
+                std::vector<float> L(n), R(n);
+                for (int i = 0; i < n; ++i) L[i] = R[i] = static_cast<float>(0.25 * std::sin(2.0 * M_PI * 440.0 * i / 48000.0));
+                const ParamInfo& pi = P[P.index(c.id)];
+                for (int i = 0; i < n; i += blk){
+                    const float t = static_cast<float>(i) / n;
+                    e.setParam(P.index(c.id), Params::fromNorm(pi, Params::toNorm(pi, c.from) + (Params::toNorm(pi, c.to) - Params::toNorm(pi, c.from)) * t));
+                    float* io[2] = { L.data() + i, R.data() + i };
+                    e.process(io, 2, std::min(blk, n - i));
+                }
+                r[pass] = inharmonicDb(L, 440.0, 48000.0);
+            }
+            if (r[1] - r[0] > worst){ worst = r[1] - r[0]; worstName = c.name; }
+        }
+        check("no control zippers when a host moves it once a block", worst < 2.0,
+              "worst " + worstName + " +" + f2s(worst, 1) + " dB over a 16-sample-block sweep");
     }
 
     // ------------------------------------------------ the drawn filter curve

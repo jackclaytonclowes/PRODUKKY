@@ -167,7 +167,7 @@ the panel. It is compiled in from the same file, so the two cannot say different
 
 ## What is verified, and how
 
-`npm run test:crate` — 71 assertions, no JUCE needed (`VERBOSE=1` prints the measured
+`npm run test:crate` — 74 assertions, no JUCE needed (`VERBOSE=1` prints the measured
 value behind every one). These are measurements, not smoke
 tests, because nobody involved in building this has heard it:
 
@@ -198,6 +198,9 @@ tests, because nobody involved in building this has heard it:
   speed, glide rounds the edges, and Mod +4 oct opens the filter by 12 dB on the high half
 - **the half mix is predicted, not assumed**: the dry reference is the input shifted by the
   reported latency, and a deliberate one-sample error fails the test by 5 dB
+- **no control zippers**: each is swept the way a host sends automation, once per 512-sample
+  block, and the energy a sine picks up between its harmonics is compared with the same
+  sweep in 16-sample blocks. Every control measured is under 1 dB; the suite fails above 2
 - **every control the panel dims really does nothing**: in eight states of the box, each
   control the panel would dim (130 in all) is moved end to end and the output must be
   bit-identical

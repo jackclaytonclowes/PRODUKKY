@@ -13,6 +13,7 @@
 #include "../Source/Presets.h"
 #include "../../tools/audition/common.h"
 #include <cstdio>
+#include <complex>
 #include <cstdlib>
 #include <cmath>
 #include <vector>
@@ -37,6 +38,38 @@ static std::string f2s(double v, int p = 2){
 static double dBOf(double x){ return 20.0 * std::log10(std::max(1e-12, x)); }
 
 // ------------------------------------------------------------------- helpers
+// ------------------------------------------------------------- zipper noise
+// A host moves a knob once per block. A control whose coefficients jump at
+// each block edge puts energy between the harmonics of whatever passes
+// through; one that glides does not. The yardstick is the same sweep sent in
+// 16-sample blocks, the smoothest a host can manage: a moving filter always
+// modulates what passes through it, and that part is not zipper.
+static void fftInPlace(std::vector<std::complex<double>>& a){
+    const size_t n = a.size();
+    for (size_t i = 1, j = 0; i < n; ++i){ size_t b = n >> 1; for (; j & b; b >>= 1) j ^= b; j ^= b; if (i < j) std::swap(a[i], a[j]); }
+    for (size_t len = 2; len <= n; len <<= 1){
+        const std::complex<double> wl = std::polar(1.0, -2.0 * M_PI / static_cast<double>(len));
+        for (size_t i = 0; i < n; i += len){
+            std::complex<double> w = 1.0;
+            for (size_t k = 0; k < len / 2; ++k){ const auto u = a[i + k], v = a[i + k + len / 2] * w; a[i + k] = u + v; a[i + k + len / 2] = u - v; w *= wl; }
+        }
+    }
+}
+// energy further than 4 bins from any harmonic of f0, against the total, in dB
+static double inharmonicDb(const std::vector<float>& x, double f0, double sr){
+    const size_t n = 65536;
+    std::vector<std::complex<double>> a(n);
+    for (size_t i = 0; i < n; ++i) a[i] = x[x.size() - n + i] * (0.5 - 0.5 * std::cos(2.0 * M_PI * i / (n - 1)));
+    fftInPlace(a);
+    double tot = 0.0, bad = 0.0; const double binHz = sr / n;
+    for (size_t k = 1; k < n / 2; ++k){
+        const double p = std::norm(a[k]); tot += p;
+        const double h = k * binHz / f0;
+        if (std::fabs(h - std::round(h)) * f0 / binHz > 4.0) bad += p;
+    }
+    return 10.0 * std::log10(std::max(bad, 1e-30) / tot);
+}
+
 using Patch = std::map<std::string, float>;
 
 static void applyPatch(Engine& e, const Patch& patch){
@@ -778,6 +811,44 @@ int main(){
             if (std::fabs(rel) > 6.0 || pk > 0.95) out += std::string(" [") + p.name + " " + f2s(rel, 1) + " dB, peak " + f2s(pk, 2) + "]";
         }
         check("every preset sits within 6 dB of the dry loop, off the ceiling", out.empty(), out);
+    }
+
+    std::printf("\nZipper noise\n");
+    {
+        struct Case { const char* name; Patch base; const char* id; float from, to; };
+        const std::vector<Case> cases = {
+            { "Cutoff", { {"fltFreq", 300} }, "fltFreq", 300, 12000 },
+            { "Cutoff, resonant band pass", { {"fltShape", 1}, {"fltReso", 60} }, "fltFreq", 300, 6000 },
+            { "Resonance", { {"fltFreq", 1500} }, "fltReso", 0, 90 },
+            { "Clock", {}, "clock", 8000, 48000 },
+            { "Tune", {}, "tune", -12, 12 },
+            { "Output", {}, "outGain", -24, 6 },
+            { "Mix", {}, "mix", 0, 100 },
+            { "Filter mix", { {"fltFreq", 500} }, "fltMix", 0, 100 },
+        };
+        const Params& PP = Params::get();
+        std::string worstName; double worst = -99.0;
+        for (const auto& c : cases){
+            double r[2];
+            for (int pass = 0; pass < 2; ++pass){
+                const int blk = pass ? 512 : 16;
+                Engine e; e.prepare(sr, 512); applyPatch(e, c.base);
+                const int n = 96000;
+                std::vector<float> L(n), R(n);
+                for (int i = 0; i < n; ++i) L[i] = R[i] = static_cast<float>(0.25 * std::sin(2.0 * M_PI * 440.0 * i / sr));
+                const ParamInfo& pi = PP[PP.index(c.id)];
+                for (int i = 0; i < n; i += blk){
+                    const float t = static_cast<float>(i) / n;
+                    e.setParam(PP.index(c.id), Params::fromNorm(pi, Params::toNorm(pi, c.from) + (Params::toNorm(pi, c.to) - Params::toNorm(pi, c.from)) * t));
+                    float* io[2] = { L.data() + i, R.data() + i };
+                    e.process(io, 2, std::min(blk, n - i));
+                }
+                r[pass] = inharmonicDb(L, 440.0, sr);
+            }
+            if (r[1] - r[0] > worst){ worst = r[1] - r[0]; worstName = c.name; }
+        }
+        check("no control zippers when a host moves it once a block", worst < 2.0,
+              "worst " + worstName + " +" + f2s(worst, 1) + " dB over a 16-sample-block sweep");
     }
 
     std::printf("\nFeel\n");

@@ -284,7 +284,7 @@ the panel. It is compiled in from the same file, so the two cannot say different
 
 ## What is verified, and where
 
-`npm run test:core` — 94 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 117 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -346,8 +346,15 @@ opening a DAW.
 
 - **Nothing here has been heard.** It builds clean and the numbers are right, but the
   container that produced it has no audio device and no plugin host. The first real test is
-  yours: load it, and listen for zipper noise on fast modulation (parameters are smoothed
-  per block, filter coefficients recomputed per block) and for aliasing on the crush.
+  yours: load it, and listen for aliasing on the crush and for anything that clicks.
+- **Zipper noise is measured, not assumed.** A sine is run through each control while it is
+  swept the way a host sends automation, once per 512-sample block, and the energy between
+  the harmonics is compared with the same sweep sent in 16-sample blocks. The band Tone and
+  the crossovers measured +7.8 and +6.2 dB of zipper, because their filters were retuned
+  once a block; they now glide across the block, retuned every 16 samples, and measure
+  +0.0. Every control in the test is under 1 dB, and the suite fails above 2. The one
+  preset that moves them (Motion, whose envelope drives band 2's tone) renders differently
+  for it; every other preset is byte-identical.
 - The oversampler is correct but not cheap — around 780 multiply-adds per sample per band
   per channel at 4x. If CPU matters, swap `Oversampler` for `juce::dsp::Oversampling`,
   which is polyphase; the interface is a drop-in.

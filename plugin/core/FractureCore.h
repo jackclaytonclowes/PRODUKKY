@@ -173,17 +173,16 @@ public:
         // ---- per-block configuration
         const int nb = static_cast<int>(mv_[id.bands]) + 1;
         const double osSr = sr_ * osFactor_;
+        const bool wasFirst = first_;          // setR below clears first_
         int solo = 0;
         for (int b = 0; b < numBands; ++b) if (mv_[id.bandSolo[b]] > 0.5f) { solo = b + 1; break; }
 
         for (int ch = 0; ch < nch; ++ch){
             preHP_[ch].set(Biquad::HighPass, mv_[id.preHP], sr_);
             preLP_[ch].set(Biquad::LowPass,  mv_[id.preLP], sr_);
-            xLP1a_[ch].set(Biquad::LowPass,  mv_[id.x1], sr_); xLP1b_[ch].copyCoeffs(xLP1a_[ch]);
-            xHP1a_[ch].set(Biquad::HighPass, mv_[id.x1], sr_); xHP1b_[ch].copyCoeffs(xHP1a_[ch]);
-            xLP2a_[ch].set(Biquad::LowPass,  mv_[id.x2], sr_); xLP2b_[ch].copyCoeffs(xLP2a_[ch]);
-            xHP2a_[ch].set(Biquad::HighPass, mv_[id.x2], sr_); xHP2b_[ch].copyCoeffs(xHP2a_[ch]);
-            xAP_[ch].set(Biquad::AllPass,    mv_[id.x2], sr_);   // keeps the low band in phase
+            // the crossovers and tilts start the block where the last one left
+            // them and glide to the new values inside it (see the sample loop)
+            setSplit(ch, wasFirst ? mv_[id.x1] : x1Was_, wasFirst ? mv_[id.x2] : x2Was_);
             fbTone_[ch].set(Biquad::LowPass, mv_[id.fbTone], sr_);
             // the loop's DC blocker. At 40 Hz it bends the phase of anything
             // near it, which on a tuned loop pulls the partials of a low note
@@ -202,8 +201,7 @@ public:
             }
             for (int b = 0; b < numBands; ++b){
                 Band& bd = bands_[b];
-                bd.tiltLo[ch].set(Biquad::LowShelf,  320.0,  osSr, 0.70710678, -mv_[id.bandTone[b]]);
-                bd.tiltHi[ch].set(Biquad::HighShelf, 3200.0, osSr, 0.70710678,  mv_[id.bandTone[b]]);
+                setTilt(bd, ch, wasFirst ? mv_[id.bandTone[b]] : toneWas_[b], osSr);
                 bd.dcA[ch].set(Biquad::HighPass, 18.0, osSr);
                 bd.dcB[ch].set(Biquad::HighPass, 18.0, osSr);
             }
@@ -295,6 +293,11 @@ public:
                         mv_[id.trDuty], mv_[id.trSpread], transport_);
         const bool tremOn = trem_.active();
 
+        bool gliding = false;
+        if (!wasFirst){
+            gliding = mv_[id.x1] != x1Was_ || mv_[id.x2] != x2Was_;
+            for (int b = 0; b < numBands; ++b) gliding = gliding || mv_[id.bandTone[b]] != toneWas_[b];
+        }
         // ---- per sample
         double inPk = 0.0, outPk = 0.0;
         for (int i = 0; i < n; ++i){
@@ -302,6 +305,21 @@ public:
             // phase; it retunes the filter every 16 samples (a third of a
             // millisecond at 48 kHz), which is smooth and a sixteenth the cost
             rhythm_.step();
+            // A knob moved by the host arrives once a block. The crossovers and
+            // the band tilts are filters whose coefficients would otherwise jump
+            // at each block edge; measured on a sine under a host-rate sweep
+            // that is +6 to +8 dB of inharmonic zipper. So they glide across the
+            // block, retuned every 16 samples, and only when they are moving
+            if (gliding && (i & 15) == 0){
+                const double t = std::min(1.0, (i + 16) / static_cast<double>(n));
+                const double x1 = x1Was_ + (mv_[id.x1] - x1Was_) * t;
+                const double x2 = x2Was_ + (mv_[id.x2] - x2Was_) * t;
+                for (int ch = 0; ch < nch; ++ch){
+                    setSplit(ch, x1, x2);
+                    for (int b = 0; b < numBands; ++b)
+                        setTilt(bands_[b], ch, toneWas_[b] + (mv_[id.bandTone[b]] - toneWas_[b]) * t, osSr);
+                }
+            }
             if (rhythmOn && (i & 15) == 0){
                 for (int ch = 0; ch < nch; ++ch){
                     const double f = cutoffBase * std::exp2(rhDepth * rhythm_.value(ch));
@@ -398,6 +416,8 @@ public:
         }
         inPeak = static_cast<float>(inPk);
         outPeak = static_cast<float>(outPk);
+        x1Was_ = mv_[id.x1]; x2Was_ = mv_[id.x2];
+        for (int b = 0; b < numBands; ++b) toneWas_[b] = mv_[id.bandTone[b]];
     }
 
 private:
@@ -420,6 +440,19 @@ private:
     Biquad flt_[maxChannels][4], fbTone_[maxChannels], fbHP_[maxChannels];
     RhythmMod rhythm_;
     FilterState filterNow_;
+    double x1Was_ = 220.0, x2Was_ = 2200.0, toneWas_[numBands] = { 0, 0, 0 };
+
+    void setSplit(int ch, double x1, double x2){
+        xLP1a_[ch].set(Biquad::LowPass,  x1, sr_); xLP1b_[ch].copyCoeffs(xLP1a_[ch]);
+        xHP1a_[ch].set(Biquad::HighPass, x1, sr_); xHP1b_[ch].copyCoeffs(xHP1a_[ch]);
+        xLP2a_[ch].set(Biquad::LowPass,  x2, sr_); xLP2b_[ch].copyCoeffs(xLP2a_[ch]);
+        xHP2a_[ch].set(Biquad::HighPass, x2, sr_); xHP2b_[ch].copyCoeffs(xHP2a_[ch]);
+        xAP_[ch].set(Biquad::AllPass,    x2, sr_);   // keeps the low band in phase
+    }
+    template <typename B> static void setTilt(B& bd, int ch, double dB, double osSr){
+        bd.tiltLo[ch].set(Biquad::LowShelf,  320.0,  osSr, 0.70710678, -dB);
+        bd.tiltHi[ch].set(Biquad::HighShelf, 3200.0, osSr, 0.70710678,  dB);
+    }
     int fbModeWas_ = 0;
 
     // The delay, in samples, that makes the whole loop ring at `note`. The
