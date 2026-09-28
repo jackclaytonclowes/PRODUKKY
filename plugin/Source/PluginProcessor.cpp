@@ -44,6 +44,9 @@ FractureProcessor::FractureProcessor()
     const Params& P = Params::get();
     raw.resize(static_cast<size_t>(P.count()));
     for (int i = 0; i < P.count(); ++i) raw[static_cast<size_t>(i)] = apvts.getRawParameterValue(P[i].id);
+    std::vector<juce::RangedAudioParameter*> params;
+    for (int i = 0; i < P.count(); ++i) params.push_back(apvts.getParameter(P[i].id));
+    session = std::make_unique<session::Session>(std::move(params));
 }
 
 bool FractureProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -151,17 +154,39 @@ void FractureProcessor::setCurrentProgram(int index){
     const auto& all = factoryPresets();
     if (index < 0 || index >= static_cast<int>(all.size())) return;
     currentProgram = index;
+    userPreset.clear();
     loadBrowserPatch(all[static_cast<size_t>(index)].json);   // one import path for everything
+    session->commit();
+}
+
+bool FractureProcessor::pastePatch(const juce::String& json){
+    if (!loadBrowserPatch(json)) return false;
+    session->commit();
+    return true;
+}
+bool FractureProcessor::saveUserPreset(const juce::File& file){
+    if (!userPresets.save(file, saveBrowserPatch())) return false;
+    userPreset = file.getFileNameWithoutExtension();
+    return true;
+}
+bool FractureProcessor::loadUserPreset(const juce::File& file){
+    if (!pastePatch(file.loadFileAsString())) return false;
+    userPreset = file.getFileNameWithoutExtension();
+    return true;
 }
 
 // ------------------------------------------------------------------- state
 void FractureProcessor::getStateInformation(juce::MemoryBlock& destData){
-    if (auto xml = apvts.copyState().createXml()) copyXmlToBinary(*xml, destData);
+    if (auto xml = apvts.copyState().createXml()){
+        session->saveInto(*xml);                       // the hidden A/B slot
+        copyXmlToBinary(*xml, destData);
+    }
 }
 void FractureProcessor::setStateInformation(const void* data, int sizeInBytes){
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
         if (xml->hasTagName(apvts.state.getType()))
         {
+            session->restoreFrom(*xml);                // and takes it out of the tree
             apvts.replaceState(juce::ValueTree::fromXml(*xml));
             // replaceState skips a parameter whose stored value looks unchanged,
             // and for a switch "unchanged" is judged after snapping: a toggle a
@@ -174,6 +199,7 @@ void FractureProcessor::setStateInformation(const void* data, int sizeInBytes){
                 if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(param))
                     rp->setValueNotifyingHost(rp->convertTo0to1(
                         apvts.getRawParameterValue(rp->getParameterID())->load()));
+            session->reset();
         }
 }
 

@@ -5,6 +5,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "FractureCore.h"
+#include "Session.h"
 
 class FractureProcessor : public juce::AudioProcessor {
 public:
@@ -43,6 +44,15 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     fracture::Engine engine;
 
+    // undo, redo and A/B (Session.h), and presets you save yourself. A saved
+    // preset is a browser patch in a file, so it pastes into fx/fracture.html too.
+    std::unique_ptr<session::Session> session;
+    session::UserPresets userPresets { "FRACTURE" };
+    bool saveUserPreset(const juce::File& file);
+    bool loadUserPreset(const juce::File& file);
+    bool pastePatch(const juce::String& json);           // a paste is one undo step
+    juce::String userPresetName() const { return userPreset; }
+
     // metering and scope data for the editor, written on the audio thread
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
     std::atomic<float> lfo1 { 0.0f }, lfo2 { 0.0f }, envOut { 0.0f }, tremOut { 0.0f };
@@ -67,6 +77,7 @@ private:
     juce::AudioProcessorValueTreeState::ParameterLayout buildLayout();
     std::vector<std::atomic<float>*> raw;              // one per core parameter
     int currentProgram = 0;
+    juce::String userPreset;                            // shown in the menu while it is loaded
     int reportedLatency = -1;
     int64_t lastPlayhead = -1;
 

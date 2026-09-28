@@ -17,6 +17,12 @@ Everything runs left to right and top to bottom on the panel, which is also the 
 - **Tips** at the top turns these hover notes on and off. The choice is remembered.
 - **Guide** opens this page. Press it again to close it.
 
+## Undo, compare and your presets
+
+- **Undo** and **Redo** at the top take back and redo changes: each knob drag, each preset you pick. Ctrl + Z and Ctrl + Shift + Z do the same (Cmd on a Mac), when the panel has the keyboard.
+- **A** and **B** are two settings to flip between, so you can compare an idea with what you had. B starts as a copy of A. **A to B** copies what you hear now into the other one. Each keeps its own undo, and both are saved with your song.
+- **Save**, next to the preset menu, saves your settings as a preset of your own. They appear under **Your presets** in the menu, and **Show the presets folder** at the bottom of the menu opens the folder, in Documents/CRATE/Presets. Each preset is a small file you can back up, copy to another computer or send to someone.
+
 ## 01 Input
 
 - **Input** sets how hard you hit the rest of the box. Pushing it makes the converter clip, which is part of the sound.

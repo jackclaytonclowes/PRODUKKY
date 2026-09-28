@@ -7,6 +7,7 @@
 #include "FractureCore.h"
 #include "Relevance.h"
 #include "FactoryPresets.h"
+#include "History.h"
 #include "../../tools/audition/common.h"
 #include <cstdio>
 #include <cstdlib>
@@ -214,6 +215,65 @@ static double sineAmplitude(Engine& e, double freq, double sr, int cycles = 60){
     return rms * std::sqrt(2.0) / 0.25;
 }
 
+// --------------------------------------------------- undo, redo and A/B stacks
+// core/History.h, identical in CRATE and FRACTURE, and tested identically in both
+static void testHistory(){
+    using session::Snapshot;
+    const Snapshot a { 0.0f, 0.5f }, b { 0.1f, 0.5f }, c { 0.1f, 0.9f }, d { 0.7f, 0.2f };
+    {
+        session::History h;
+        h.reset(a);
+        check("history: an unchanged snapshot is not a step", !h.commit(a) && !h.canUndo());
+        h.commit(b); h.commit(c);
+        check("history: each change is one step", h.undoDepth() == 2);
+        const Snapshot u1 = h.undo(c), u2 = h.undo(u1);
+        check("history: undo walks back in order", u1 == b && u2 == a && !h.canUndo());
+        check("history: redo walks forward again", h.redo(a) == b && h.redo(b) == c && !h.canRedo());
+        h.undo(c);
+        h.commit(d);
+        check("history: a fresh edit after undo drops what could be redone", !h.canRedo() && h.redo(d) == d);
+    }
+    {
+        session::History h;
+        h.reset(a);
+        check("history: undo takes back a change that was never committed (automation)",
+              h.undo(b) == a && h.redo(a) == b);
+    }
+    {
+        session::History h(3);
+        h.reset(a);
+        for (int i = 1; i <= 5; ++i) h.commit(Snapshot{ static_cast<float>(i), 0.0f });
+        check("history: the stack is capped", h.undoDepth() == 3);
+        session::History s;
+        s.reset(a); s.commit(b);
+        s.settle(Snapshot{ 0.1000001f, 0.5f });
+        check("history: settling on a value that did not round-trip is not a step", s.undoDepth() == 1);
+    }
+    {
+        session::Workspace w;
+        w.reset(a);
+        w.commit(b);                                          // A: a -> b
+        check("A/B: B opens as a copy of A", w.select(1, b) == b && w.active() == 1);
+        check("A/B: B starts with nothing to undo", !w.canUndo(b));
+        w.commit(c);                                          // B: b -> c
+        check("A/B: back to A gives A's settings", w.select(0, c) == b && w.active() == 0);
+        check("A/B: A's undo carries on where it left off", w.undo(b) == a);
+        check("A/B: and B still has B's settings", w.select(1, a) == c);
+        check("A/B: B's undo is B's own", w.undo(c) == b && !w.canUndo(b));
+        check("A/B: a switch is never an undo step", w.select(0, b) == a && w.undo(a) == a);
+    }
+    {
+        session::Workspace w;
+        w.reset(a);
+        w.copyToOther(d);
+        check("A/B: copying to the hidden side is what it then shows", w.select(1, d) == d);
+        w.restore(1, a);
+        w.reset(c);
+        check("A/B: a restored session keeps which side is showing, and the other", w.active() == 1
+              && w.select(0, c) == a && !w.canUndo(a));
+    }
+}
+
 int main(int argc, char** argv){
     const char* csv = argc > 1 ? argv[1] : "plugin/tests/shaper_reference.csv";
     const char* presetsPath = argc > 2 ? argv[2] : "plugin/tests/presets.json";
@@ -228,6 +288,9 @@ int main(int argc, char** argv){
 
     std::printf("\nShaper parity\n");
     testShaperParity(csv);
+
+    std::printf("\nUndo and A/B\n");
+    testHistory();
 
     std::printf("\nRender\n");
     const Result base = render({});

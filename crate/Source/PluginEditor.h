@@ -99,6 +99,8 @@ public:
     ~CrateEditor() override;
     void paint(juce::Graphics&) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress&) override;
+    std::unique_ptr<session::SessionBar> sessionBar;   // public for the host-level test
 private:
     void timerCallback() override;
     CrateProcessor& proc;
@@ -135,7 +137,7 @@ private:
     Panel *pIn = nullptr, *pConv = nullptr, *pFilter = nullptr,
           *pFeel = nullptr, *pDust = nullptr, *pOut = nullptr, *pRhythm = nullptr;
     std::vector<juce::Component*> inRow, convRow, filterRow, feelRow, dustRow, outRow, rhythmRow;
-    juce::ComboBox presetBox;
+    std::unique_ptr<session::PresetMenu> presetMenu;
     FeelStrip* strip = nullptr;
     Meters* meters = nullptr;
     StepEditor* steps = nullptr;

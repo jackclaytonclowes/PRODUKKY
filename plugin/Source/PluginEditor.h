@@ -176,6 +176,7 @@ public:
     ~FractureEditor() override;
     void paint(juce::Graphics&) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress&) override;
 
 private:
     void timerCallback() override;
@@ -234,7 +235,10 @@ private:
     std::vector<juce::Component*> lfoRow[2], envRow;
     std::vector<juce::Component*> matrixRow[6];
 
-    juce::ComboBox presetBox;
+    std::unique_ptr<session::PresetMenu> presetMenu;
+public:
+    std::unique_ptr<session::SessionBar> sessionBar;   // public for the host-level test
+private:
     juce::TextButton copyButton { "Copy patch" }, pasteButton { "Paste patch" };
     juce::TextButton bandTab[3];
     juce::Component* bandPane[3] {};

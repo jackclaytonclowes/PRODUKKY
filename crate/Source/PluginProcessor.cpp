@@ -43,6 +43,9 @@ CrateProcessor::CrateProcessor()
     const Params& P = Params::get();
     raw.resize(static_cast<size_t>(P.count()));
     for (int i = 0; i < P.count(); ++i) raw[static_cast<size_t>(i)] = apvts.getRawParameterValue(P[i].id);
+    std::vector<juce::RangedAudioParameter*> params;
+    for (int i = 0; i < P.count(); ++i) params.push_back(apvts.getParameter(P[i].id));
+    session = std::make_unique<session::Session>(std::move(params));
 }
 
 bool CrateProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -115,15 +118,87 @@ void CrateProcessor::setCurrentProgram(int index){
         if (auto* p = apvts.getParameter(P[i].id))
             p->setValueNotifyingHost(p->convertTo0to1(v));
     }
+    userPreset.clear();
+    session->commit();
+}
+
+// ------------------------------------------------------------ patches as text
+juce::String CrateProcessor::savePatch() const {
+    const Params& P = Params::get();
+    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+    for (int i = 0; i < P.count(); ++i){
+        const ParamInfo& p = P[i];
+        const float v = raw[static_cast<size_t>(i)]->load();
+        if (std::abs(v - p.def) < 1.0e-6f) continue;               // defaults stay implicit
+        switch (p.kind){
+        case Kind::Float:  obj->setProperty(juce::Identifier(p.id), v); break;
+        case Kind::Bool:   obj->setProperty(juce::Identifier(p.id), v > 0.5f); break;
+        case Kind::Choice: {
+            const int n = static_cast<int>(std::lround(v));
+            if (n >= 0 && n < static_cast<int>(p.choices.size()))
+                obj->setProperty(juce::Identifier(p.id), juce::String(p.choices[static_cast<size_t>(n)]));
+            break;
+        }
+        }
+    }
+    return juce::JSON::toString(juce::var(obj.get()), true);
+}
+
+bool CrateProcessor::loadPatch(const juce::String& json){
+    auto parsed = juce::JSON::parse(json);
+    auto* obj = parsed.getDynamicObject();
+    if (obj == nullptr) return false;
+    const Params& P = Params::get();
+    std::vector<float> values(static_cast<size_t>(P.count()));
+    for (int i = 0; i < P.count(); ++i) values[static_cast<size_t>(i)] = P[i].def;
+    int applied = 0;
+    for (const auto& prop : obj->getProperties()){
+        const int idx = P.index(prop.name.toString().toStdString());
+        if (idx < 0) continue;
+        const ParamInfo& p = P[idx];
+        const juce::var& v = prop.value;
+        float out = 0.0f;
+        if (p.kind == Kind::Choice && v.isString()){
+            const auto it = std::find(p.choices.begin(), p.choices.end(), v.toString().toStdString());
+            if (it == p.choices.end()) continue;
+            out = static_cast<float>(it - p.choices.begin());
+        }
+        else if (v.isBool()) out = static_cast<bool>(v) ? 1.0f : 0.0f;
+        else if (v.isDouble() || v.isInt() || v.isInt64()) out = static_cast<float>(static_cast<double>(v));
+        else continue;
+        values[static_cast<size_t>(idx)] = std::clamp(out, p.min, p.max);
+        ++applied;
+    }
+    if (applied == 0) return false;
+    for (int i = 0; i < P.count(); ++i)
+        if (auto* p = apvts.getParameter(P[i].id))
+            p->setValueNotifyingHost(p->convertTo0to1(values[static_cast<size_t>(i)]));
+    return true;
+}
+
+bool CrateProcessor::saveUserPreset(const juce::File& file){
+    if (!userPresets.save(file, savePatch())) return false;
+    userPreset = file.getFileNameWithoutExtension();
+    return true;
+}
+bool CrateProcessor::loadUserPreset(const juce::File& file){
+    if (!loadPatch(file.loadFileAsString())) return false;
+    session->commit();
+    userPreset = file.getFileNameWithoutExtension();
+    return true;
 }
 
 void CrateProcessor::getStateInformation(juce::MemoryBlock& destData){
-    if (auto xml = apvts.copyState().createXml()) copyXmlToBinary(*xml, destData);
+    if (auto xml = apvts.copyState().createXml()){
+        session->saveInto(*xml);                       // the hidden A/B slot
+        copyXmlToBinary(*xml, destData);
+    }
 }
 void CrateProcessor::setStateInformation(const void* data, int sizeInBytes){
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
         if (xml->hasTagName(apvts.state.getType()))
         {
+            session->restoreFrom(*xml);                // and takes it out of the tree
             apvts.replaceState(juce::ValueTree::fromXml(*xml));
             // replaceState skips a parameter whose stored value looks unchanged,
             // and for a switch "unchanged" is judged after snapping: a toggle a
@@ -136,6 +211,7 @@ void CrateProcessor::setStateInformation(const void* data, int sizeInBytes){
                 if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(param))
                     rp->setValueNotifyingHost(rp->convertTo0to1(
                         apvts.getRawParameterValue(rp->getParameterID())->load()));
+            session->reset();
         }
 }
 

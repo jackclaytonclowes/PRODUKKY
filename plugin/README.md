@@ -93,11 +93,14 @@ core/               the DSP. No JUCE, no dependencies, no allocation in the audi
   Relevance.h       which controls do nothing right now, and why: the panel dims them
   RhythmMod.h       the filter's rhythm: shapes, steps, groove, phase, glide
   FilterResponse.h  the post filter's response, as the panel draws it
+  History.h         undo, redo and A/B, on whole-patch snapshots (shared with CRATE)
   ParamTable.h      ONE parameter table — the DSP, the host and patch import share it
   Presets.h         generated from the browser presets; do not edit
   FactoryPresets.h  the menu: the browser's presets, then the ones only the plugin can play
   FractureCore.h    the whole processor
 Source/             the JUCE wrapper: parameters, state, latency, and the interface
+  Session.h         when an undo step is taken, A/B in the saved state, your presets
+                    (shared with CRATE)
 tests/              the DSP tests, the host-level smoke test, and the reference data
 tools/              regenerates the reference data from fx/fracture.html
 ```
@@ -282,9 +285,25 @@ top, turns tooltips off and on; the choice is saved as a preference on the machi
 than in the session, because it is not part of the sound. **Guide** opens `GUIDE.md` over
 the panel. It is compiled in from the same file, so the two cannot say different things.
 
+**Undo, Redo, A/B and Save** sit in the header. An undo step is taken when a gesture ends,
+not on every value, so a whole knob drag is one step, and so is a drag on the pad or a
+stroke across the drawn steps: the step waits until no control is mid-gesture. A preset or
+a paste is one step too. Host automation sends no gestures, so playback never fills the
+history, though undo still takes back an automated change that is live when you press it.
+A and B each keep their own history, so undo cannot cross a switch and leave the panel
+showing A's settings with B lit. The hidden side is saved in the session by parameter id,
+and taken out of the tree again on load, so a session from before A/B existed opens on A
+and an older build ignores it. The stacks are `core/History.h`, which has no JUCE in it and
+is tested with the DSP; `Source/Session.h` decides when to use them. Both files are the
+same in CRATE.
+
+Your presets are saved as browser patches, one JSON file each, in Documents/FRACTURE/Presets:
+the same text Copy patch produces, so a saved preset also pastes into `fx/fracture.html`.
+The menu rereads the folder every time it opens.
+
 ## What is verified, and where
 
-`npm run test:core` — 117 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 134 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -335,10 +354,16 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   repeats on the division to the sample; through the drive the third repeat carries
   40 dB more third harmonic than without; and the worst case (wrap at full drive, 85%,
   through the drive) stays inside the rails
+- undo and redo walk the stack in order, a fresh edit drops the redo, the stack is capped,
+  and a value that did not round-trip exactly is not taken for an edit; A and B keep
+  separate histories, B opens as a copy of A, and a switch is never an undo step
 
-`host_smoke` — 32 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 101 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
-and comes back out unchanged, a half-size editor still draws its bottom-right corner, and
+and comes back out unchanged; a knob drag is one undo step (a version that committed on
+every value fails five checks), and so are a pad drag, a stroke across the steps, a preset
+and a paste; a session saved on B reopens on B with A held; your presets save, list in
+natural order and load back; the header's buttons and Ctrl + Z work; a half-size editor still draws its bottom-right corner, and
 **the editor renders to a PNG** at both sizes so the interface can be looked at without
 opening a DAW.
 

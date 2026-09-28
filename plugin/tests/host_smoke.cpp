@@ -102,7 +102,124 @@ int main(int argc, char** argv){
     check("still finite after all that", runBlocks(proc, 12, 128, peak, bad),
           juce::String(bad) + " non-finite");
 
+    std::printf("\nUndo, A/B and your presets\n");
+    {
+        FractureProcessor sp;
+        auto& S = *sp.session;
+        auto get = [&](const char* id){ return sp.apvts.getRawParameterValue(id)->load(); };
+        // what a knob does: a gesture around one or more changes
+        auto drag = [&](const char* id, std::initializer_list<float> path){
+            auto* prm = sp.apvts.getParameter(id);
+            prm->beginChangeGesture();
+            for (float v : path) prm->setValueNotifyingHost(prm->convertTo0to1(v));
+            prm->endChangeGesture();
+        };
+        auto near = [](float a, float b){ return std::abs(a - b) < 0.02f; };
+        const float d0 = get("d0a");
+
+        check("a fresh instance has nothing to undo", !S.canUndo() && !S.canRedo());
+        drag("d0a", { 4.0f, 7.0f, 12.0f, 20.0f });
+        check("a whole knob drag is one undo step", S.undoDepth() == 1 && near(get("d0a"), 20.0f),
+              juce::String(static_cast<int>(S.undoDepth())) + " steps");
+        S.undo();
+        check("undo puts the knob back", near(get("d0a"), d0), juce::String(get("d0a")));
+        S.redo();
+        check("redo brings the change back", near(get("d0a"), 20.0f), juce::String(get("d0a")));
+
+        {   // controls that move several parameters in one movement
+            const size_t before = S.undoDepth();
+            const float step2 = get("rhStep2"), padX = get("xyX");
+            auto* s2 = sp.apvts.getParameter("rhStep2"); auto* s3 = sp.apvts.getParameter("rhStep3");
+            s2->beginChangeGesture(); s2->setValueNotifyingHost(0.2f);
+            s3->beginChangeGesture(); s2->endChangeGesture(); s3->setValueNotifyingHost(0.8f);
+            s3->endChangeGesture();
+            auto* x = sp.apvts.getParameter("xyX"); auto* y = sp.apvts.getParameter("xyY");
+            x->beginChangeGesture(); y->beginChangeGesture();
+            x->setValueNotifyingHost(0.3f); y->setValueNotifyingHost(0.7f);
+            x->endChangeGesture(); y->endChangeGesture();
+            check("a stroke across the steps, and a drag on the pad, are one step each",
+                  S.undoDepth() == before + 2, juce::String(static_cast<int>(S.undoDepth() - before)) + " steps");
+            S.undo(); S.undo();
+            check("  ... and undo takes each back whole", near(get("rhStep2"), step2) && near(get("xyX"), padX)
+                  && !near(step2, 20.0f));
+        }
+
+        sp.setCurrentProgram(5);
+        const float presetDrive = get("d0a");
+        S.undo();
+        check("a preset load is one step, and undo leaves the preset", near(get("d0a"), 20.0f)
+              && !near(presetDrive, 20.0f), juce::String(get("d0a")));
+        S.redo();
+
+        const juce::String patch = R"({"d0a":9,"fbAmt":30})";
+        check("a paste is one undo step", sp.pastePatch(patch) && near(get("d0a"), 9.0f));
+        S.undo();
+        check("  ... and undo takes the whole paste back", near(get("d0a"), presetDrive)
+              && !near(get("fbAmt"), 30.0f));
+
+        drag("d0a", { 10.0f });
+        S.selectSlot(1);
+        check("B opens as a copy of A", S.activeSlot() == 1 && near(get("d0a"), 10.0f));
+        drag("d0a", { 30.0f });
+        drag("fbAmt", { 55.0f });
+        S.selectSlot(0);
+        check("A comes back as A", near(get("d0a"), 10.0f) && !near(get("fbAmt"), 55.0f));
+        S.selectSlot(1);
+        check("B comes back as B", near(get("d0a"), 30.0f) && near(get("fbAmt"), 55.0f));
+        S.undo();
+        check("undo on B takes back B's last change, not the switch",
+              S.activeSlot() == 1 && near(get("d0a"), 30.0f) && !near(get("fbAmt"), 55.0f));
+        S.redo();
+
+        juce::MemoryBlock st;
+        sp.getStateInformation(st);
+        FractureProcessor rp;
+        auto rget = [&](const char* id){ return rp.apvts.getRawParameterValue(id)->load(); };
+        rp.setStateInformation(st.getData(), static_cast<int>(st.getSize()));
+        check("a session saved on B reopens on B", rp.session->activeSlot() == 1 && near(rget("d0a"), 30.0f));
+        check("  ... with A still held", (rp.session->selectSlot(0), near(rget("d0a"), 10.0f)));
+        check("  ... and with nothing to undo from before it was opened", !rp.session->canUndo());
+        check("  ... and the compare slot does not end up in the parameter tree",
+              !rp.apvts.state.getChildWithName(session::Session::tag()).isValid());
+        if (auto xml = sp.apvts.copyState().createXml()){          // as an older build would have saved it
+            juce::MemoryBlock old;
+            juce::AudioProcessor::copyXmlToBinary(*xml, old);
+            FractureProcessor op;
+            op.setStateInformation(old.getData(), static_cast<int>(old.getSize()));
+            check("a session saved before A/B existed opens on A",
+                  op.session->activeSlot() == 0 && std::abs(op.apvts.getRawParameterValue("d0a")->load() - 30.0f) < 0.02f);
+        }
+
+        const auto dir = juce::File::createTempFile("fracture-presets");
+        sp.userPresets.setFolder(dir);
+        drag("d0a", { 14.0f });
+        const bool s10 = sp.saveUserPreset(dir.getChildFile("Kick 10.json"));
+        drag("d0a", { 3.0f });
+        const bool s2 = sp.saveUserPreset(dir.getChildFile("Kick 2.json"));
+        const auto files = sp.userPresets.list();
+        check("your presets save as files", s10 && s2 && files.size() == 2);
+        check("  ... listed the way people number them (2 before 10)",
+              files.size() == 2 && files[0].getFileName() == "Kick 2.json");
+        check("  ... as browser patches, so they paste into the browser version too",
+              juce::JSON::parse(dir.getChildFile("Kick 10.json").loadFileAsString()).getDynamicObject() != nullptr
+                  && dir.getChildFile("Kick 10.json").loadFileAsString().contains("\"d0a\""));
+        check("a saved preset loads", sp.loadUserPreset(dir.getChildFile("Kick 10.json"))
+              && near(get("d0a"), 14.0f) && sp.userPresetName() == "Kick 10");
+        S.undo();
+        check("  ... and is one undo step", near(get("d0a"), 3.0f));
+        check("a file that is not a patch is refused", !sp.loadUserPreset(dir.getChildFile("missing.json")));
+        check("a typed name is made safe for a file", session::UserPresets::safeName(" a/b:c ") == "abc"
+              && session::UserPresets::safeName("   ") == "Untitled",
+              session::UserPresets::safeName(" a/b:c "));
+        sp.setCurrentProgram(0);
+        check("choosing a factory preset stops showing yours", sp.userPresetName().isEmpty());
+        dir.deleteRecursively();
+    }
+
     std::printf("\nEditor\n");
+    const auto presetDir = juce::File::createTempFile("fracture-editor-presets");
+    proc.userPresets.setFolder(presetDir);
+    proc.saveUserPreset(presetDir.getChildFile("My bass.json"));
     {
         std::unique_ptr<juce::AudioProcessorEditor> editor(proc.createEditor());
         check("editor is created", editor != nullptr);
@@ -282,10 +399,51 @@ int main(int argc, char** argv){
                 }
                 fe->setGuideOpen(false);
                 check("and closes again", fe->guideHeight() == 0);
+
+                // the header: your presets in the menu, and the undo and A/B strip
+                std::function<juce::Component*(juce::Component*, const std::type_info&)> findT =
+                    [&](juce::Component* c, const std::type_info& t) -> juce::Component* {
+                        if (typeid(*c) == t) return c;
+                        for (auto* ch : c->getChildren()) if (auto* r = findT(ch, t)) return r;
+                        return nullptr;
+                    };
+                if (auto* box = dynamic_cast<session::PresetBox*>(findT(editor.get(), typeid(session::PresetBox)))){
+                    box->beforePopup();
+                    bool listed = false;
+                    for (int i = 0; i < box->getNumItems(); ++i) listed |= box->getItemText(i) == "My bass";
+                    check("the preset menu lists your presets under the factory ones", listed
+                          && box->getNumItems() > static_cast<int>(fracture::factoryPresets().size()));
+                    box->setSelectedItemIndex(3, juce::sendNotificationSync);
+                    check("  ... and choosing a factory one from it still loads it", proc.getCurrentProgram() == 3);
+                } else check("the editor has a preset menu", false);
+                auto* bar = fe->sessionBar.get();
+                auto* prm = proc.apvts.getParameter("d0a");
+                const float was0 = prm->getValue();
+                prm->beginChangeGesture(); prm->setValueNotifyingHost(0.9f); prm->endChangeGesture();
+                bar->refresh();
+                const bool undoLit = bar->undo.isEnabled();
+                bar->undo.triggerClick();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                check("the Undo button takes back a knob move", undoLit && std::abs(prm->getValue() - was0) < 1.0e-4f);
+                bar->redo.triggerClick();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                check("the Redo button puts it back", std::abs(prm->getValue() - 0.9f) < 1.0e-3f);
+                check("Ctrl or Cmd + Z is undo", fe->keyPressed(juce::KeyPress('z', juce::ModifierKeys::commandModifier, 0))
+                      && std::abs(prm->getValue() - was0) < 1.0e-4f);
+                bar->slotB.triggerClick();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                bar->refresh();
+                check("the B button switches to B and lights", proc.session->activeSlot() == 1
+                      && bar->slotB.getToggleState() && !bar->slotA.getToggleState()
+                      && bar->copy.getButtonText() == "B to A");
+                bar->slotA.triggerClick();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                check("  ... and A switches back", proc.session->activeSlot() == 0);
             } else check("the editor is a FractureEditor", false);
         }
     }
 
+    presetDir.deleteRecursively();
     proc.releaseResources();
     std::printf("\n%d assertions passed, %d failed\n", passed, failures.size());
     for (const auto& f : failures) std::printf("  - %s\n", f.toRawUTF8());

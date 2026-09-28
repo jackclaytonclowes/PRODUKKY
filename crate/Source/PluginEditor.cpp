@@ -281,10 +281,12 @@ void StepEditor::setFrom(juce::Point<int> pos){
     const int k = juce::jlimit(0, 7, static_cast<int>((pos.x - L.getX()) * 8 / juce::jmax(1, L.getWidth())));
     const float v = juce::jlimit(0.0f, 1.0f, (L.getBottom() - pos.y) / static_cast<float>(juce::jmax(1, L.getHeight())));
     if (k != dragging){
+        // the next step's gesture opens before the last one closes, so one
+        // stroke across the steps is one undo, not one per step
+        if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(k + 1))) prm->beginChangeGesture();
         if (dragging >= 0)
             if (auto* old = proc.apvts.getParameter("rhStep" + juce::String(dragging + 1))) old->endChangeGesture();
         dragging = k;
-        if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(k + 1))) prm->beginChangeGesture();
     }
     if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(k + 1)))
         prm->setValueNotifyingHost(prm->convertTo0to1(v * 100.0f));
@@ -315,10 +317,15 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     canvas.onLayout = [this]{ layoutDesign(); };
     addAndMakeVisible(canvas);
 
-    for (const auto& preset : presets()) presetBox.addItem(preset.name, presetBox.getNumItems() + 1);
-    presetBox.setSelectedItemIndex(proc.getCurrentProgram(), juce::dontSendNotification);
-    presetBox.onChange = [this]{ proc.setCurrentProgram(presetBox.getSelectedItemIndex()); };
-    canvas.addAndMakeVisible(presetBox);
+    presetMenu = std::make_unique<session::PresetMenu>(proc, proc.userPresets, session::PresetMenu::Hooks {
+        [this]{ return proc.userPresetName(); },
+        [this](const juce::File& f){ return proc.saveUserPreset(f); },
+        [this](const juce::File& f){ return proc.loadUserPreset(f); } }, "CRATE");
+    canvas.addAndMakeVisible(presetMenu->box);
+    canvas.addAndMakeVisible(presetMenu->saveButton);
+    sessionBar = std::make_unique<session::SessionBar>(*proc.session, yellow);
+    canvas.addAndMakeVisible(*sessionBar);
+    setWantsKeyboardFocus(true);
 
     pIn     = make<Panel>(1, "Input", ink);
     pConv   = make<Panel>(2, "Converter", yellow);
@@ -444,8 +451,13 @@ void CrateEditor::updateIdle(){
 void CrateEditor::timerCallback(){
     for (auto* k : knobs) k->refresh();
     updateIdle();
-    if (presetBox.getSelectedItemIndex() != proc.getCurrentProgram())
-        presetBox.setSelectedItemIndex(proc.getCurrentProgram(), juce::dontSendNotification);
+    presetMenu->sync();
+}
+
+bool CrateEditor::keyPressed(const juce::KeyPress& key){
+    if (!session::undoKeys(key, *proc.session)) return false;
+    sessionBar->refresh();
+    return true;
 }
 
 void CrateEditor::paint(juce::Graphics& g){
@@ -493,11 +505,18 @@ void CrateEditor::resized(){
 void CrateEditor::layoutDesign(){
     auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
     auto header = area.removeFromTop(44);
-    presetBox.setBounds(header.removeFromRight(260).withSizeKeepingCentre(260, 30));
+    presetMenu->saveButton.setBounds(header.removeFromRight(56).withSizeKeepingCentre(56, 30));
+    header.removeFromRight(4);
+    presetMenu->box.setBounds(header.removeFromRight(236).withSizeKeepingCentre(236, 30));
     header.removeFromRight(10);
-    guideButton.setBounds(header.removeFromRight(84).withSizeKeepingCentre(84, 30));
-    header.removeFromRight(8);
-    tipsButton.setBounds(header.removeFromRight(70).withSizeKeepingCentre(70, 30));
+    // narrower than FRACTURE's: the header is 1080 wide, and the undo strip
+    // has to clear the subtitle
+    guideButton.setBounds(header.removeFromRight(72).withSizeKeepingCentre(72, 30));
+    header.removeFromRight(6);
+    tipsButton.setBounds(header.removeFromRight(60).withSizeKeepingCentre(60, 30));
+    header.removeFromRight(14);
+    sessionBar->setBounds(header.removeFromRight(session::SessionBar::preferredWidth)
+                              .withSizeKeepingCentre(session::SessionBar::preferredWidth, 30));
     area.removeFromTop(10);
     area.removeFromTop(8);
     area.removeFromTop(12);

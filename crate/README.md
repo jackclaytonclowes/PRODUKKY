@@ -165,9 +165,17 @@ top, turns tooltips off and on; the choice is saved as a preference on the machi
 than in the session, because it is not part of the sound. **Guide** opens `GUIDE.md` over
 the panel. It is compiled in from the same file, so the two cannot say different things.
 
+**Undo, Redo, A/B and Save** sit in the header, and work as FRACTURE's do (the code is
+shared: `core/History.h` and `Source/Session.h`). One undo step per knob drag, one per
+preset; host automation never fills the history; A and B each keep their own undo, and the
+hidden side is saved with the session. Your presets are one JSON file each in
+Documents/CRATE/Presets, written as `{id: value}` with choices by name
+(`"machine": "S900"`), so they read clearly and survive new parameters being added: anything
+a file leaves out loads at its default.
+
 ## What is verified, and how
 
-`npm run test:crate` — 74 assertions, no JUCE needed (`VERBOSE=1` prints the measured
+`npm run test:crate` — 91 assertions, no JUCE needed (`VERBOSE=1` prints the measured
 value behind every one). These are measurements, not smoke
 tests, because nobody involved in building this has heard it:
 
@@ -220,11 +228,15 @@ tests, because nobody involved in building this has heard it:
 - **reported latency is the measured latency**, sample for sample
 - dust is bit-identical across two renders of the same bar, and silent at zero
 - 44.1 / 48 / 96 kHz, block sizes 16 to 1024, and everything at once: finite and bounded
+- undo, redo and A/B: the same seventeen checks as FRACTURE's, on the same file
 
-`host_smoke` adds 38 more at the host level, including a synthetic transport: the plugin
+`host_smoke` adds 64 more at the host level, including a synthetic transport: the plugin
 sees the tempo, notices when playback stops, re-declares its latency when the grid changes,
 recalls all twenty-six presets, round-trips its state, and paints its editor to a PNG — twice,
-the second time at half size, checking the corner panels are scaled rather than cropped.
+the second time at half size, checking the corner panels are scaled rather than cropped. It
+also takes undo, A/B and your presets through a real parameter tree: a drag is one step, a
+session saved on B reopens on B with A held, a saved preset reads as named choices and
+loads back, and the header's buttons and Ctrl + Shift + Z do what they say.
 
 ## The presets
 
@@ -288,9 +300,12 @@ core/           the DSP. No JUCE, no dependencies, no allocation in the audio pa
   Oversampler.h runs the four-pole at 4x, and keeps the dry path in step
   RhythmMod.h   the rhythm: divisions, shapes, steps, groove, phase, glide
   Relevance.h   which controls do nothing right now, and why: the panel dims them
+  History.h     undo, redo and A/B, on whole-patch snapshots (shared with FRACTURE)
   ParamTable.h  one table, shared by the DSP, the host and the editor
   CrateCore.h   the whole processor
 Source/         the JUCE wrapper and the interface
+  Session.h     when an undo step is taken, A/B in the saved state, your presets
+                (shared with FRACTURE)
 tests/          the measurement suite and the host-level smoke test
 packaging/      disk image for testers
 ```

@@ -3,6 +3,7 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "CrateCore.h"
+#include "Session.h"
 
 class CrateProcessor : public juce::AudioProcessor {
 public:
@@ -35,6 +36,18 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     crate::Engine engine;
 
+    // A patch as {id: value} JSON, choices by name ("machine": "S900"). What
+    // your own presets are saved as. Anything left out goes back to default.
+    juce::String savePatch() const;
+    bool loadPatch(const juce::String& json);
+
+    // undo, redo and A/B (Session.h), and presets you save yourself
+    std::unique_ptr<session::Session> session;
+    session::UserPresets userPresets { "CRATE" };
+    bool saveUserPreset(const juce::File& file);
+    bool loadUserPreset(const juce::File& file);
+    juce::String userPresetName() const { return userPreset; }
+
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
     std::atomic<bool> transportRunning { false };
     std::atomic<float> hostBpm { 120.0f };
@@ -44,6 +57,7 @@ private:
     juce::AudioProcessorValueTreeState::ParameterLayout buildLayout();
     std::vector<std::atomic<float>*> raw;
     int currentProgram = 0;
+    juce::String userPreset;                            // shown in the menu while it is loaded
     int reportedLatency = -1;
     int64_t lastPlayhead = -1;
 

@@ -645,10 +645,12 @@ void StepEditor::setFrom(juce::Point<int> pos){
     const int k = juce::jlimit(0, 7, static_cast<int>((pos.x - L.getX()) * 8 / juce::jmax(1, L.getWidth())));
     const float v = juce::jlimit(0.0f, 1.0f, (L.getBottom() - pos.y) / static_cast<float>(juce::jmax(1, L.getHeight())));
     if (k != dragging){
+        // the next step's gesture opens before the last one closes, so one
+        // stroke across the steps is one undo, not one per step
+        if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(k + 1))) prm->beginChangeGesture();
         if (dragging >= 0)
             if (auto* old = proc.apvts.getParameter("rhStep" + juce::String(dragging + 1))) old->endChangeGesture();
         dragging = k;
-        if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(k + 1))) prm->beginChangeGesture();
     }
     if (auto* prm = proc.apvts.getParameter("rhStep" + juce::String(k + 1)))
         prm->setValueNotifyingHost(prm->convertTo0to1(v * 100.0f));
@@ -709,17 +711,22 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     addAndMakeVisible(canvas);
 
     // ---- header
-    for (const auto& preset : factoryPresets()) presetBox.addItem(preset.name, presetBox.getNumItems() + 1);
-    presetBox.setSelectedItemIndex(proc.getCurrentProgram(), juce::dontSendNotification);
-    presetBox.onChange = [this]{ proc.setCurrentProgram(presetBox.getSelectedItemIndex()); };
-    canvas.addAndMakeVisible(presetBox);
+    presetMenu = std::make_unique<session::PresetMenu>(proc, proc.userPresets, session::PresetMenu::Hooks {
+        [this]{ return proc.userPresetName(); },
+        [this](const juce::File& f){ return proc.saveUserPreset(f); },
+        [this](const juce::File& f){ return proc.loadUserPreset(f); } }, "FRACTURE");
+    canvas.addAndMakeVisible(presetMenu->box);
+    canvas.addAndMakeVisible(presetMenu->saveButton);
+    sessionBar = std::make_unique<session::SessionBar>(*proc.session, yellow);
+    canvas.addAndMakeVisible(*sessionBar);
+    setWantsKeyboardFocus(true);
 
     copyButton.onClick = [this]{
         juce::SystemClipboard::copyTextToClipboard(proc.saveBrowserPatch());
     };
     pasteButton.onClick = [this]{
         const auto text = juce::SystemClipboard::getTextFromClipboard();
-        if (!proc.loadBrowserPatch(text))
+        if (!proc.pastePatch(text))
             juce::NativeMessageBox::showAsync(
                 juce::MessageBoxOptions().withIconType(juce::MessageBoxIconType::WarningIcon)
                     .withTitle("FRACTURE").withMessage("That clipboard text is not a FRACTURE patch."),
@@ -999,8 +1006,13 @@ void FractureEditor::timerCallback(){
     for (auto* k : knobs) k->refresh();
     updateIdle();
     updateTabs();
-    if (presetBox.getSelectedItemIndex() != proc.getCurrentProgram())
-        presetBox.setSelectedItemIndex(proc.getCurrentProgram(), juce::dontSendNotification);
+    presetMenu->sync();
+}
+
+bool FractureEditor::keyPressed(const juce::KeyPress& key){
+    if (!session::undoKeys(key, *proc.session)) return false;
+    sessionBar->refresh();
+    return true;
 }
 
 void FractureEditor::updateTabs(){
@@ -1077,12 +1089,17 @@ void FractureEditor::layoutDesign(){
     if (! built) return;                               // selectBand() runs before the panels do
     auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
     auto header = area.removeFromTop(46);
-    auto right = header.removeFromRight(690);
+    auto right = header.removeFromRight(1050);
+    sessionBar->setBounds(right.removeFromLeft(session::SessionBar::preferredWidth).withSizeKeepingCentre(
+        session::SessionBar::preferredWidth, 30));
+    right.removeFromLeft(24);
     tipsButton.setBounds(right.removeFromLeft(70).withSizeKeepingCentre(70, 30));
     right.removeFromLeft(8);
     guideButton.setBounds(right.removeFromLeft(84).withSizeKeepingCentre(84, 30));
     right.removeFromLeft(16);
-    presetBox.setBounds(right.removeFromLeft(250).withSizeKeepingCentre(250, 30));
+    presetMenu->box.setBounds(right.removeFromLeft(250).withSizeKeepingCentre(250, 30));
+    right.removeFromLeft(4);
+    presetMenu->saveButton.setBounds(right.removeFromLeft(60).withSizeKeepingCentre(60, 30));
     right.removeFromLeft(8);
     copyButton.setBounds(right.removeFromLeft(120).withSizeKeepingCentre(120, 30));
     right.removeFromLeft(8);

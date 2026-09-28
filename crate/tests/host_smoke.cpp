@@ -11,6 +11,8 @@
 #include "PluginEditor.h"
 #include "Presets.h"
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <typeinfo>
+#include <functional>
 
 static int passed = 0;
 static juce::StringArray failures;
@@ -137,7 +139,76 @@ int main(int argc, char** argv){
           juce::String(proc.apvts.getRawParameterValue("dust")->load())
               + " vs " + juce::String(before));
 
+    std::printf("\nUndo, A/B and your presets\n");
+    {
+        CrateProcessor sp;
+        auto& S = *sp.session;
+        auto get = [&](const char* id){ return sp.apvts.getRawParameterValue(id)->load(); };
+        auto drag = [&](const char* id, std::initializer_list<float> path){
+            auto* prm = sp.apvts.getParameter(id);
+            prm->beginChangeGesture();
+            for (float v : path) prm->setValueNotifyingHost(prm->convertTo0to1(v));
+            prm->endChangeGesture();
+        };
+        auto near = [](float a, float b){ return std::abs(a - b) < 0.02f; };
+        const float dust0 = get("dust");
+
+        check("a fresh instance has nothing to undo", !S.canUndo() && !S.canRedo());
+        drag("dust", { 10.0f, 25.0f, 40.0f });
+        check("a whole knob drag is one undo step", S.undoDepth() == 1 && near(get("dust"), 40.0f));
+        S.undo();
+        check("undo puts the knob back", near(get("dust"), dust0));
+        S.redo();
+        check("redo brings the change back", near(get("dust"), 40.0f));
+
+        sp.setCurrentProgram(8);                                   // an S900 preset
+        const bool s900 = static_cast<int>(get("machine")) == 1;
+        S.undo();
+        check("a preset load is one step, and undo leaves the preset",
+              s900 && static_cast<int>(get("machine")) == 0 && near(get("dust"), 40.0f));
+
+        drag("swing", { 58.0f });
+        S.selectSlot(1);
+        check("B opens as a copy of A", S.activeSlot() == 1 && near(get("swing"), 58.0f));
+        drag("swing", { 64.0f });
+        drag("bits", { 8.0f });
+        S.selectSlot(0);
+        check("A comes back as A", near(get("swing"), 58.0f) && near(get("bits"), 12.0f));
+        S.selectSlot(1);
+        check("B comes back as B", near(get("swing"), 64.0f) && near(get("bits"), 8.0f));
+
+        juce::MemoryBlock st;
+        sp.getStateInformation(st);
+        CrateProcessor rp;
+        rp.setStateInformation(st.getData(), static_cast<int>(st.getSize()));
+        auto rget = [&](const char* id){ return rp.apvts.getRawParameterValue(id)->load(); };
+        check("a session saved on B reopens on B", rp.session->activeSlot() == 1 && near(rget("bits"), 8.0f));
+        check("  ... with A still held", (rp.session->selectSlot(0), near(rget("bits"), 12.0f) && near(rget("swing"), 58.0f)));
+        check("  ... and the compare slot does not end up in the parameter tree",
+              !rp.apvts.state.getChildWithName(session::Session::tag()).isValid());
+
+        const auto dir = juce::File::createTempFile("crate-presets");
+        sp.userPresets.setFolder(dir);
+        drag("machine", { 1.0f });
+        const bool saved = sp.saveUserPreset(dir.getChildFile("Dark S900.json"));
+        const juce::String text = dir.getChildFile("Dark S900.json").loadFileAsString();
+        check("your presets save as readable files, choices by name",
+              saved && text.contains("\"machine\": \"S900\"") && text.contains("\"bits\": 8"), text.substring(0, 80));
+        sp.setCurrentProgram(0);
+        check("a saved preset loads", sp.loadUserPreset(dir.getChildFile("Dark S900.json"))
+              && static_cast<int>(get("machine")) == 1 && near(get("bits"), 8.0f) && near(get("swing"), 64.0f)
+              && sp.userPresetName() == "Dark S900");
+        check("  ... and what it leaves out goes back to default", near(get("inGain"), 0.0f) && near(get("tune"), 0.0f));
+        S.undo();
+        check("  ... and is one undo step", static_cast<int>(get("machine")) == 0);
+        check("a file that is not a patch is refused", !sp.loadPatch("not json") && !sp.loadPatch("{\"nothing\": 1}"));
+        dir.deleteRecursively();
+    }
+
     std::printf("\nEditor\n");
+    const auto presetDir = juce::File::createTempFile("crate-editor-presets");
+    proc.userPresets.setFolder(presetDir);
+    proc.saveUserPreset(presetDir.getChildFile("My break.json"));
     {
         proc.setCurrentProgram(4);                       // something with feel dialled in
         std::unique_ptr<juce::AudioProcessorEditor> editor(proc.createEditor());
@@ -238,10 +309,44 @@ int main(int argc, char** argv){
                 }
                 ce->setGuideOpen(false);
                 check("and closes again", ce->guideHeight() == 0);
+
+                // the header: your presets in the menu, and the undo and A/B strip
+                std::function<juce::Component*(juce::Component*, const std::type_info&)> findT =
+                    [&](juce::Component* c, const std::type_info& t) -> juce::Component* {
+                        if (typeid(*c) == t) return c;
+                        for (auto* ch : c->getChildren()) if (auto* r = findT(ch, t)) return r;
+                        return nullptr;
+                    };
+                if (auto* box = dynamic_cast<session::PresetBox*>(findT(editor.get(), typeid(session::PresetBox)))){
+                    box->beforePopup();
+                    bool listed = false;
+                    for (int i = 0; i < box->getNumItems(); ++i) listed |= box->getItemText(i) == "My break";
+                    check("the preset menu lists your presets under the factory ones", listed);
+                    box->setSelectedItemIndex(2, juce::sendNotificationSync);
+                    check("  ... and choosing a factory one from it still loads it", proc.getCurrentProgram() == 2);
+                } else check("the editor has a preset menu", false);
+                auto* bar = ce->sessionBar.get();
+                auto* prm = proc.apvts.getParameter("dust");
+                const float was0 = prm->getValue();
+                prm->beginChangeGesture(); prm->setValueNotifyingHost(0.9f); prm->endChangeGesture();
+                bar->undo.triggerClick();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                check("the Undo button takes back a knob move", std::abs(prm->getValue() - was0) < 1.0e-4f);
+                check("Ctrl or Cmd + Shift + Z is redo",
+                      ce->keyPressed(juce::KeyPress('z', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0))
+                      && std::abs(prm->getValue() - 0.9f) < 1.0e-3f);
+                bar->slotB.triggerClick();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                bar->refresh();
+                check("the B button switches to B and lights", proc.session->activeSlot() == 1
+                      && bar->slotB.getToggleState() && bar->copy.getButtonText() == "B to A");
+                bar->slotA.triggerClick();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
             } else check("the editor is a CrateEditor", false);
         }
     }
 
+    presetDir.deleteRecursively();
     proc.setPlayHead(nullptr);
     proc.releaseResources();
     std::printf("\n%d assertions passed, %d failed\n", passed, failures.size());
