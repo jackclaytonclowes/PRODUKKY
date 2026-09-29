@@ -20,6 +20,10 @@ on:
 jobs:
   build:
     runs-on: macos-14          # Apple Silicon; the build is universal anyway
+    # a new repository's token is read-only by default; the release step
+    # needs to create a release and upload the disk image to it
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
