@@ -8,6 +8,9 @@
 # macOS only: hdiutil and Finder do the work. The result is
 # dist/Fracture-and-Crate-<version>-macOS.dmg.
 set -euo pipefail
+# say where it stopped: hdiutil -quiet closes its own output, so without this a
+# failure is a bare exit code
+trap 'echo "make-dmg.sh stopped at line $LINENO (exit $?)" >&2' ERR
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
@@ -52,11 +55,25 @@ fi
 echo "==> building the image"
 mkdir -p "$root/dist"
 rm -f "$out" "$root/dist/.tmp.dmg"
-hdiutil create -srcfolder "$stage" -volname "$volume" -fs HFS+ \
-        -format UDRW -ov -quiet "$root/dist/.tmp.dmg"
+# hdiutil create now and then fails with "Resource busy" on a busy machine
+# (GitHub's macOS runners do it often), so it gets three tries, with its errors
+# shown rather than swallowed by -quiet
+made=0
+for attempt in 1 2 3; do
+    if hdiutil create -srcfolder "$stage" -volname "$volume" -fs HFS+ \
+            -format UDRW -ov "$root/dist/.tmp.dmg" >/dev/null; then
+        made=1; break
+    fi
+    echo "    hdiutil create failed (try $attempt of 3); waiting and trying again" >&2
+    sleep 5
+done
+[[ $made -eq 1 ]] || { echo "Could not create the disk image." >&2; exit 1; }
 
-device="$(hdiutil attach -readwrite -noverify -noautoopen "$root/dist/.tmp.dmg" \
-          | egrep '^/dev/' | sed 1q | awk '{print $1}')"
+# keep attach's output, so a failure can print what it said, then take the
+# first /dev line (the whole disk, which is what detach wants)
+attached="$(hdiutil attach -readwrite -noverify -noautoopen "$root/dist/.tmp.dmg")"
+device="$(printf '%s\n' "$attached" | awk '/^\/dev\// && !d { d = $1 } END { print d }')"
+[[ -n "$device" ]] || { echo "Could not attach the disk image:" >&2; echo "$attached" >&2; exit 1; }
 sleep 2
 
 # Finder is not running on a build machine, so this step is allowed to fail: the
