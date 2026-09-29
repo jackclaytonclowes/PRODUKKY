@@ -43,9 +43,8 @@ a failure. Use it before you publish.
 
 ## Publishing it
 
-One fact decides how: **this repository is private, and disk images are not committed**
-(`dist/` is ignored). A host that builds from git therefore never sees your `.dmg` files, and
-GitHub release links from a private repository do not open for the public.
+The disk images are not committed (`dist/` is ignored), so a host that builds from git
+never sees them. There are two ways round that.
 
 ### Option 1: Vercel, from your Mac (simplest)
 
@@ -60,40 +59,51 @@ npx vercel deploy plugins-site/public --prod      # uploads it
 The first time, Vercel asks you to log in and name the project. It prints the address when it
 has finished. To publish a new version, run the same three lines again.
 
-### Option 2: Render or Vercel, from git
+### Option 2: a release, then Render or Vercel from git
 
-Host the two `.dmg` files somewhere public first, such as Dropbox, Google Drive with a direct
-link, or a release on a separate public GitHub repository. Put their links in `site.json`,
-commit, and push.
+If this repository is **public**, GitHub can build and host the disk image for you. Push a
+tag and `.github/workflows/macos.yml` builds both plugins on a Mac runner and attaches
+`Fracture-and-Crate-<version>-macOS.dmg`, one image holding both, to a release:
 
-**Vercel**: Add New, then Project, then import this repository, and set **Root Directory** to
+```
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Point both downloads in `site.json` at it:
+
+```
+"downloads": {
+  "fracture": { "macOS": "https://github.com/YOU/REPO/releases/download/v0.1.0/Fracture-and-Crate-0.1.0-macOS.dmg" },
+  "crate":    { "macOS": "https://github.com/YOU/REPO/releases/download/v0.1.0/Fracture-and-Crate-0.1.0-macOS.dmg" }
+}
+```
+
+Release links from a private repository do not open for the public. In that case, put the
+`.dmg` files somewhere public (Dropbox, or Google Drive with a direct link) and use those
+links instead.
+
+Then connect the host to this repository:
+
+**Vercel**: Add New, then Project, then import the repository, and set **Root Directory** to
 `plugins-site`. `plugins-site/vercel.json` sets the build command, the output folder and the
 headers.
 
-**Render**: New, then Static Site, then this repository.
+**Render**: New, then Static Site, then the repository.
 
 - Build command: `node plugins-site/build.mjs`
 - Publish directory: `plugins-site/public`
 - Leave Root Directory empty.
 - Under Headers, add each header from `headers.mjs` for the path `/*`.
 
-Do not use Render's Blueprint sync for this site. The `render.yaml` at the top of the
-repository deploys the bundle builder, not this site.
-
-Either way, point the host at the branch that has this folder on it. The repository's
-default branch does not have it yet.
-
 ## Before you post it publicly
 
-- **The JUCE licence.** JUCE 8 is licensed either under the AGPLv3, which would mean
-  publishing the source, or under JUCE's own licence. Check which applies to you before you
-  hand binaries to the public. The splash screen is on in these builds.
+- **The JUCE licence.** JUCE 8 is licensed either under the AGPLv3, which means publishing
+  the source (a public repository under the AGPL does that), or under JUCE's own licence.
+  Decide which before you hand binaries to the public. The splash screen is on in these
+  builds.
 - **Unsigned builds.** Without an Apple Developer ID the Mac shows an "unidentified
   developer" warning. The page explains the right-click, Open step. Signing and notarising
   would remove the warning.
-- **Whose repository.** The site does not expose this repository, but a host connected to it
-  can see everything in it. If the plugins are a personal project, they would sit better in a
-  repository of their own.
 - **A contact.** Fill in `contact` in `site.json` if you want feedback to reach you. Without
   it, the page asks people to reply to whoever sent them the link.
 

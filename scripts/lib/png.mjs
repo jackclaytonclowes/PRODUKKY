@@ -1,8 +1,8 @@
 /**
- * A minimal PNG writer, and just enough of a rasteriser to draw the extension
- * icon. This exists so the repository stays text-only: the icons are generated
- * at build time rather than committed as binaries, which keeps the whole tool
- * reviewable by reading it. Nobody has to trust a PNG they cannot diff.
+ * A minimal PNG writer, and just enough of a rasteriser to draw simple icons.
+ * The disk image backgrounds (packaging/make-background.mjs, in each product and
+ * at the top) and the download site's favicon are drawn with it at build time,
+ * rather than committed as binaries.
  *
  * Node's zlib does the compression, so there is no dependency here either.
  */

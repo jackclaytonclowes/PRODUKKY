@@ -1,0 +1,23 @@
+node_modules/
+dist/
+.juce/
+.DS_Store
+tests/screenshots/
+
+# CMake build folders, per product and at the top
+plugin/build*/
+crate/build*/
+/build-crate*/
+/build-frac*/
+
+# what host_smoke writes when run from a product folder
+plugin/fracture-plugin.png
+crate/crate-plugin.png
+
+# design scratch
+fx/design/fracture-bauhaus-restyle.html
+fx/design/_canvas-*.png
+
+# the download site's build, and disk images dropped in by hand
+/plugins-site/public/
+/plugins-site/downloads/

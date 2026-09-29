@@ -158,8 +158,6 @@ and is checked against *this* file's arithmetic — `npm run test:core` compares
 shapers against 9,114 points generated from `fracture.html` itself, so the two cannot drift
 apart. `plugin/README.md` lists what the port deliberately changed and why.
 
-## Not related to the bundle builder
+## Testing it on its own
 
-This folder is a separate tool that happens to live in the same repository. It shares no
-code with the record-bundling app in `src/`, is not part of `npm run build`, and is not
-included in `npm test` — run `npm run test:fx` for it.
+`npm run test:fx` runs this file's suite alone; `npm test` runs it with everything else.

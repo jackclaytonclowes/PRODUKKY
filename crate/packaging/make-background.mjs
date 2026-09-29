@@ -7,7 +7,7 @@
  *
  * The PNG encoder is the repository's own (scripts/lib/png.mjs), so this adds no
  * dependency and no binary to the repository: the background is generated at
- * packaging time like the extension icons are.
+ * packaging time.
  */
 import fs from 'node:fs';
 import path from 'node:path';

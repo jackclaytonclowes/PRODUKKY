@@ -42,7 +42,7 @@ static site around the disk images, ready for Vercel or Render.
 
 The disk image carries the Audio Unit, the VST3, the standalone app, an installer and a
 read-me, laid out over a Béton clair background that the packaging script draws (no binary
-in the repository — same trick the extension icons use). `Install FRACTURE.command` copies
+in the repository: `scripts/lib/png.mjs` draws it). `Install FRACTURE.command` copies
 both plugins into the recipient's own plug-in folders, **strips the quarantine flag**, and
 runs `auval` in front of them so they can see it pass.
 

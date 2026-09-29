@@ -1,0 +1,21 @@
+{
+  "name": "fracture-crate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FRACTURE, a multi-band multi-FX distortion, and CRATE, a twelve-bit drum processor: JUCE plugins, a browser version, and a download site.",
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:core && npm run test:crate && npm run test:fx && npm run test:plugins-site",
+    "test:core": "node plugin/tests/run.mjs",
+    "test:crate": "node crate/tests/run.mjs",
+    "test:fx": "node tests/fx.mjs",
+    "test:fx:head": "node tests/fx.mjs --head",
+    "test:plugins-site": "node tests/plugins-site.mjs",
+    "reference": "node plugin/tools/make-reference.mjs",
+    "audition": "node tools/audition/run.mjs",
+    "site:plugins": "node plugins-site/build.mjs"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.0.0"
+  }
+}

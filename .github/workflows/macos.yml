@@ -1,16 +1,14 @@
 # Builds BOTH plugins on a macOS runner and packs them into one disk image.
 #
-# The file is still called plugin-macos.yml because that is the path GitHub has
-# registered for this repository: a workflow can only be dispatched by the path
-# it was first seen at, and this repository's default branch carries no
-# workflows at all, so renaming it would make it undispatchable.
-#
 # Run it from the Actions tab ("Run workflow", pick the branch), or push a v* tag.
 # Download "Fracture-and-Crate-macOS" from the finished run.
 #
-# On a private repository macOS runner minutes bill at 10x, so a ~12 minute run
-# spends about 120 minutes of the account's quota. That is why this builds both
-# products in one run rather than two.
+# On a public repository the run is free. On a private one, macOS runner minutes
+# bill at 10x, so a ~12 minute run spends about 120 minutes of the account's
+# quota; that is why this builds both products in one run rather than two.
+#
+# A v* tag also attaches the disk image to a GitHub release. On a public
+# repository its link works for anyone, so plugins-site/site.json can point at it.
 name: Build both plugins for macOS
 
 on:
