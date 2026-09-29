@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{name}}: how it works</title>
+<meta name="description" content="How {{name}} works, panel by panel: the same guide the plugin shows behind its Guide button.">
+<link rel="icon" href="{{favicon}}">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+    <a class="brand" href="./"><b>{{title}}</b><span>{{strap}}</span></a>
+    <nav aria-label="Pages">
+      <a href="./#{{id}}">Back to {{name}}</a>
+      <a href="./#install">Install</a>
+    </nav>
+  </header>
+  <div class="ribbon" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+  <main class="guide">
+    <h1>{{heading}}</h1>
+    <div class="intro">{{intro}}</div>
+    <p class="cap">This is the same guide the plugin shows when you press Guide.</p>
+    <ul class="toc">{{toc}}</ul>
+    {{sections}}
+  </main>
+
+  <footer>
+    <p>{{title}}{{maker}} · {{name}} {{version}}</p>
+  </footer>
+</div>
+</body>
+</html>

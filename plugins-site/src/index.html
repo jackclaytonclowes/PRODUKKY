@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<meta name="description" content="FRACTURE, a multi-band distortion, and CRATE, a twelve-bit drum processor after the SP-1200 and Akai S900. Audio Unit, VST3 and standalone for macOS.">
+<link rel="icon" href="{{favicon}}">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+    <a class="brand" href="./"><b>{{title}}</b><span>{{strap}}</span></a>
+    <nav aria-label="Sections">
+      <a href="#fracture">Fracture</a>
+      <a href="#crate">Crate</a>
+      <a href="#install">Install</a>
+      <a href="#status">Beta</a>
+    </nav>
+  </header>
+  <div class="ribbon" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+  <main>
+    <section class="hero">
+      <div>
+        <h1>Two plugins.<br>One makes things break.<br>One makes drums dusty.</h1>
+        <p><strong>FRACTURE</strong> splits your sound into bands and drives each one its own way.
+        <strong>CRATE</strong> makes drums sound like they came off a late-1980s sampler.
+        Both are audio effects for your DAW, and both are in beta.</p>
+      </div>
+      <dl class="facts">
+        <div><dt>Formats</dt><dd>Audio Unit, VST3, standalone app</dd></div>
+        <div><dt>System</dt><dd>macOS 10.13 or later, Apple Silicon and Intel</dd></div>
+        <div><dt>Hosts</dt><dd>Logic, GarageBand, Live, Reaper, Bitwig, Cubase</dd></div>
+        <div><dt>Network</dt><dd>None. The plugins never connect to anything</dd></div>
+      </dl>
+    </section>
+
+    <!-- ================================================================ FRACTURE -->
+    <article class="panel plugin fracture" id="fracture">
+      <h2>01 &nbsp;Fracture <small>v{{version:fracture}}</small></h2>
+      <div class="shot">
+        <a href="img/fracture.png" title="Open the full-size picture"><img src="img/fracture.png" width="1760" height="990"
+             alt="FRACTURE's panel: input, band split, drive, crush and feedback, filter with its curve drawn, filter rhythm, modulation, scope, perform pad, tremolo and output"></a>
+      </div>
+      <div class="body cols">
+        <div>
+          <h3>FRACTURE</h3>
+          <p class="cap tag">Multi-band multi-FX distortion</p>
+          <p class="lead">Split the sound into up to three bands and distort each differently, so the top
+          can crush while the bass stays clean. Around that: a bit crusher, a feedback loop that can
+          ring at a musical note, a filter that moves in time with your song, and a modulation matrix
+          to animate any of it.</p>
+          <ul>
+            <li>Fourteen drive modes, from tube and tape warmth to wave folding, wrapping and bit
+              destruction, in two stages per band</li>
+            <li>Feedback that repeats in milliseconds, rings at a note in tune to a cent, or echoes
+              on the beat, and can go back through the drive for growls</li>
+            <li>A filter with clean, analogue and vintage circuits up to 48 dB, whose curve you can
+              see and drag, and a rhythm that moves it in time</li>
+            <li>Two LFOs, an envelope follower, a six-slot matrix, an XY pad and two macros</li>
+            <li>44 presets, levelled so switching compares sounds rather than volumes</li>
+            <li>Undo, A/B compare, and presets of your own, saved as plain files</li>
+          </ul>
+        </div>
+        <div>
+          <div class="get">
+            <h4>Download</h4>
+            {{download:fracture}}
+          </div>
+          <div class="links">
+            <a class="btn ghost" href="play/fracture.html">Try it in your browser <small>→</small></a>
+            <a class="btn ghost" href="guide-fracture.html">How it works <small>→</small></a>
+          </div>
+          <p class="aside">The browser version is the
+          same sound engine without the newest features, running in the page. Play a file or your
+          microphone through it; nothing is uploaded.</p>
+        </div>
+      </div>
+    </article>
+
+    <!-- ================================================================ CRATE -->
+    <article class="panel yellow plugin crate" id="crate">
+      <h2>02 &nbsp;Crate <small>v{{version:crate}}</small></h2>
+      <div class="shot">
+        <a href="img/crate.png" title="Open the full-size picture"><img src="img/crate.png" width="1080" height="810" loading="lazy"
+             alt="CRATE's panel: input, converter, four-pole filter, dust, rhythm, output meters and the feel section with its swing grid"></a>
+      </div>
+      <div class="body cols">
+        <div>
+          <h3>CRATE</h3>
+          <p class="cap tag">Twelve-bit drum processor</p>
+          <p class="lead">The gritty, dusty, slightly swung sound of boom-bap records made on an
+          SP-1200 or an Akai S900. Put it on a drum bus or a loop. It is an effect, not a sampler,
+          so your drums, sequencer and tempo stay as they are.</p>
+          <ul>
+            <li>Two machines: the SP, bright and aliased, and the S900, dark and smooth behind
+              steep filters</li>
+            <li>The pitch trick: the old move of sampling a record sped up and slowing it back
+              down, for the SP's particular grain</li>
+            <li>Twelve-bit converter with clock, bits, companding and anti-alias you can hear
+              working</li>
+            <li>A four-pole filter that each drum hit opens and lets close, like the SP's first
+              two outputs, plus a rhythm that moves it in time</li>
+            <li>Dust, swing and push that follow your DAW's grid</li>
+            <li>26 presets, undo, A/B compare, and presets of your own</li>
+          </ul>
+        </div>
+        <div>
+          <div class="get">
+            <h4>Download</h4>
+            {{download:crate}}
+          </div>
+          <div class="links">
+            <a class="btn ghost" href="guide-crate.html">How it works <small>→</small></a>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ================================================================ install -->
+    <section class="panel blue" id="install">
+      <h2>03 &nbsp;Installing on a Mac</h2>
+      <div class="body two">
+        <div class="prose">
+          <ol>
+            <li>Open the downloaded <code>.dmg</code>.</li>
+            <li>Double-click <strong>Install FRACTURE.command</strong> (or Install CRATE).</li>
+            <li>macOS will probably refuse the first time and say it is from an unidentified
+              developer. That is expected: these builds are not signed with an Apple developer
+              account, so Apple has nothing to check them against. <strong>Right-click the file,
+              choose Open, then Open again</strong> in the dialog.</li>
+            <li>Terminal opens, copies the plugins into your own plug-in folders and runs Apple's
+              Audio Unit validator. If it says PASSED, you are done.</li>
+            <li>Restart your DAW. In Logic, look under Audio Units, then Fracture or Crate.</li>
+          </ol>
+          <p>Drag the app to Applications if you want the standalone version too.</p>
+        </div>
+        <div class="prose">
+          <h3>If it does not show up in Logic</h3>
+          <p>Quit Logic, open Terminal, run this, then start Logic again:</p>
+          <pre>killall -9 AudioComponentRegistrar</pre>
+          <h3>What it installs, and where</h3>
+          <pre>~/Library/Audio/Plug-Ins/Components/FRACTURE.component
+~/Library/Audio/Plug-Ins/VST3/FRACTURE.vst3</pre>
+          <p>(and the same two for CRATE). Nothing else is touched: no background processes, no
+          login items, no network access. To uninstall, delete those files.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================ status -->
+    <section class="panel red" id="status">
+      <h2>04 &nbsp;Where it is: beta</h2>
+      <div class="body two">
+        <div class="prose">
+          <p class="note"><strong>Tested by machine, not yet by ear.</strong> Save your project
+          before loading either plugin on something you care about, and keep Safety clip on (it is,
+          by default).</p>
+          <p>What has been checked: both pass <strong>pluginval</strong> at its strictest level,
+          and several hundred measurements run on every change. They cover the drive curves
+          matching their reference to twelve decimal places, filters landing on their marked
+          frequencies, tuned feedback within a cent of its note, reported latency matching the
+          real latency, and no zipper noise when knobs move. Also checked: a bounce comes out the
+          same every time, and every preset stays near the dry level without clipping.</p>
+          <p>What has not: nobody has sat with them in a real session yet. That is what you are
+          being asked to do.</p>
+        </div>
+        <div class="prose">
+          <h3>What would be useful to hear back</h3>
+          <ul>
+            <li>Does anything crackle, zipper or click when you move a knob quickly?</li>
+            <li>Does a bounce sound the same as playback?</li>
+            <li>Does the panel make sense without anyone explaining it?</li>
+            <li>Which presets do you keep, and which would you cut?</li>
+            <li>Which DAW and Mac you tried it on, and whether it loaded</li>
+          </ul>
+          {{contact}}
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>{{title}}{{maker}} · FRACTURE {{version:fracture}} · CRATE {{version:crate}}</p>
+    <p>This page sets no cookies, runs no scripts and has no analytics.</p>
+    <p>Built with JUCE. VST is a trademark of Steinberg Media Technologies GmbH. Audio Units and
+    Logic are trademarks of Apple Inc. SP-1200 and S900 are named only to describe the sound
+    these plugins are after; neither is affiliated with E-mu or Akai.</p>
+  </footer>
+</div>
+</body>
+</html>

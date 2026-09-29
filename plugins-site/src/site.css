@@ -1,0 +1,128 @@
+/* site.css — the plugins' own look, Béton clair, on a web page.
+   The tokens are fx/fracture.html's, so the page, the browser version and the
+   plugins read as one set. Type is the system stack, not a webfont: the page
+   loads nothing from anywhere else. */
+:root{
+  --ground:#d6d1c6; --panel:#e9e5dc; --face:#f4f1ea;
+  --track:#bdb7aa; --dim:#5f5a51; --ink:#17150f;
+  --yellow:#e9b21f; --red:#c0392f; --blue:#1e4b8f;
+  --grot:"Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+  --black:"Arial Black","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;            /* concrete in either OS theme, like the plugins */
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font:16px/1.55 var(--grot);
+  -webkit-font-smoothing:antialiased}
+img{max-width:100%;height:auto;display:block}
+a{color:var(--ink)}
+a:focus-visible,.btn:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+@media (max-width:640px){ .wrap{padding:0 16px} }
+
+/* ---------- header: the three marks, the name, the ribbon */
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:26px 0 18px}
+.mark{display:flex;gap:8px;flex:none}
+.mark i{width:26px;height:26px;display:block}
+.mark i:nth-child(1){background:var(--ink)}
+.mark i:nth-child(2){background:var(--red);border-radius:50%}
+.mark i:nth-child(3){background:var(--blue);border-radius:26px 0 0 0}
+.brand{display:flex;flex-direction:column;gap:4px;text-decoration:none}
+.brand b{font:900 24px/1 var(--black);letter-spacing:-.01em}
+.brand span,.cap{font-size:10px;font-weight:700;letter-spacing:.28em;text-transform:uppercase;color:var(--dim)}
+.top nav{margin-left:auto;display:flex;gap:18px;flex-wrap:wrap}
+.top nav a{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;text-decoration:none}
+.top nav a:hover{text-decoration:underline}
+.ribbon{display:flex;height:8px}
+.ribbon i{display:block}
+.ribbon i:nth-child(1){flex:1;background:var(--yellow)}
+.ribbon i:nth-child(2){width:18%;background:var(--red)}
+.ribbon i:nth-child(3){width:12%;background:var(--blue)}
+.ribbon i:nth-child(4){width:6%;background:var(--ink)}
+
+/* ---------- the opening */
+.hero{padding:56px 0 40px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:40px;align-items:end}
+.hero h1{font:900 clamp(34px,6vw,64px)/.95 var(--black);letter-spacing:-.02em;margin:0 0 18px}
+.hero p{font-size:19px;max-width:36em;margin:0}
+.hero .facts{border:2px solid var(--ink);background:var(--face);padding:18px 20px;margin:0;display:grid;gap:10px}
+.hero .facts div{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid var(--track);padding-bottom:8px}
+.hero .facts div:last-child{border-bottom:0;padding-bottom:0}
+.hero .facts dt{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.hero .facts dd{margin:0;text-align:right;font-weight:600}
+@media (max-width:860px){ .hero{grid-template-columns:minmax(0,1fr);padding-top:36px} }
+
+/* ---------- panels, as on the plugins: a numbered bar, then the body */
+.panel{border:2px solid var(--ink);background:var(--panel);margin:0 0 28px}
+.panel > h2,.panel > .bar{margin:0;display:flex;align-items:center;gap:12px;padding:9px 14px;
+  font:700 12px/1.2 var(--grot);letter-spacing:.24em;text-transform:uppercase;color:var(--face);background:var(--ink)}
+.panel > h2 small{font-size:10px;letter-spacing:.1em;opacity:.8}
+.panel.yellow > h2{background:var(--yellow);color:var(--ink)}
+.panel.red > h2{background:var(--red)}
+.panel.blue > h2{background:var(--blue)}
+.panel .body{padding:22px}
+@media (max-width:640px){ .panel .body{padding:16px} }
+
+/* ---------- a plugin */
+.plugin .shot{border-bottom:2px solid var(--ink);background:var(--ground)}
+.plugin .shot img{width:100%}
+.plugin .cols{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:32px}
+@media (max-width:860px){ .plugin .cols{grid-template-columns:minmax(0,1fr);gap:20px} }
+.plugin h3{font:900 32px/1 var(--black);margin:0 0 4px;letter-spacing:-.01em}
+.plugin .tag{margin:0 0 16px}
+.plugin .lead{font-size:18px;margin:0 0 16px}
+.plugin ul{margin:0;padding:0;list-style:none}
+.plugin li{padding:7px 0 7px 22px;position:relative;border-top:1px solid var(--track)}
+.plugin li::before{content:"";position:absolute;left:2px;top:15px;width:9px;height:9px;background:var(--ink)}
+.plugin.crate li::before{background:var(--yellow);outline:1px solid var(--ink)}
+.plugin.fracture li::before{background:var(--red)}
+
+/* ---------- downloads */
+.get{border:2px solid var(--ink);background:var(--face);padding:18px}
+.get h4{margin:0 0 12px;font-size:11px;letter-spacing:.2em;text-transform:uppercase}
+.btn{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:13px 16px;border:2px solid var(--ink);background:var(--yellow);color:var(--ink);
+  font:700 13px/1.2 var(--grot);letter-spacing:.14em;text-transform:uppercase;text-decoration:none;margin:0 0 10px}
+.btn:hover{background:var(--ink);color:var(--face)}
+.btn small{font:600 11px/1.2 var(--mono);letter-spacing:0;text-transform:none}
+.btn.ghost{background:var(--face)}
+.btn.ghost:hover{background:var(--ink)}
+.btn.off{background:var(--panel);color:var(--dim);border-style:dashed;pointer-events:none}
+.get .meta{font-size:13px;color:var(--dim);margin:6px 0 0}
+.get details{margin-top:10px;font-size:13px}
+.get summary{cursor:pointer;font-weight:600}
+.get code,.sum{font:12px/1.5 var(--mono);word-break:break-all}
+.links{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.links .btn{flex:1 1 180px;margin:0}
+.aside{font-size:13px;color:var(--dim);margin:12px 0 0}
+
+/* ---------- prose sections */
+.prose{max-width:46em}
+.prose h3{font:900 20px/1.2 var(--black);margin:26px 0 8px}
+.prose h3:first-child{margin-top:0}
+.prose p{margin:0 0 12px}
+.prose ol,.prose ul{margin:0 0 14px;padding-left:22px}
+.prose li{margin:0 0 8px}
+pre,.prose code{font:13px/1.5 var(--mono);background:var(--face);border:1px solid var(--track)}
+.prose code{padding:1px 5px}
+pre{padding:10px 12px;overflow-x:auto;margin:0 0 14px}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px}
+@media (max-width:860px){ .two{grid-template-columns:minmax(0,1fr)} }
+.note{border-left:6px solid var(--red);background:var(--face);padding:12px 16px;margin:0 0 14px}
+
+/* ---------- the guide pages */
+.guide{max-width:780px}
+.guide h1{font:900 clamp(30px,5vw,48px)/1 var(--black);letter-spacing:-.02em;margin:40px 0 18px}
+.guide .intro p{font-size:18px}
+.guide section{border:2px solid var(--ink);background:var(--panel);margin:0 0 20px}
+.guide section h2{margin:0;padding:9px 14px;background:var(--ink);color:var(--face);
+  font:700 12px/1.3 var(--grot);letter-spacing:.2em;text-transform:uppercase}
+.guide section .in{padding:14px 20px 6px}
+.guide ul{padding-left:20px;margin:0 0 12px}
+.guide li{margin:0 0 8px}
+.guide .toc{columns:2;column-gap:32px;padding:0;list-style:none;margin:0 0 28px}
+.guide .toc li{break-inside:avoid;margin:0 0 6px}
+@media (max-width:640px){ .guide .toc{columns:1} }
+
+footer{border-top:2px solid var(--ink);margin-top:40px;padding:22px 0 40px;font-size:13px;color:var(--dim)}
+footer p{margin:0 0 6px}

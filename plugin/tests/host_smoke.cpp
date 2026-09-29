@@ -219,7 +219,6 @@ int main(int argc, char** argv){
     std::printf("\nEditor\n");
     const auto presetDir = juce::File::createTempFile("fracture-editor-presets");
     proc.userPresets.setFolder(presetDir);
-    proc.saveUserPreset(presetDir.getChildFile("My bass.json"));
     {
         std::unique_ptr<juce::AudioProcessorEditor> editor(proc.createEditor());
         check("editor is created", editor != nullptr);
@@ -407,6 +406,8 @@ int main(int argc, char** argv){
                         for (auto* ch : c->getChildren()) if (auto* r = findT(ch, t)) return r;
                         return nullptr;
                     };
+                // saved only now, so the screenshots above show a factory preset's name
+                proc.saveUserPreset(presetDir.getChildFile("My bass.json"));
                 if (auto* box = dynamic_cast<session::PresetBox*>(findT(editor.get(), typeid(session::PresetBox)))){
                     box->beforePopup();
                     bool listed = false;

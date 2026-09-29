@@ -5,7 +5,7 @@
 #   ./plugin/packaging/make-dmg.sh path/to/Release
 #
 # macOS only: hdiutil and Finder do the work. The result is
-# plugin/dist/CRATE-<version>-macOS.dmg.
+# crate/dist/CRATE-<version>-macOS.dmg.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

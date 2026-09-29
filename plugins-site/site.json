@@ -1,0 +1,10 @@
+{
+  "title": "Fracture & Crate",
+  "strap": "Audio plugins, in beta",
+  "maker": "",
+  "contact": "",
+  "downloads": {
+    "fracture": { "macOS": "" },
+    "crate":    { "macOS": "" }
+  }
+}

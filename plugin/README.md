@@ -33,6 +33,9 @@ costs about 100 minutes of quota — worth knowing before wiring it to every pus
 
 ## Sending it to other people
 
+To put both plugins on a download page, see `plugins-site/README.md`: one command builds a
+static site around the disk images, ready for Vercel or Render.
+
 ```
 ./plugin/build-macos.sh --dmg        # build, install, and pack plugin/dist/FRACTURE-0.1.0-macOS.dmg
 ```
