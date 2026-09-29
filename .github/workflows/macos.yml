@@ -1,6 +1,7 @@
 # Builds BOTH plugins on a macOS runner and packs them into one disk image.
 #
 # Run it from the Actions tab ("Run workflow", pick the branch), or push a v* tag.
+# To release from the Actions tab, fill in "release" with the tag to create.
 # Download "Fracture-and-Crate-macOS" from the finished run.
 #
 # On a public repository the run is free. On a private one, macOS runner minutes
@@ -13,6 +14,11 @@ name: Build both plugins for macOS
 
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish as a release with this tag (for example v0.1.0). Leave empty to only build."
+        required: false
+        default: ""
   push:
     tags:
       - 'v*'
@@ -54,12 +60,21 @@ jobs:
           path: dist/*.dmg
           retention-days: 30
 
+      # A pushed v* tag releases under that tag. A run started by hand with a
+      # tag in "release" makes the tag itself, on the commit it built, so a
+      # release can be cut from the Actions tab (or the API) without pushing one.
       - name: Attach to a release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE: ${{ inputs.release }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/*.dmg \
-            --title "FRACTURE and CRATE ${GITHUB_REF_NAME}" \
-            --notes "Unsigned build. Open the disk image, right-click 'Install both plugins.command' and choose Open." \
-            || gh release upload "${GITHUB_REF_NAME}" dist/*.dmg --clobber
+          tag="${RELEASE:-$GITHUB_REF_NAME}"
+          notes="Unsigned beta build of both plugins: Audio Unit, VST3 and standalone app, for macOS 10.13 or later on Apple Silicon and Intel.
+
+          Open the disk image, right-click 'Install both plugins.command' and choose Open. macOS warns that it is from an unidentified developer because the build is not signed; that is expected.
+
+          Tested by machine, not yet by ear: save your project first."
+          gh release create "$tag" dist/*.dmg --target "$GITHUB_SHA" \
+            --title "FRACTURE and CRATE $tag" --notes "$notes" \
+            || gh release upload "$tag" dist/*.dmg --clobber
