@@ -20,7 +20,7 @@ import crypto from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
-import { headers } from '../plugins-site/headers.mjs';
+import { headers, renderYaml } from '../plugins-site/headers.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SITE = path.join(root, 'plugins-site');
@@ -66,14 +66,31 @@ async function main() {
   {
     const empty = path.join(tmp, 'none');
     fs.mkdirSync(empty);
-    const r = build({ PLUGINS_SITE_DOWNLOADS: empty, PLUGINS_SITE_CONFIG: path.join(SITE, 'site.json') },
-                    ['--require-downloads']);
+    const bare = path.join(tmp, 'bare.json');
+    fs.writeFileSync(bare, JSON.stringify({ title: 'Fracture & Crate', downloads: {} }));
+    const r = build({ PLUGINS_SITE_DOWNLOADS: empty, PLUGINS_SITE_CONFIG: bare }, ['--require-downloads']);
     check('with nothing to download, --require-downloads refuses', r.status === 1 && /missing/.test(r.stderr),
           `exit ${r.status}`);
     const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
     check('  ... and the page says coming soon instead of linking to nothing',
           (html.match(/coming soon/g) || []).length === 2 && !/href="downloads\//.test(html));
   }
+  {
+    // the committed site.json, as a host builds it: no disk image on the machine
+    const empty = path.join(tmp, 'none');
+    const real = JSON.parse(fs.readFileSync(path.join(SITE, 'site.json'), 'utf8'));
+    const r = build({ PLUGINS_SITE_DOWNLOADS: empty });
+    const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
+    const urls = ['fracture', 'crate'].map(id => real.downloads?.[id]?.macOS);
+    const hrefs = [...html.matchAll(/class="btn" href="(https:[^"]+)"/g)].map(m => m[1]);
+    check('the committed site.json links both plugins to a hosted disk image',
+          r.status === 0 && urls.every(u => /^https:\/\//.test(u)) && hrefs.length === 2
+            && hrefs.every((h, i) => h === urls[i]), hrefs.join(' '));
+    check('  ... and when both share one image, the page says it holds both',
+          urls[0] !== urls[1] || (html.match(/One disk image with both FRACTURE and CRATE/g) || []).length === 2);
+  }
+  check('render.yaml is the Blueprint headers.mjs describes',
+        fs.readFileSync(path.join(root, 'render.yaml'), 'utf8') === renderYaml());
   const r = build({ PLUGINS_SITE_DOWNLOADS: dmgDir, PLUGINS_SITE_CONFIG: config });
   check('builds with a local disk image and a hosted one', r.status === 0, r.stderr);
   check('  ... and copies only the newest disk image',

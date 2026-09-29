@@ -1,8 +1,7 @@
 // headers.mjs — the response headers for the download site, in Vercel's format.
-// build.mjs writes them to public/vercel.json, and plugins-site/vercel.json
-// repeats them for a Vercel project built from git (tests/plugins-site.mjs checks
-// the two match). On Render, add the same list under the static site's Headers
-// (README.md lists them). tests/plugins-site.mjs serves the built folder with
+// build.mjs writes them to public/vercel.json; plugins-site/vercel.json (Vercel
+// from git) and the render.yaml at the top of the repository (Render) repeat
+// them, and tests/plugins-site.mjs checks all three match. tests/plugins-site.mjs serves the built folder with
 // exactly these, so a page they would break fails there first.
 //
 // The one page that runs code is play/fracture.html, the browser version: it
@@ -34,3 +33,29 @@ export const headers = [
     ],
   },
 ];
+
+// render.yaml, the Render Blueprint, as it should read: the test compares the
+// committed file with this, so the two cannot drift
+export function renderYaml() {
+  const q = v => JSON.stringify(v);
+  return [
+    '# Render Blueprint for the download site (plugins-site/). Generated from',
+    '# plugins-site/headers.mjs; tests/plugins-site.mjs checks it still matches.',
+    '#',
+    '# In Render: New, then Blueprint, then pick this repository.',
+    'services:',
+    '  - type: web',
+    '    name: fracture-crate',
+    '    runtime: static',
+    '    buildCommand: node plugins-site/build.mjs',
+    '    staticPublishPath: ./plugins-site/public',
+    '    pullRequestPreviewsEnabled: false',
+    '    headers:',
+    ...headers[0].headers.flatMap(h => [
+      '      - path: /*',
+      `        name: ${h.key}`,
+      `        value: ${q(h.value)}`,
+    ]),
+    '',
+  ].join('\n');
+}

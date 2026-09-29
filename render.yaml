@@ -1,0 +1,24 @@
+# Render Blueprint for the download site (plugins-site/). Generated from
+# plugins-site/headers.mjs; tests/plugins-site.mjs checks it still matches.
+#
+# In Render: New, then Blueprint, then pick this repository.
+services:
+  - type: web
+    name: fracture-crate
+    runtime: static
+    buildCommand: node plugins-site/build.mjs
+    staticPublishPath: ./plugins-site/public
+    pullRequestPreviewsEnabled: false
+    headers:
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      - path: /*
+        name: X-Content-Type-Options
+        value: "nosniff"
+      - path: /*
+        name: Referrer-Policy
+        value: "no-referrer"
+      - path: /*
+        name: Permissions-Policy
+        value: "microphone=(self), camera=(), geolocation=(), usb=()"

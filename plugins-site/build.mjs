@@ -88,8 +88,13 @@ function downloadBlock(p) {
   if (url) {
     if (!/^https:\/\//.test(url)) throw new Error(`site.json: the ${p.id} download must be an https:// URL`);
     summary.push(`${p.name}: linked to ${url}`);
+    // the release CI makes is one image holding both plugins; say so, so
+    // nobody downloads it twice
+    const shared = plugins.every(q => config.downloads?.[q.id]?.macOS === url);
     return `<a class="btn" href="${esc(url)}">Download for Mac <small>.dmg</small></a>
-            <p class="meta">Audio Unit, VST3 and standalone app in one disk image.</p>`;
+            <p class="meta">${shared
+              ? 'One disk image with both FRACTURE and CRATE: Audio Unit, VST3 and standalone app.'
+              : 'Audio Unit, VST3 and standalone app in one disk image.'}</p>`;
   }
   const dmg = findDmg(p);
   if (dmg) {

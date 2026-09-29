@@ -43,57 +43,36 @@ a failure. Use it before you publish.
 
 ## Publishing it
 
-The disk images are not committed (`dist/` is ignored), so a host that builds from git
-never sees them. There are two ways round that.
+`site.json` already points both Download buttons at the v0.1.0 release, which CI built
+(`Fracture-and-Crate-0.1.0-macOS.dmg`, one image holding both plugins). That link only
+works for the public once **the repository is public**. While it is private, visitors get a
+404 from GitHub.
 
-### Option 1: Vercel, from your Mac (simplest)
+### Render
 
-The disk images go up with the site, straight from your machine:
+New, then **Blueprint**, then pick this repository. `render.yaml` at the top sets the build
+command, the output folder and the headers. That's all.
 
-```
-./build-macos-all.sh --dmg                        # builds both .dmg files
-npm run site:plugins -- --require-downloads       # builds the site around them
-npx vercel deploy plugins-site/public --prod      # uploads it
-```
+### Vercel
 
-The first time, Vercel asks you to log in and name the project. It prints the address when it
-has finished. To publish a new version, run the same three lines again.
+Add New, then **Project**, then import this repository, and set **Root Directory** to
+`plugins-site`. `plugins-site/vercel.json` sets the rest.
 
-### Option 2: a release, then Render or Vercel from git
+Both hosts rebuild the site on every push to `main`.
 
-If this repository is **public**, GitHub can build and host the disk image for you. Push a
-tag and `.github/workflows/macos.yml` builds both plugins on a Mac runner and attaches
-`Fracture-and-Crate-<version>-macOS.dmg`, one image holding both, to a release:
+### A new version
 
-```
-git tag v0.1.0 && git push origin v0.1.0
-```
+1. Bump `VERSION` in `plugin/CMakeLists.txt` and `crate/CMakeLists.txt`.
+2. In Actions, open **Build both plugins for macOS**, choose **Run workflow**, and put the
+   new tag (for example `v0.2.0`) in **release**. Pushing a `v*` tag does the same.
+3. Change the two links in `site.json` to the new file, then push. The host redeploys.
 
-Point both downloads in `site.json` at it:
+### Without a release
 
-```
-"downloads": {
-  "fracture": { "macOS": "https://github.com/YOU/REPO/releases/download/v0.1.0/Fracture-and-Crate-0.1.0-macOS.dmg" },
-  "crate":    { "macOS": "https://github.com/YOU/REPO/releases/download/v0.1.0/Fracture-and-Crate-0.1.0-macOS.dmg" }
-}
-```
-
-Release links from a private repository do not open for the public. In that case, put the
-`.dmg` files somewhere public (Dropbox, or Google Drive with a direct link) and use those
-links instead.
-
-Then connect the host to this repository:
-
-**Vercel**: Add New, then Project, then import the repository, and set **Root Directory** to
-`plugins-site`. `plugins-site/vercel.json` sets the build command, the output folder and the
-headers.
-
-**Render**: New, then Static Site, then the repository.
-
-- Build command: `node plugins-site/build.mjs`
-- Publish directory: `plugins-site/public`
-- Leave Root Directory empty.
-- Under Headers, add each header from `headers.mjs` for the path `/*`.
+On a Mac, `./build-macos-all.sh --dmg && npm run site:plugins -- --require-downloads`
+builds the site around local disk images, with their size and checksum on the page (clear
+the links in `site.json` first, since a link wins over a local file). Then
+`npx vercel deploy plugins-site/public --prod` uploads the lot.
 
 ## Before you post it publicly
 

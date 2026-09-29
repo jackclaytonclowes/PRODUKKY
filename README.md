@@ -57,7 +57,7 @@ test measures, what has not been verified, and why.
 plugin/          FRACTURE: core/ (JUCE-free DSP), Source/ (wrapper and editor), tests/, packaging/
 crate/           CRATE, laid out the same way
 fx/              the browser version and its design sources
-plugins-site/    the download site
+plugins-site/    the download site (render.yaml at the top deploys it on Render)
 tools/audition/  renders presets to WAV with the real DSP
 packaging/       one disk image holding both plugins (what CI builds)
 scripts/lib/     a small PNG writer, for the disk image backgrounds and the site's icon
