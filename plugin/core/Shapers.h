@@ -23,20 +23,24 @@ namespace fracture {
 
 enum class Mode {
     Soft = 0, Tube, Warm, Diode, Hard, Tape, Fold, Sine, Warp, Wrap, Gap, Rect, Bits, Harm,
+    Table,      // plugin only, and last so every saved mode index keeps its meaning
     Count
 };
 
 inline constexpr int numModes = static_cast<int>(Mode::Count);
 
-// ids and names in the same order as MODES in fx/fracture.html
+// ids and names in the same order as MODES in fx/fracture.html, then the
+// plugin's own. Table is drawn, not computed: the engine runs it through
+// HarmonicTable.h; shape() only has a stand-in for it (see below)
+inline constexpr int numBrowserModes = 14;
 inline const char* modeId(int i){
     static const char* ids[] = { "soft","tube","warm","diode","hard","tape","fold",
-                                 "sine","warp","wrap","gap","rect","bits","harm" };
+                                 "sine","warp","wrap","gap","rect","bits","harm","table" };
     return ids[i];
 }
 inline const char* modeName(int i){
     static const char* names[] = { "Soft","Tube","Warm","Diode","Hard","Tape","Fold",
-                                   "Sine","Warp","Wrap","Gap","Rectify","Quantize","Harmonics" };
+                                   "Sine","Warp","Wrap","Gap","Rectify","Quantize","Harmonics","Table" };
     return names[i];
 }
 
@@ -82,6 +86,10 @@ inline double shape(int mode, double x){
         const double t5 = 16.0 * std::pow(t, 5) - 20.0 * t * t * t + 5.0 * t;
         return 0.5 * t + 0.35 * t3 + 0.15 * t5;
     }
+    // the drawn curve lives in the engine (HarmonicTable.h); anything asking
+    // shape() for it gets the table's default frame, the plain fundamental,
+    // which is the input clamped to +-1
+    case Mode::Table: return clampT(x, -1.0, 1.0);
     case Mode::Count:
     default: return std::tanh(x);
     }
@@ -117,6 +125,7 @@ inline double logCosh(double x){
 inline bool hasAntiderivative(int mode){
     switch (static_cast<Mode>(mode)){
     case Mode::Warp: case Mode::Bits: case Mode::Count: return false;
+    case Mode::Table: return false;          // anti-aliased by its own stage (HarmonicTable.h)
     default: return mode >= 0 && mode < static_cast<int>(Mode::Count);
     }
 }

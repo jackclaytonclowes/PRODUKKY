@@ -63,6 +63,22 @@ inline std::vector<Idle> idleControls(const float* v){
         }
     }
 
+    // ---- the Table mode: its position and its drawn bars act only through a
+    // band whose drive mode is Table (Stage B counts only when it is on)
+    {
+        const int table = static_cast<int>(Mode::Table);
+        bool used = false;
+        for (int b = 0; b < nb; ++b)
+            used = used || static_cast<int>(v[id.bandModeA[b]]) == table
+                        || (v[id.bandStageB[b]] > 0.5f && static_cast<int>(v[id.bandModeB[b]]) == table);
+        if (!used){
+            const std::string why = "No band's drive mode is Table";
+            idle(id.tblPos, why);
+            for (int fr = 0; fr < tableFrames; ++fr)
+                for (int k = 0; k < tableHarmonics; ++k) idle(id.tblBar[fr][k], why);
+        }
+    }
+
     // ---- crush
     if (atZero(id.crMix)){
         idle(id.bits, "Crush is at 0%");

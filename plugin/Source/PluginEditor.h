@@ -5,6 +5,7 @@
 #include "PluginProcessor.h"
 #include "Bauhaus.h"
 #include "Guide.h"
+#include <array>
 
 // ---------------------------------------------------------------- primitives
 class KnobBox : public juce::Component {
@@ -169,6 +170,52 @@ private:
     FractureProcessor& proc;
 };
 
+// ------------------------------------------------------- the harmonic table
+// One frame of the Table mode: sixteen bars, one per harmonic, drawn with the
+// mouse. Up from the centre is in phase, down is flipped. A stroke across
+// several bars is one undo step: each bar's gesture stays open until the mouse
+// comes up. Double-click a bar to zero it.
+class HarmonicStrip : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
+public:
+    HarmonicStrip(FractureProcessor&, int frame);
+    void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void mouseDoubleClick(const juce::MouseEvent&) override;
+    juce::Rectangle<int> lane() const;          // where the bars are (public for the tests)
+private:
+    void timerCallback() override { repaint(); }
+    juce::RangedAudioParameter* bar(int k) const;
+    void setBar(int k, float percent);
+    void drawTo(juce::Point<int>);
+    FractureProcessor& proc;
+    const int frame;
+    std::vector<int> open;                       // bars mid-gesture
+    juce::Point<int> last;
+    bool drawing = false;
+};
+
+// the editor over the panels, opened from the Drive panel: the four frames,
+// the Position that morphs across them, and what the result does to a sine
+class TableEditor : public juce::Component, private juce::Timer {
+public:
+    explicit TableEditor(FractureProcessor&);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    HarmonicStrip* strip(int f){ return strips[static_cast<size_t>(f)].get(); }
+    juce::TextButton wobble { "Wobble with LFO 1" };   // public for the tests
+    std::function<void()> onClose;
+private:
+    void timerCallback() override;
+    void routeLfo();
+    FractureProcessor& proc;
+    std::array<std::unique_ptr<HarmonicStrip>, fracture::tableFrames> strips;
+    std::unique_ptr<KnobBox> position;
+    juce::TextButton close { "Close" };
+    juce::Rectangle<int> curveArea, waveArea, harmArea, noteArea;
+};
+
 // -------------------------------------------------------------------- editor
 class FractureEditor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
@@ -212,6 +259,8 @@ private:
     juce::TextButton tipsButton { "Tips" }, guideButton { "Guide" };
     std::unique_ptr<juce::TooltipWindow> tips;
     std::unique_ptr<bauhaus::GuideOverlay> guide;
+    std::unique_ptr<TableEditor> table;
+    juce::TextButton tableButton { "Harmonic table" };
     juce::Rectangle<int> guideArea;
     std::unique_ptr<juce::PropertiesFile> prefs;
 public:
@@ -219,6 +268,8 @@ public:
     bool tipsOn() const { return tips != nullptr; }
     void setTips(bool on);
     void setGuideOpen(bool open);
+    void setTableOpen(bool open);
+    TableEditor* tableEditor(){ return table.get(); }
     int guideHeight() const { return guide ? guide->contentHeight() : 0; }
 private:
     std::vector<Panel*> panels;

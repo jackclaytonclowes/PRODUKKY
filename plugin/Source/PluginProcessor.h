@@ -57,6 +57,7 @@ public:
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
     std::atomic<float> lfo1 { 0.0f }, lfo2 { 0.0f }, envOut { 0.0f }, tremOut { 0.0f };
     std::atomic<float> rhythmOut { 0.0f };
+    std::atomic<float> tblPosLive { -1.0f };           // the Table's position now, 0..1, or -1
     // the post filter as it is right now, for the drawn response
     std::atomic<int>   fsType { 0 }, fsCircuit { 0 }, fsPoles { 4 };
     std::atomic<float> fsFreq { 1000.0f }, fsQ { 0.7f }, fsDrive { 1.0f }, fsMix { 1.0f };

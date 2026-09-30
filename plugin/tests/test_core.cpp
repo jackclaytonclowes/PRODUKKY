@@ -8,10 +8,12 @@
 #include "Relevance.h"
 #include "FactoryPresets.h"
 #include "History.h"
+#include "HarmonicTable.h"
 #include "../../tools/audition/common.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -153,6 +155,149 @@ static std::vector<float> sineThrough(const Patch& patch, double f0, bool antial
     for (int i = 0; i < n; ++i) L[i] = R[i] = static_cast<float>(0.5 * std::sin(2.0 * M_PI * f0 * i / sr));
     for (int i = 0; i < n; i += 256){ float* io[2] = { L.data() + i, R.data() + i }; e.process(io, 2, std::min(256, n - i)); }
     return L;
+}
+
+// ------------------------------------------------------------- the Table mode
+// HarmonicTable.h: bars drawn as harmonics, turned into a Chebyshev curve. The
+// claim is exact, so the test is exact: a full-scale cosine through the curve
+// comes out as the drawn harmonics and nothing else.
+static void testHarmonicTable(){
+    const int N = 4096;
+    auto spectrum = [&](const TableCurve& c, double amp, std::vector<double>& mag){
+        mag.assign(33, 0.0);
+        for (int k = 1; k <= 32; ++k){
+            std::complex<double> g = 0.0;
+            for (int i = 0; i < N; ++i){
+                const double t = 2.0 * M_PI * i / N;
+                g += c.f(amp * std::cos(t)) * std::polar(1.0, -k * t);
+            }
+            mag[k] = 2.0 * std::abs(g) / N;
+        }
+    };
+    {   // 1, 3 and 5 at 100, 50 and 35 %: Serum's example
+        double bars[tableHarmonics] = {}; bars[0] = 1.0; bars[2] = 0.5; bars[4] = 0.35;
+        TableCurve c; c.build(bars);
+        std::vector<double> m; spectrum(c, 1.0, m);
+        const double sum = 1.85;
+        double worst = 0.0;
+        for (int k = 1; k <= 32; ++k){
+            const double want = k <= tableHarmonics ? bars[k - 1] / sum : 0.0;
+            worst = std::max(worst, std::fabs(m[k] - want));
+        }
+        check("Table: a full-scale sine comes out as exactly the harmonics drawn", worst < 1.0e-9,
+              "worst error " + f2s(worst, 12) + " (1, 3, 5 at " + f2s(m[1], 3) + ", " + f2s(m[3], 3) + ", " + f2s(m[5], 3) + ")");
+    }
+    {   // any drawing: silence stays silent, and the output stays bounded
+        std::mt19937 rng(11);
+        std::uniform_real_distribution<double> d(-1.0, 1.0);
+        double worstZero = 0.0, worstPeak = 0.0, worstSlope = 0.0, worstJump = 0.0;
+        for (int trial = 0; trial < 200; ++trial){
+            double bars[tableHarmonics];
+            for (auto& b : bars) b = d(rng);
+            TableCurve c; c.build(bars);
+            worstZero = std::max(worstZero, std::fabs(c.f(0.0)));
+            for (double x = -3.0; x <= 3.0; x += 0.001){
+                worstPeak = std::max(worstPeak, std::fabs(c.f(x)));
+                const double h = 1.0e-6;
+                if (std::fabs(std::fabs(x) - 1.0) > 1e-3){
+                    const double slope = (c.F(x + h) - c.F(x - h)) / (2.0 * h);
+                    worstSlope = std::max(worstSlope, std::fabs(slope - c.f(x)));
+                }
+                worstJump = std::max(worstJump, std::fabs(c.F(x + 0.001) - c.F(x)) - 2.001 * 0.001);
+            }
+        }
+        check("Table: silence in, silence out, whatever is drawn", worstZero < 1.0e-12, f2s(worstZero, 15));
+        check("Table: no drawing goes past twice full scale (the even harmonics' offset, which the DC blocker takes)",
+              worstPeak <= 2.0 + 1e-9, "peak " + f2s(worstPeak, 4));
+        check("Table: its antiderivative differentiates back to it, and has no jumps",
+              worstSlope < 1.0e-5 && worstJump < 1.0e-9, "slope " + f2s(worstSlope, 8) + ", jump " + f2s(worstJump, 12));
+    }
+    {   // morphing: 0 is frame 1, 1 is frame 4, the thirds land on 2 and 3
+        HarmonicFrames fr;
+        for (int f = 0; f < tableFrames; ++f) for (int k = 0; k < tableHarmonics; ++k) fr.bars[f][k] = (f + 1) * 0.1 + k * 0.01;
+        double b[tableHarmonics]; bool ok = true;
+        const double at[] = { 0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0 };
+        for (int f = 0; f < tableFrames; ++f){
+            fr.blend(at[f], b);
+            for (int k = 0; k < tableHarmonics; ++k) ok = ok && std::fabs(b[k] - fr.bars[f][k]) < 1e-12;
+        }
+        fr.blend(0.5, b);
+        for (int k = 0; k < tableHarmonics; ++k) ok = ok && std::fabs(b[k] - 0.5 * (fr.bars[1][k] + fr.bars[2][k])) < 1e-12;
+        check("Table: Position lands on each frame and blends between neighbours", ok);
+    }
+}
+
+// the Table mode through the whole engine: oversampling, DC blockers, auto gain
+static void testTableInEngine(){
+    const double sr = 48000.0, f0 = 220.0;
+    const float table = static_cast<float>(Mode::Table);
+    auto harmonicLevel = [&](const std::vector<float>& x, int h, size_t from, size_t len){
+        const double w = 2.0 * M_PI * f0 * h / sr;
+        std::complex<double> g = 0.0;
+        for (size_t i = from; i < from + len; ++i) g += static_cast<double>(x[i]) * std::polar(1.0, -w * static_cast<double>(i));
+        return 2.0 * std::abs(g) / static_cast<double>(len);
+    };
+    {   // frame 2 is 1, 3 and 5 at 100, 50 and 35 %; a sine that fills the curve
+        // (0.5 in, drive 2) comes out with that recipe
+        Patch p; p.v = { { "bands", 0 }, { "m0a", table }, { "d0a", 2 }, { "mx0", 100 }, { "tblPos", 100.0f / 3.0f } };
+        const auto y = sineThrough(p, f0, true);
+        const size_t len = 48000, from = y.size() - len;
+        const double h1 = harmonicLevel(y, 1, from, len), h3 = harmonicLevel(y, 3, from, len), h5 = harmonicLevel(y, 5, from, len);
+        const double h2 = harmonicLevel(y, 2, from, len);
+        const double e3 = db(h3 / h1) - db(0.5), e5 = db(h5 / h1) - db(0.35);
+        check("Table in the engine: a sine that fills the curve comes out as the drawn 1, 3 and 5",
+              std::fabs(e3) < 0.3 && std::fabs(e5) < 0.3 && db(h2 / h1) < -60.0,
+              "3rd " + f2s(db(h3 / h1), 2) + " dB (want " + f2s(db(0.5), 2) + "), 5th " + f2s(db(h5 / h1), 2)
+                  + " dB (want " + f2s(db(0.35), 2) + "), 2nd " + f2s(db(h2 / h1), 1) + " dB");
+    }
+    {   // an LFO on Position: the 3rd harmonic swells and fades as it sweeps
+        // from frame 1 (none) towards frame 2 (half the fundamental)
+        Patch p; p.v = { { "bands", 0 }, { "m0a", table }, { "d0a", 2 }, { "mx0", 100 }, { "tblPos", 0 },
+                         { "mS0", 1 }, { "mD0", static_cast<float>(1 + std::distance(Params::get().dests().begin(),
+                             std::find(Params::get().dests().begin(), Params::get().dests().end(), Ids::get().tblPos))) },
+                         { "mA0", 33 }, { "l1Rate", 4.0f }, { "l1Shape", 1 } };
+        const auto y = sineThrough(p, f0, true);
+        double lo = 1e9, hi = 0.0;
+        const size_t win = 2400;                                   // 50 ms windows across the last second
+        for (size_t from = y.size() - 48000; from + win <= y.size(); from += win){
+            const double r = harmonicLevel(y, 3, from, win) / harmonicLevel(y, 1, from, win);
+            lo = std::min(lo, r); hi = std::max(hi, r);
+        }
+        check("Table in the engine: an LFO on Position makes the harmonics wobble",
+              db(hi) - db(lo) > 12.0, "3rd harmonic moves between " + f2s(db(lo), 1) + " and " + f2s(db(hi), 1) + " dB");
+        // and it glides rather than stepping once a block. The same render in
+        // 16-sample blocks (where a step is too small to hear) and in 512-sample
+        // ones should differ only smoothly; a step at each block edge is a click,
+        // which shows in the top end of the difference. Measured on the slope of
+        // the difference against the slope of the signal. Gliding measures near
+        // -38 dB (the LFO is read once a block, so the glide draws it in straight
+        // lines); stepping, near -19
+        auto renderAt = [&](int block){
+            Engine e; e.prepare(sr, block); applyPatch(e, p); e.seedFrom(0);
+            const int n = 48000; std::vector<float> L(n), R(n);
+            for (int i = 0; i < n; ++i) L[i] = R[i] = static_cast<float>(0.5 * std::sin(2.0 * M_PI * f0 * i / sr));
+            for (int i = 0; i < n; i += block){ float* io[2] = { L.data() + i, R.data() + i }; e.process(io, 2, std::min(block, n - i)); }
+            return L;
+        };
+        const auto fine = renderAt(16), host = renderAt(512);
+        double dd = 0.0, ss = 0.0;
+        for (size_t i = 12000; i < fine.size(); ++i){
+            const double d1 = (host[i] - fine[i]) - (host[i - 1] - fine[i - 1]);
+            const double s1 = fine[i] - fine[i - 1];
+            dd += d1 * d1; ss += s1 * s1;
+        }
+        const double clicks = 10.0 * std::log10(std::max(dd, 1e-30) / ss);
+        check("Table in the engine: Position under an LFO glides, with no steps at host block edges",
+              clicks < -30.0, "block-edge difference " + f2s(clicks, 1) + " dB under the signal");
+    }
+    {   // silence stays silent, even with the even harmonics drawn
+        Patch p; p.v = { { "bands", 0 }, { "m0a", table }, { "d0a", 8 }, { "mx0", 100 }, { "tblPos", 66.67f } };
+        Engine e; e.prepare(sr, 256); applyPatch(e, p); e.seedFrom(0);
+        std::vector<float> L(48000, 0.0f), R(48000, 0.0f);
+        for (int i = 0; i < 48000; i += 256){ float* io[2] = { L.data() + i, R.data() + i }; e.process(io, 2, std::min(256, 48000 - i)); }
+        double peak = 0.0; for (float v : L) peak = std::max(peak, static_cast<double>(std::fabs(v)));
+        check("Table in the engine: silence in, silence out, with the 2nd and 4th drawn", peak == 0.0, f2s(peak, 12));
+    }
 }
 
 // Tube and Soft must be different sounds. They were not: Tube's first formula
@@ -974,15 +1119,16 @@ int main(int argc, char** argv){
         // saved sessions: 12 and 24 keep their indices, and every new modulatable
         // parameter is at the end of the matrix's destination list
         const auto& d = P.dests();
-        // in the order they were added: the rhythm, then the tuned feedback
+        // in the order they were added: the rhythm, the tuned feedback, the Table
         const char* newDests[] = { "fltMix", "rhDepth", "rhRate", "rhGroove", "rhPhase", "rhGlide",
-                                   "fbNote" };
+                                   "fbNote", "tblPos" };
         const size_t nNew = sizeof(newDests) / sizeof(newDests[0]);
         bool atEnd = d.size() > nNew;
         for (size_t k = 0; k < nNew && atEnd; ++k)
             atEnd = P[d[d.size() - nNew + k]].id == newDests[k];
         bool stepsOut = true;
-        for (int dd : d) if (P[dd].id.rfind("rhStep", 0) == 0) stepsOut = false;
+        for (int dd : d) if (P[dd].id.rfind("rhStep", 0) == 0 || (P[dd].id.size() > 2 && P[dd].id.rfind("tb", 0) == 0 && std::isdigit(static_cast<unsigned char>(P[dd].id[2]))))
+            stepsOut = false;                                      // neither the steps nor the table's bars
         check("new destinations are appended, so saved matrices keep their targets",
               atEnd && stepsOut && std::string(slopeIds[0]) == "12" && std::string(slopeIds[1]) == "24");
     }
@@ -1229,6 +1375,10 @@ int main(int argc, char** argv){
     testAntialiasing();
     testTubeIsNotSoft();
 
+    std::printf("\nTable mode\n");
+    testHarmonicTable();
+    testTableInEngine();
+
     std::printf("\nZipper noise\n");
     {
         struct Case { const char* name; std::map<std::string, float> base; const char* id; float from, to; };
@@ -1450,8 +1600,12 @@ int main(int argc, char** argv){
                 bool perf = false;
                 for (int s2 = 0; s2 < numSlots; ++s2)
                     if (get(("mS" + std::to_string(s2)).c_str()) >= 5.5f) perf = true;
+                bool table = false;                  // the Table drive mode, in any band or stage
+                for (int b = 0; b < numBands; ++b)
+                    for (const char* st : { "a", "b" })
+                        if (static_cast<int>(get(("m" + std::to_string(b) + st).c_str())) == static_cast<int>(Mode::Table)) table = true;
                 const bool uses = get("fbMode") > 0.5f || get("fbThru") > 0.5f || get("rhDepth") != 0.0f
-                               || get("fltMix") < 100.0f || get("fltPoles") > 1.5f || perf;
+                               || get("fltMix") < 100.0f || get("fltPoles") > 1.5f || perf || table;
                 if (!uses) noFeature += std::string(" [") + all[k].name + "]";
             }
         }

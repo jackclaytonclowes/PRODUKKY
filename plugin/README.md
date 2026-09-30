@@ -243,6 +243,32 @@ rather than a toggle plus a division that can disagree with each other. A divisi
 its phase from the host's song position, so the same bar sounds the same wherever you drop
 the playhead, and keeps running at the host's tempo while the transport is stopped.
 
+## The harmonic table
+
+A drive mode you draw, after Serum's harmonic editor. An effect cannot make a sound from
+nothing, so what gets drawn is a waveshaper, built so that its harmonics are exactly the
+bars. The Chebyshev polynomials have the property `T_k(cos t) = cos(k t)`, so a curve made of
+`sum c_k T_k` turns a full-scale sine into harmonic `k` at level `c_k`, for every bar
+(`core/HarmonicTable.h`). Four frames of sixteen bars, and **Position**, a matrix target,
+morphs linearly across them.
+
+Whatever is drawn stays well-behaved: the curve is normalised by the sum of the bars, so no
+drawing can exceed full scale; it is shifted so `f(0) = 0`, so silence stays silent even with
+the even harmonics in (they are `±1` at zero); the input is clamped to `±1`, where the
+polynomials are bounded; and it is anti-aliased like the other shapers, since the
+antiderivative of a Chebyshev series is another one, evaluated the same way (Clenshaw's
+recurrence). Position glides across each block rather than stepping when an LFO moves it.
+
+The bars are 64 parameters, not offered for automation: undo, A/B, presets, Copy patch and
+sessions all carry them with no extra machinery. The browser version has no Table mode.
+
+Tested: a full-scale sine through a drawing of 1, 3 and 5 comes out as exactly those, to
+1e-12, and through the whole engine to 0.01 dB; silence stays silent for 200 random drawings;
+the antiderivative is exact; Position lands on each frame; an LFO on it moves the 3rd
+harmonic by 150 dB; and the block edges of a 512-sample render sit 38 dB under the signal
+(stepping instead measures 19, and fails). In the host test, a mouse stroke across a frame
+sets every bar it crosses in one undo step.
+
 ## Seeing the filter
 
 The Scope draws the post filter's frequency response over the live spectrum, on the same
@@ -317,7 +343,7 @@ The menu rereads the folder every time it opens.
 
 ## What is verified, and where
 
-`npm run test:core` — 134 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 156 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -372,7 +398,7 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   and a value that did not round-trip exactly is not taken for an edit; A and B keep
   separate histories, B opens as a copy of A, and a switch is never an undo step
 
-`host_smoke` — 101 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 112 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
 and comes back out unchanged; a knob drag is one undo step (a version that committed on
 every value fails five checks), and so are a pad drag, a stroke across the steps, a preset

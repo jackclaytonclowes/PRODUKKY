@@ -109,6 +109,7 @@ public:
                 for (auto* f : { &bd.dcA[ch], &bd.dcB[ch], &bd.tiltLo[ch], &bd.tiltHi[ch] }) f->reset();
                 bd.os[ch].reset();
                 bd.shA[ch].reset(); bd.shB[ch].reset();
+                bd.tbA[ch].reset(); bd.tbB[ch].reset();
             }
             for (auto* f : { &xLP1a_[ch], &xLP1b_[ch], &xHP1a_[ch], &xHP1b_[ch],
                              &xLP2a_[ch], &xLP2b_[ch], &xHP2a_[ch], &xHP2b_[ch], &xAP_[ch] })
@@ -117,6 +118,7 @@ public:
             dry_[ch].reset();
             ladder_[ch].reset();
         }
+        tableReady_ = false;
         crusher_.reset();
         mod_.reset();
         rhythm_.reset();
@@ -161,6 +163,9 @@ public:
     // for the panel to draw its response (FilterResponse.h). Written once a block
     // on the audio thread; the processor copies it into atomics for the editor
     FilterState filterState() const { return filterNow_; }
+    // where the Table is across its frames right now, modulation included
+    // (0..1), for the editor to mark; -1 until a band has used it
+    double tablePosition() const { return tableReady_ ? curvePos_ : -1.0; }
 
     void process(float* const* io, int numChannels, int n){
         if (n <= 0) return;
@@ -233,6 +238,36 @@ public:
             setR(bd.postB, ag ? autoGainFor(dB) : 1.0);
             setR(bd.mix, mv_[id.bandMix[b]] / 100.0);
             setR(bd.level, audible ? dbToGain(mv_[id.bandLevel[b]]) : 0.0);
+        }
+        // ---- the Table mode (HarmonicTable.h), only when a band is using it.
+        // The bars are not modulated; they are rebuilt when someone draws.
+        // Position is, and an LFO on it arrives once a block like everything
+        // else, so it glides across the block (see the sample loop) rather
+        // than stepping the harmonics at each block edge
+        const int tableMode = static_cast<int>(Mode::Table);
+        bool tableOn = false;
+        for (int b = 0; b < nb; ++b){
+            const Band& bd = bands_[b];
+            tableOn = tableOn || bd.modeA == tableMode || (bd.stageB && bd.modeB == tableMode);
+        }
+        const double tblPosNow = mv_[id.tblPos] / 100.0;
+        bool tableGliding = false;
+        if (tableOn){
+            bool barsMoved = !tableReady_;
+            for (int fr = 0; fr < tableFrames; ++fr)
+                for (int k = 0; k < tableHarmonics; ++k){
+                    const double v = mv_[id.tblBar[fr][k]] / 100.0;
+                    if (v != frames_.bars[fr][k]){ frames_.bars[fr][k] = v; barsMoved = true; }
+                }
+            const double from = (wasFirst || !tableReady_) ? tblPosNow : tblPosWas_;
+            if (barsMoved || from != curvePos_){
+                frames_.curveAt(from, curve_);
+                curvePos_ = from;
+                ++curveVersion_;
+            }
+            tableGliding = tblPosNow != from;
+            tblPosWas_ = from;
+            tableReady_ = true;
         }
         setR(inG_, dbToGain(mv_[id.inGain]));
         setR(outG_, dbToGain(mv_[id.outGain]));
@@ -328,6 +363,12 @@ public:
                         setTilt(bands_[b], ch, toneWas_[b] + (mv_[id.bandTone[b]] - toneWas_[b]) * t, osSr);
                 }
             }
+            if (tableGliding && (i & 15) == 0){
+                const double t = std::min(1.0, (i + 16) / static_cast<double>(n));
+                curvePos_ = tblPosWas_ + (tblPosNow - tblPosWas_) * t;
+                frames_.curveAt(curvePos_, curve_);
+                ++curveVersion_;
+            }
             if (rhythmOn && (i & 15) == 0){
                 for (int ch = 0; ch < nch; ++ch){
                     const double f = cutoffBase * std::exp2(rhDepth * rhythm_.value(ch));
@@ -379,12 +420,15 @@ public:
                     Biquad& dcA = bd.dcA[ch]; Biquad& dcB = bd.dcB[ch];
                     Biquad& tLo = bd.tiltLo[ch]; Biquad& tHi = bd.tiltHi[ch];
                     AntialiasedShaper& shA = bd.shA[ch]; AntialiasedShaper& shB = bd.shB[ch];
+                    TableShaper& tbA = bd.tbA[ch]; TableShaper& tbB = bd.tbB[ch];
                     const double out = bd.os[ch].process(bandIn[b], [&](double s){
-                        double v = shA.process(mA, s * driveA) * postA;
+                        double v = (mA == tableMode ? tbA.process(curve_, curveVersion_, s * driveA)
+                                                    : shA.process(mA, s * driveA)) * postA;
                         v = dcA.process(v);
                         v = tHi.process(tLo.process(v));
                         if (sB){
-                            v = shB.process(mB, v * driveB) * postB;
+                            v = (mB == tableMode ? tbB.process(curve_, curveVersion_, v * driveB)
+                                                 : shB.process(mB, v * driveB)) * postB;
                             v = dcB.process(v);
                         }
                         return s + (v - s) * mix;      // the band's own dry/wet
@@ -426,6 +470,7 @@ public:
         inPeak = static_cast<float>(inPk);
         outPeak = static_cast<float>(outPk);
         x1Was_ = mv_[id.x1]; x2Was_ = mv_[id.x2];
+        if (tableOn) tblPosWas_ = tblPosNow;
         for (int b = 0; b < numBands; ++b) toneWas_[b] = mv_[id.bandTone[b]];
     }
 
@@ -434,6 +479,7 @@ private:
         Biquad dcA[maxChannels], dcB[maxChannels], tiltLo[maxChannels], tiltHi[maxChannels];
         Oversampler os[maxChannels];
         AntialiasedShaper shA[maxChannels], shB[maxChannels];   // ADAA: see Shapers.h
+        TableShaper tbA[maxChannels], tbB[maxChannels];         // the Table mode
         Ramp driveA, driveB, postA, postB, mix, level;
         int modeA = 0, modeB = 4;
         bool stageB = false;
@@ -442,6 +488,12 @@ private:
     int maxBlock_ = 512, osFactor_ = 0, latency_ = 0;
     bool first_ = true;
     bool antialias_ = true;
+    // the Table mode: the frames as last read, the curve now, where it is
+    HarmonicFrames frames_;
+    TableCurve curve_;
+    unsigned curveVersion_ = 0;
+    double curvePos_ = -1.0, tblPosWas_ = 0.0;
+    bool tableReady_ = false;
     std::vector<float> base_, mv_;
     Band bands_[numBands];
     Biquad preHP_[maxChannels], preLP_[maxChannels];
@@ -538,10 +590,10 @@ private:
             const std::complex<double> adaa = 0.5 * (1.0 + std::polar(1.0, -wOs));
             const bool stageB = mv_[id.bandStageB[b]] > 0.5f;
             std::complex<double> wet = bd.dcA[0].at(wOs);
-            if (antialias_ && hasAntiderivative(bd.modeA)) wet *= adaa;
+            if (antiAliased(bd.modeA)) wet *= adaa;
             if (stageB){
                 wet *= bd.dcB[0].at(wOs);
-                if (antialias_ && hasAntiderivative(bd.modeB)) wet *= adaa;
+                if (antiAliased(bd.modeB)) wet *= adaa;
             }
             const double m = mv_[id.bandMix[b]] / 100.0;
             sum += xo[b] * ((1.0 - m) + m * wet) * dbToGain(mv_[id.bandLevel[b]]);
@@ -549,6 +601,11 @@ private:
         return std::abs(sum) > 1e-12 ? sum : std::complex<double>(1.0);
     }
 
+    // stages that average over the step (half a sample of delay at the
+    // oversampled rate): every shaper with an antiderivative, and the Table
+    bool antiAliased(int mode) const {
+        return mode == static_cast<int>(Mode::Table) || (antialias_ && hasAntiderivative(mode));
+    }
     static int polesFor(float choice){ return 2 * (std::clamp(static_cast<int>(choice), 0, 3) + 1); }
     void setCleanFilter(int ch, int type, double freq){
         static const Biquad::Type map[] = { Biquad::AllPass, Biquad::LowPass, Biquad::HighPass,

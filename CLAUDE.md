@@ -68,6 +68,10 @@ wrapper change done.
   antiderivative in `antiderivative()`, or an entry in `hasAntiderivative()` saying why
   not. Each anti-aliased stage adds half a sample at the oversampled rate, which
   `splitResponse()` includes so the tuned loop stays in tune.
+- **Table (the drawn mode) is plugin-only and lives in `core/HarmonicTable.h`.** `shape()` has
+  only a stand-in for it; the engine and the editor build the real curve from the 64 bar
+  parameters. The bars are parameters so undo, A/B and presets carry them, marked not
+  automatable. Position (`tblPos`) is the newest matrix target, so it stays last.
 - **Tests measure; they do not restate the code.** Several early tests passed against
   broken code: a dry/wet check that compared a signal with itself, a pitch test that
   measured group delay. Prove each new test fails when the fix is removed.

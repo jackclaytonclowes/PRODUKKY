@@ -14,6 +14,7 @@
 #include "Shapers.h"
 #include "Sync.h"
 #include "RhythmMod.h"
+#include "HarmonicTable.h"
 
 namespace fracture {
 
@@ -26,6 +27,7 @@ struct ParamInfo {
     float min = 0, max = 1, def = 0;
     bool  log = false;         // logarithmic taper, as in the browser's norm()
     bool  mod = false;         // can be a modulation destination
+    bool  automatable = true;  // false: saved and undoable, but not offered to host automation
     int   band = -1;           // 0..2 for per-band parameters
     std::string unit;
     std::vector<std::string> choices;    // shown in the host
@@ -224,6 +226,29 @@ private:
         f("mc2", "Macro 2", 0, 100, 0, false, false, "%");
         f("xyX", "XY X", 0, 100, 0, false, false, "%");
         f("xyY", "XY Y", 0, 100, 0, false, false, "%");
+        // the Table mode (HarmonicTable.h): where across its four frames it
+        // sits, which is a matrix target (the newest, so it goes last among
+        // them), and the frames themselves, sixteen harmonic bars each. The
+        // bars are parameters so undo, A/B, presets and sessions all carry
+        // them, but they are not offered for automation: 64 lanes nobody
+        // asked for would bury the ones people use. Frame 1 is the plain
+        // fundamental; the others are starting points to draw over.
+        f("tblPos", "Table position", 0, 100, 0, false, true, "%");
+        {
+            static const float start[tableFrames][tableHarmonics] = {
+                { 100 },                                           // 1: the fundamental alone
+                { 100, 0, 50, 0, 35 },                             // 2: 1, 3, 5: hollow
+                { 100, 60, 0, 30 },                                // 3: 1, 2, 4: warm, an octave up
+                { 60, 0, 50, 0, 40, 0, 30, 0, 20 },                // 4: odd to the 9th: buzzy
+            };
+            for (int fr = 0; fr < tableFrames; ++fr)
+                for (int k = 0; k < tableHarmonics; ++k){
+                    f("tb" + std::to_string(fr + 1) + "h" + std::to_string(k + 1),
+                      "Table " + std::to_string(fr + 1) + " harmonic " + std::to_string(k + 1),
+                      -100, 100, start[fr][k], false, false, "%");
+                    info_.back().automatable = false;
+                }
+        }
 
         // the matrix destination list is every modulatable parameter above
         for (size_t i = 0; i < info_.size(); ++i)
@@ -283,6 +308,7 @@ struct Ids {
     int fltType, fltFreq, fltQ, fltCirc, fltPoles, fltDrive, fltDrift;
     int trOn, trDiv, trRate, trDepth, trShape, trEdge, trDuty, trSpread;
     int fbMode, fbNote, fbDiv, fbThru, mc1, mc2, xyX, xyY;
+    int tblPos, tblBar[tableFrames][tableHarmonics];
     int fltMix, rhDepth, rhDiv, rhRate, rhShape, rhGroove, rhPhase, rhGlide, rhStep[8];
     int mix, width, outGain, autoGain, safety, osFactor;
     int l1Rate, l1Div, l1Shape, l1Depth, l2Rate, l2Div, l2Shape, l2Depth;
@@ -305,6 +331,10 @@ private:
         trOn = I("trOn"); trDiv = I("trDiv"); trRate = I("trRate"); trDepth = I("trDepth");
         trShape = I("trShape"); trEdge = I("trEdge"); trDuty = I("trDuty"); trSpread = I("trSpread");
         mc1 = I("mc1"); mc2 = I("mc2"); xyX = I("xyX"); xyY = I("xyY");
+        tblPos = I("tblPos");
+        for (int fr = 0; fr < tableFrames; ++fr)
+            for (int k = 0; k < tableHarmonics; ++k)
+                tblBar[fr][k] = I(("tb" + std::to_string(fr + 1) + "h" + std::to_string(k + 1)).c_str());
         fbMode = I("fbMode"); fbNote = I("fbNote"); fbDiv = I("fbDiv"); fbThru = I("fbThru");
         fltMix = I("fltMix"); rhDepth = I("rhDepth"); rhDiv = I("rhDiv"); rhRate = I("rhRate");
         rhShape = I("rhShape"); rhGroove = I("rhGroove"); rhPhase = I("rhPhase"); rhGlide = I("rhGlide");

@@ -67,7 +67,15 @@ inline const std::vector<Preset>& pluginOnlyPresets(){
         { "XY — the loop's pitch across, feedback up",
           R"JSON({"bands":"1","d0a":3,"m0a":"soft","fbAmt":20,"fbMode":"pitch","fbNote":36,"fbTone":8000,"mS0":"xyx","mD0":"fbNote","mA0":60,"mS1":"xyy","mD1":"fbAmt","mA1":35,"outGain":-4,"xyX":50,"xyY":50})JSON" },
         { "Macros — 1 folds and crushes, 2 widens and repeats",
-          R"JSON({"bands":"2","x1":300,"d0a":2,"d1a":2,"m1a":"fold","mS0":"mc1","mD0":"d1a","mA0":70,"mS1":"mc1","mD1":"crMix","mA1":80,"mS2":"mc2","mD2":"width","mA2":50,"mS3":"mc2","mD3":"fbAmt","mA3":50,"bits":6,"redux":4,"fbTime":80,"mc1":50,"mc2":50})JSON" }
+          R"JSON({"bands":"2","x1":300,"d0a":2,"d1a":2,"m1a":"fold","mS0":"mc1","mD0":"d1a","mA0":70,"mS1":"mc1","mD1":"crMix","mA1":80,"mS2":"mc2","mD2":"width","mA2":50,"mS3":"mc2","mD3":"fbAmt","mA3":50,"bits":6,"redux":4,"fbTime":80,"mc1":50,"mc2":50})JSON" },
+        // the Table mode: harmonics drawn, then moved. Open Harmonic table in
+        // the Drive panel to see and redraw what these play
+        { "Table — harmonic wobble, an LFO across the frames",
+          R"JSON({"bands":"1","d0a":2,"m0a":"table","tblPos":50,"mS0":"lfo1","mD0":"tblPos","mA0":50,"l1Rate":0.4,"l1Shape":"tri"})JSON" },
+        { "Table — an octave up, the 2nd and 4th drawn in",
+          R"JSON({"bands":"2","x1":150,"d1a":2,"m1a":"table","tblPos":66.67,"mx1":70})JSON" },
+        { "Table — the harder you play, the more harmonics",
+          R"JSON({"bands":"1","d0a":2.5,"m0a":"table","tblPos":0,"mS0":"env","mD0":"tblPos","mA0":90,"envSens":70})JSON" }
     };
     return all;
 }

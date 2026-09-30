@@ -17,7 +17,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout FractureProcessor::buildLayo
             if (p.log) range.setSkewForCentre(std::sqrt(p.min * p.max));  // the browser's log taper
             layout.add(std::make_unique<juce::AudioParameterFloat>(
                 pid, p.name, range, p.def,
-                juce::AudioParameterFloatAttributes().withLabel(p.unit)));
+                juce::AudioParameterFloatAttributes().withLabel(p.unit).withAutomatable(p.automatable)));
             break;
         }
         case Kind::Choice: {
@@ -105,6 +105,7 @@ void FractureProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     inPeak.store(engine.inPeak);
     outPeak.store(engine.outPeak);
     rhythmOut.store(engine.rhythmOut());
+    tblPosLive.store(static_cast<float>(engine.tablePosition()));
     {
         const auto st = engine.filterState();
         fsType.store(st.type); fsCircuit.store(st.circuit); fsPoles.store(st.poles);

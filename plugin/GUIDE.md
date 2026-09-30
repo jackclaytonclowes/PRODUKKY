@@ -45,6 +45,17 @@ The panel reads in the order the sound flows: top row first, left to right, then
 - **Tone** tilts the band brighter or darker between the two stages.
 - **Mix** blends this band's distortion with its clean sound, and **Level** sets its volume. **Mute** and **Solo** help you hear one band at a time.
 
+## The harmonic table
+
+- **Table** is a drive mode you draw yourself. Pick it as **Mode A** or **Mode B** in any band, then press **Harmonic table** in the Drive panel.
+- Each of the four **frames** is sixteen bars, one per harmonic: bar 1 is the note itself, bar 2 an octave up, bar 3 an octave and a fifth, and so on. Draw them with the mouse; up is in phase, down is flipped. Double-click a bar to zero it.
+- **Odd harmonics** (red) sound hollow, like a clarinet or a square wave. **Even harmonics** (blue) sound warm and thick, like a tube.
+- A full sine comes out with exactly the harmonics you drew. On real sounds you get the same recipe as a character. **Drive A** or **Drive B** sets how fully it comes through: the recipe is exact when the sound fills the curve.
+- **Position** morphs through the frames: frame 1 at 0%, frame 4 at 100%, blended in between. The frames light up to show where it is.
+- **Wobble with LFO 1** routes LFO 1 to Position in a free matrix slot, so the harmonics move on their own. Any other source works too: pick **Table position** as a target in the matrix.
+- The previews show the curve at the current position, one cycle of a sine through it, and the harmonics that come out.
+- Try the presets starting with **Table —**.
+
 ## 04 Crush & feedback
 
 - **Crush** mixes in a bit crusher. **Bits** lowers resolution and **Downs.** lowers the sample rate.

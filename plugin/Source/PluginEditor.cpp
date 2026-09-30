@@ -7,12 +7,15 @@
 using namespace bauhaus;
 using namespace fracture;
 
+static void tableCurveNow(FractureProcessor& proc, TableCurve& curve, double* posOut = nullptr);
+
 // one line per control, for its tooltip. Band and slot ids share a line: the
 // digit in them is replaced by # before the lookup (d0a, d1a, d2a -> d#a)
 static juce::String helpFor(std::string id){
     for (auto& c : id) if (c >= '0' && c <= '9') c = '#';
     static const std::map<std::string, const char*> h = {
         { "inGain", "Level into the box" },
+        { "tblPos", "Where the Table sits across its four frames. Route an LFO here to make the harmonics wobble" },
         { "preHP", "High pass before anything is driven: keeps the lows clean" },
         { "preLP", "Low pass before anything is driven: tames what the drive will fold" },
         { "bands", "Drive the whole signal, or split it into two or three bands first" },
@@ -104,7 +107,7 @@ KnobBox::KnobBox(FractureProcessor& p, const juce::String& paramId, juce::Colour
     caption = info.id == "redux" ? "Downs." : juce::String(info.name);
     // the panel already says which section this is, so the caption need not
     for (const char* prefix : { "B1 ", "B2 ", "B3 ", "LFO 1 ", "LFO 2 ", "Env ",
-                                "Filter ", "Trem ", "Rhythm " })
+                                "Filter ", "Trem ", "Rhythm ", "Table " })
         if (caption.startsWith(prefix)) caption = caption.substring(static_cast<int>(std::strlen(prefix)));
     slider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
     slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -343,11 +346,16 @@ void Scope::paint(juce::Graphics& g){
     const bool  ag = proc.apvts.getRawParameterValue("autoGain")->load() > 0.5f;
     const float mix = proc.apvts.getRawParameterValue("mx" + s)->load() / 100.0f;
     const float lvl = juce::Decibels::decibelsToGain(proc.apvts.getRawParameterValue("lv" + s)->load());
+    // the Table is drawn, not a formula: its curve at the live position
+    TableCurve table;
+    const int tableMode = static_cast<int>(Mode::Table);
+    if (mA == tableMode || (sB && mB == tableMode)) tableCurveNow(proc, table);
+    auto sh = [&](int m, double x){ return m == tableMode ? table.f(x) : shape(m, x); };
     juce::Path curve;
     for (int px = 0; px <= juce::roundToInt(ci.getWidth()); ++px){
         const double x = (px / static_cast<double>(ci.getWidth())) * 2.0 - 1.0;
-        double v = clampT(shape(mA, x * dA), -1.0, 1.0) * (ag ? autoGainFor(dA) : 1.0);
-        if (sB) v = clampT(shape(mB, v * dB), -1.0, 1.0) * (ag ? autoGainFor(dB) : 1.0);
+        double v = clampT(sh(mA, x * dA), -1.0, 1.0) * (ag ? autoGainFor(dA) : 1.0);
+        if (sB) v = clampT(sh(mB, v * dB), -1.0, 1.0) * (ag ? autoGainFor(dB) : 1.0);
         v = (x + (v - x) * mix) * lvl;
         const float y = ci.getCentreY() - static_cast<float>(juce::jlimit(-1.4, 1.4, v)) * ci.getHeight() * 0.46f;
         if (px == 0) curve.startNewSubPath(ci.getX(), y);
@@ -701,6 +709,257 @@ public:
     void paint(juce::Graphics& g) override { g.setColour(ink); g.fillRect(getLocalBounds()); }
 };
 
+// ------------------------------------------------------- the harmonic table
+// the Table's curve as the audio has it right now: the drawn frames, at the
+// live position (modulation included) once the engine has run it, or at the
+// Position knob before then
+static void tableCurveNow(FractureProcessor& proc, TableCurve& curve, double* posOut){
+    HarmonicFrames fr;
+    const Ids& id = Ids::get();
+    const Params& P = Params::get();
+    for (int f = 0; f < tableFrames; ++f)
+        for (int k = 0; k < tableHarmonics; ++k)
+            fr.bars[f][k] = proc.apvts.getRawParameterValue(P[id.tblBar[f][k]].id)->load() / 100.0;
+    double pos = proc.tblPosLive.load();
+    if (pos < 0.0) pos = proc.apvts.getRawParameterValue("tblPos")->load() / 100.0;
+    fr.curveAt(pos, curve);
+    if (posOut) *posOut = pos;
+}
+// odd harmonics hollow (red), even ones warm (blue), the fundamental ink
+static juce::Colour harmonicHue(int k){ return k == 1 ? ink : (k % 2 ? red : blue); }
+
+HarmonicStrip::HarmonicStrip(FractureProcessor& p, int f) : proc(p), frame(f){
+    setTooltip("Frame " + juce::String(f + 1) + ": draw a bar per harmonic. Up is in phase, down is flipped. "
+               "Odd harmonics (red) sound hollow, even ones (blue) warm. Double-click a bar to zero it");
+    startTimerHz(30);
+}
+juce::Rectangle<int> HarmonicStrip::lane() const { return getLocalBounds().reduced(10).withTrimmedTop(24).withTrimmedBottom(16); }
+juce::RangedAudioParameter* HarmonicStrip::bar(int k) const {
+    return proc.apvts.getParameter("tb" + juce::String(frame + 1) + "h" + juce::String(k + 1));
+}
+void HarmonicStrip::paint(juce::Graphics& g){
+    auto area = getLocalBounds();
+    // how much of this frame is sounding at the live position
+    double pos = proc.tblPosLive.load();
+    if (pos < 0.0) pos = proc.apvts.getRawParameterValue("tblPos")->load() / 100.0;
+    const double weight = juce::jmax(0.0, 1.0 - std::fabs(pos * (tableFrames - 1) - frame));
+    g.setColour(face); g.fillRect(area);
+    g.setColour(yellow.withAlpha(static_cast<float>(0.12 + 0.5 * weight)));
+    g.fillRect(area.removeFromTop(22).reduced(2));
+    g.setColour(ink); g.drawRect(getLocalBounds(), weight > 0.0 ? 3 : 2);
+    const juce::String dot = juce::String::fromUTF8("\xc2\xb7");       // a middle dot, spelt out as UTF-8
+    drawTracked(g, "FRAME " + juce::String(frame + 1) + (weight > 0.0 ? "  " + dot + "  " + juce::String(juce::roundToInt(weight * 100)) + "% HEARD" : ""),
+                getLocalBounds().removeFromTop(22).reduced(8, 0), 9.0f, 2.0f, juce::Justification::centredLeft, ink);
+    const auto L = lane();
+    const float w = L.getWidth() / static_cast<float>(tableHarmonics);
+    const float mid = L.getCentreY();
+    g.setColour(track); g.drawHorizontalLine(juce::roundToInt(mid), static_cast<float>(L.getX()), static_cast<float>(L.getRight()));
+    g.setFont(mono(9.0f));
+    for (int k = 0; k < tableHarmonics; ++k){
+        const float v = bar(k)->convertFrom0to1(bar(k)->getValue()) / 100.0f;
+        const float h = std::fabs(v) * L.getHeight() * 0.5f;
+        const float x = L.getX() + k * w + 2.0f;
+        g.setColour(harmonicHue(k + 1));
+        if (v >= 0) g.fillRect(x, mid - h, w - 4.0f, h); else g.fillRect(x, mid, w - 4.0f, h);
+        g.setColour(dim);
+        g.drawText(juce::String(k + 1), juce::Rectangle<float>(L.getX() + k * w, static_cast<float>(L.getBottom() + 2), w, 12.0f),
+                   juce::Justification::centred);
+    }
+}
+void HarmonicStrip::setBar(int k, float percent){
+    auto* p = bar(k);
+    if (std::find(open.begin(), open.end(), k) == open.end()){ p->beginChangeGesture(); open.push_back(k); }
+    p->setValueNotifyingHost(p->convertTo0to1(juce::jlimit(-100.0f, 100.0f, percent)));
+    repaint();
+}
+// a stroke fills every bar it crosses, so a fast drag leaves no gaps
+void HarmonicStrip::drawTo(juce::Point<int> pos){
+    const auto L = lane();
+    auto barOf = [&](juce::Point<int> q){ return juce::jlimit(0, tableHarmonics - 1, (q.x - L.getX()) * tableHarmonics / juce::jmax(1, L.getWidth())); };
+    auto valueOf = [&](juce::Point<int> q){ return juce::jlimit(-100.0f, 100.0f, (L.getCentreY() - q.y) / (L.getHeight() * 0.5f) * 100.0f); };
+    const int k0 = drawing ? barOf(last) : barOf(pos), k1 = barOf(pos);
+    const float v0 = drawing ? valueOf(last) : valueOf(pos), v1 = valueOf(pos);
+    const int step = k1 >= k0 ? 1 : -1;
+    for (int k = k0;; k += step){
+        const float t = k1 == k0 ? 1.0f : static_cast<float>(k - k0) / static_cast<float>(k1 - k0);
+        setBar(k, v0 + (v1 - v0) * t);
+        if (k == k1) break;
+    }
+    last = pos; drawing = true;
+}
+void HarmonicStrip::mouseDown(const juce::MouseEvent& e){ drawing = false; drawTo(e.getPosition()); }
+void HarmonicStrip::mouseDrag(const juce::MouseEvent& e){ drawTo(e.getPosition()); }
+void HarmonicStrip::mouseUp(const juce::MouseEvent&){
+    // every bar the stroke touched closes together: one undo step
+    for (int k : open) bar(k)->endChangeGesture();
+    open.clear();
+    drawing = false;
+}
+void HarmonicStrip::mouseDoubleClick(const juce::MouseEvent& e){
+    const auto L = lane();
+    const int k = juce::jlimit(0, tableHarmonics - 1, (e.x - L.getX()) * tableHarmonics / juce::jmax(1, L.getWidth()));
+    setBar(k, 0.0f);
+    mouseUp(e);
+}
+
+TableEditor::TableEditor(FractureProcessor& p) : proc(p){
+    for (int f = 0; f < tableFrames; ++f){
+        strips[static_cast<size_t>(f)] = std::make_unique<HarmonicStrip>(proc, f);
+        addAndMakeVisible(*strips[static_cast<size_t>(f)]);
+    }
+    position = std::make_unique<KnobBox>(proc, "tblPos", yellow);
+    addAndMakeVisible(*position);
+    for (auto* b : { &wobble, &close }) addAndMakeVisible(*b);
+    wobble.setTooltip("Route LFO 1 to Table position in a free matrix slot, so the harmonics move on their own");
+    wobble.onClick = [this]{ routeLfo(); };
+    close.onClick = [this]{ if (onClose) onClose(); };
+    startTimerHz(30);
+}
+void TableEditor::routeLfo(){
+    const Ids& id = Ids::get();
+    const Params& P = Params::get();
+    const auto& dests = P.dests();
+    const int dst = 1 + static_cast<int>(std::find(dests.begin(), dests.end(), id.tblPos) - dests.begin());
+    int slot = -1;
+    for (int k = 0; k < numSlots && slot < 0; ++k)       // already routed: leave it be
+        if (static_cast<int>(proc.apvts.getRawParameterValue(P[id.slotDst[k]].id)->load()) == dst) return;
+    for (int k = 0; k < numSlots && slot < 0; ++k)
+        if (static_cast<int>(proc.apvts.getRawParameterValue(P[id.slotSrc[k]].id)->load()) == 0) slot = k;
+    if (slot < 0) return;
+    // all three at once, inside one gesture each: one undo step
+    auto* src = proc.apvts.getParameter(P[id.slotSrc[slot]].id);
+    auto* d = proc.apvts.getParameter(P[id.slotDst[slot]].id);
+    auto* amt = proc.apvts.getParameter(P[id.slotAmt[slot]].id);
+    for (auto* q : { src, d, amt }) q->beginChangeGesture();
+    src->setValueNotifyingHost(src->convertTo0to1(1.0f));           // LFO 1
+    d->setValueNotifyingHost(d->convertTo0to1(static_cast<float>(dst)));
+    amt->setValueNotifyingHost(amt->convertTo0to1(50.0f));
+    for (auto* q : { src, d, amt }) q->endChangeGesture();
+}
+void TableEditor::timerCallback(){
+    position->refresh();
+    // the button says whether it can help
+    const Ids& id = Ids::get(); const Params& P = Params::get();
+    const auto& dests = P.dests();
+    const int dst = 1 + static_cast<int>(std::find(dests.begin(), dests.end(), id.tblPos) - dests.begin());
+    bool routed = false, free = false;
+    for (int k = 0; k < numSlots; ++k){
+        routed = routed || static_cast<int>(proc.apvts.getRawParameterValue(P[id.slotDst[k]].id)->load()) == dst;
+        free = free || static_cast<int>(proc.apvts.getRawParameterValue(P[id.slotSrc[k]].id)->load()) == 0;
+    }
+    wobble.setButtonText(routed ? "Position is modulated" : "Wobble with LFO 1");
+    wobble.setEnabled(!routed && free);
+    wobble.setAlpha(!routed && free ? 1.0f : 0.45f);
+    repaint(curveArea); repaint(waveArea); repaint(harmArea); repaint(noteArea);
+}
+void TableEditor::resized(){
+    auto r = getLocalBounds().reduced(22);
+    auto top = r.removeFromTop(40);
+    close.setBounds(top.removeFromRight(90).withSizeKeepingCentre(90, 30));
+    r.removeFromTop(8);
+    auto stripsRow = r.removeFromTop(juce::jmin(360, r.getHeight() / 2));
+    const int gap = 14, w = (stripsRow.getWidth() - gap * (tableFrames - 1)) / tableFrames;
+    for (int f = 0; f < tableFrames; ++f){
+        strips[static_cast<size_t>(f)]->setBounds(stripsRow.removeFromLeft(w));
+        stripsRow.removeFromLeft(gap);
+    }
+    r.removeFromTop(18);
+    auto controls = r.removeFromLeft(210);
+    position->setBounds(controls.removeFromTop(KnobBox::h).withSizeKeepingCentre(KnobBox::w, KnobBox::h));
+    controls.removeFromTop(12);
+    wobble.setBounds(controls.removeFromTop(34).reduced(6, 0));
+    noteArea = controls.reduced(6, 10);
+    r.removeFromLeft(18);
+    const int pw = (r.getWidth() - 36) / 3;
+    curveArea = r.removeFromLeft(pw); r.removeFromLeft(18);
+    waveArea = r.removeFromLeft(pw); r.removeFromLeft(18);
+    harmArea = r;
+}
+void TableEditor::paint(juce::Graphics& g){
+    g.fillAll(face);
+    g.setColour(ink); g.drawRect(getLocalBounds(), 3);
+    auto title = getLocalBounds().reduced(22).removeFromTop(40);
+    g.setFont(grot(22.0f, true)); g.setColour(ink);
+    g.drawText("Harmonic table", title.removeFromLeft(260), juce::Justification::centredLeft);
+    drawTracked(g, "Draw the harmonics a full sine should come out with. Position morphs frame 1 to 4",
+                title, 9.0f, 1.6f, juce::Justification::centredLeft, dim);
+
+    TableCurve curve; double pos = 0.0;
+    tableCurveNow(proc, curve, &pos);
+    auto box = [&](juce::Rectangle<int> a, const juce::String& caption){
+        g.setColour(panelBg); g.fillRect(a);
+        g.setColour(ink); g.drawRect(a, 2);
+        drawTracked(g, caption, a.removeFromTop(20).reduced(8, 0), 8.5f, 1.8f, juce::Justification::centredLeft, dim);
+    };
+    // the curve itself, input across, output up
+    box(curveArea, "THE CURVE AT " + juce::String(juce::roundToInt(pos * 100)) + "%");
+    {
+        const auto a = curveArea.reduced(12).withTrimmedTop(18).toFloat();
+        g.setColour(track);
+        g.drawHorizontalLine(juce::roundToInt(a.getCentreY()), a.getX(), a.getRight());
+        g.drawVerticalLine(juce::roundToInt(a.getCentreX()), a.getY(), a.getBottom());
+        juce::Path p;
+        for (int px = 0; px <= juce::roundToInt(a.getWidth()); ++px){
+            const double x = px / a.getWidth() * 2.0 - 1.0;
+            const float y = a.getCentreY() - static_cast<float>(juce::jlimit(-1.6, 1.6, curve.f(x)) / 1.6) * a.getHeight() * 0.5f;
+            if (px == 0) p.startNewSubPath(a.getX(), y); else p.lineTo(a.getX() + px, y);
+        }
+        g.setColour(yellow); g.strokePath(p, juce::PathStrokeType(3.0f));
+    }
+    // one cycle of a full sine through it, with the DC the audio loses taken out
+    box(waveArea, "A SINE THROUGH IT");
+    {
+        const auto a = waveArea.reduced(12).withTrimmedTop(18).toFloat();
+        const int n = juce::roundToInt(a.getWidth());
+        std::vector<double> y(static_cast<size_t>(n + 1));
+        double mean = 0.0, peak = 1e-9;
+        for (int i = 0; i <= n; ++i){ y[static_cast<size_t>(i)] = curve.f(std::sin(2.0 * M_PI * i / n)); mean += y[static_cast<size_t>(i)]; }
+        mean /= (n + 1);
+        for (auto& v : y){ v -= mean; peak = std::max(peak, std::fabs(v)); }
+        juce::Path in, out;
+        for (int i = 0; i <= n; ++i){
+            const float px = a.getX() + i;
+            const float yi = a.getCentreY() - static_cast<float>(std::sin(2.0 * M_PI * i / n)) * a.getHeight() * 0.42f;
+            const float yo = a.getCentreY() - static_cast<float>(y[static_cast<size_t>(i)] / peak) * a.getHeight() * 0.42f;
+            if (i == 0){ in.startNewSubPath(px, yi); out.startNewSubPath(px, yo); } else { in.lineTo(px, yi); out.lineTo(px, yo); }
+        }
+        g.setColour(track); g.strokePath(in, juce::PathStrokeType(1.5f));
+        g.setColour(blue); g.strokePath(out, juce::PathStrokeType(3.0f));
+    }
+    // what comes out of a full sine, harmonic by harmonic
+    box(harmArea, "WHAT A FULL SINE COMES OUT AS");
+    {
+        const auto a = harmArea.reduced(12).withTrimmedTop(18).withTrimmedBottom(14).toFloat();
+        double top = 1e-9;
+        for (int k = 1; k <= tableHarmonics; ++k) top = std::max(top, std::fabs(curve.harmonic(k)));
+        const float w = a.getWidth() / tableHarmonics;
+        g.setFont(mono(9.0f));
+        for (int k = 1; k <= tableHarmonics; ++k){
+            const float h = static_cast<float>(std::fabs(curve.harmonic(k)) / top) * a.getHeight();
+            g.setColour(harmonicHue(k));
+            g.fillRect(a.getX() + (k - 1) * w + 2.0f, a.getBottom() - h, w - 4.0f, h);
+            g.setColour(dim);
+            g.drawText(juce::String(k), juce::Rectangle<float>(a.getX() + (k - 1) * w, a.getBottom() + 1.0f, w, 12.0f), juce::Justification::centred);
+        }
+    }
+    // is anything using it?
+    {
+        int users = 0;
+        for (int b = 0; b < numBands; ++b){
+            const juce::String s(b);
+            const int t = static_cast<int>(Mode::Table);
+            if (static_cast<int>(proc.apvts.getRawParameterValue("m" + s + "a")->load()) == t
+                || (proc.apvts.getRawParameterValue("sb" + s)->load() > 0.5f
+                    && static_cast<int>(proc.apvts.getRawParameterValue("m" + s + "b")->load()) == t)) ++users;
+        }
+        g.setColour(users ? dim : red);
+        g.setFont(grot(12.0f));
+        g.drawFittedText(users ? "Drive sets how fully the recipe comes through: it is exact where the input fills the curve."
+                               : "Not heard yet: choose Table as Mode A or B in a band.",
+                         noteArea, juce::Justification::topLeft, 6);
+    }
+}
+
 FractureEditor::FractureEditor(FractureProcessor& p)
     : juce::AudioProcessorEditor(&p), proc(p)
 {
@@ -897,6 +1156,11 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     guideButton.setTooltip("How FRACTURE works, panel by panel");
     tipsButton.onClick = [this]{ setTips(tipsButton.getToggleState()); };
     guideButton.onClick = [this]{ setGuideOpen(guideButton.getToggleState()); };
+    tableButton.setClickingTogglesState(true);
+    tableButton.setColour(juce::TextButton::buttonOnColourId, yellow);
+    tableButton.setTooltip("Draw the harmonics of the Table drive mode, and morph between four frames");
+    tableButton.onClick = [this]{ setTableOpen(tableButton.getToggleState()); };
+    pDrive->addAndMakeVisible(tableButton);
     setTips(prefs->getBoolValue("tooltips", true));
 
     built = true;
@@ -968,7 +1232,21 @@ void FractureEditor::setTips(bool on){
     if (prefs){ prefs->setValue("tooltips", on); prefs->saveIfNeeded(); }
 }
 
+void FractureEditor::setTableOpen(bool open){
+    tableButton.setToggleState(open, juce::dontSendNotification);
+    if (open){
+        setGuideOpen(false);                     // one overlay at a time
+        if (!table){
+            table = std::make_unique<TableEditor>(proc);
+            table->onClose = [this]{ setTableOpen(false); };
+            canvas.addAndMakeVisible(*table);
+        }
+        table->setBounds(guideArea);
+    } else table.reset();
+}
+
 void FractureEditor::setGuideOpen(bool open){
+    if (open) setTableOpen(false);
     guideButton.setToggleState(open, juce::dontSendNotification);
     if (open && !guide){
         guide = std::make_unique<bauhaus::GuideOverlay>(
@@ -1110,6 +1388,7 @@ void FractureEditor::layoutDesign(){
     area.removeFromTop(12);
     guideArea = area;                                // the guide covers everything under the header
     if (guide) guide->setBounds(guideArea);
+    if (table) table->setBounds(guideArea);
     // Three rows across a wide canvas. It was one tall column at 1320 x 1376,
     // which on a 1440 x 900 screen opened at 57% and set 9-point captions at
     // about 5; at 1760 x 990 the same screen shows it at 77%.
@@ -1131,6 +1410,7 @@ void FractureEditor::layoutDesign(){
             bandTab[b].setBounds(tabs.removeFromLeft(210).withTrimmedBottom(4));
             tabs.removeFromLeft(10);
         }
+        tableButton.setBounds(tabs.removeFromRight(170).withTrimmedBottom(4));
         inner.removeFromTop(10);
         for (int b = 0; b < 3; ++b){
             bandPane[b]->setBounds(inner);

@@ -440,6 +440,75 @@ int main(int argc, char** argv){
                 bar->slotA.triggerClick();
                 juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
                 check("  ... and A switches back", proc.session->activeSlot() == 0);
+
+                // the harmonic table: drawn with the mouse, one stroke one undo
+                fe->setTableOpen(true);
+                auto* te = fe->tableEditor();
+                check("the Harmonic table opens over the panels", te != nullptr && te->isVisible()
+                      && te->getWidth() > 1000);
+                if (te != nullptr){
+                    auto* strip = te->strip(1);                      // frame 2
+                    auto src = juce::Desktop::getInstance().getMainMouseSource();
+                    auto mev = [&](juce::Point<float> down, juce::Point<float> at, int clicks = 1){
+                        return juce::MouseEvent(src, at, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, strip, strip,
+                                                juce::Time::getCurrentTime(), down, juce::Time::getCurrentTime(), clicks, at != down);
+                    };
+                    const auto L = strip->lane().toFloat();
+                    const float bw = L.getWidth() / fracture::tableHarmonics;
+                    auto barX = [&](int k){ return L.getX() + (k + 0.5f) * bw; };
+                    auto val = [&](int k){ return proc.apvts.getRawParameterValue("tb2h" + juce::String(k + 1))->load(); };
+                    const float before2 = val(1), before7 = val(6);
+                    const size_t depth = proc.session->undoDepth();
+                    // a stroke from bar 2 near the top to bar 7 near the bottom
+                    const juce::Point<float> a { barX(1), L.getY() + 2.0f }, b { barX(6), L.getBottom() - 2.0f };
+                    strip->mouseDown(mev(a, a));
+                    for (int i = 1; i <= 10; ++i){
+                        const auto q = a + (b - a) * (i / 10.0f);
+                        strip->mouseDrag(mev(a, q));
+                    }
+                    strip->mouseUp(mev(a, b));
+                    // every bar the stroke crosses takes the height the line has
+                    // there (the last point in a bar wins, as in Serum), so they
+                    // fall steadily from top to bottom
+                    bool falling = true;
+                    for (int k = 2; k <= 6; ++k) falling = falling && val(k) < val(k - 1) - 10.0f;
+                    check("drawing across frame 2 sets every bar the stroke crosses", falling && val(1) > 60.0f && val(6) < -90.0f,
+                          "bars 2 to 7: " + juce::String(val(1), 0) + " " + juce::String(val(2), 0) + " " + juce::String(val(3), 0)
+                              + " " + juce::String(val(4), 0) + " " + juce::String(val(5), 0) + " " + juce::String(val(6), 0));
+                    check("  ... and the whole stroke is one undo step", proc.session->undoDepth() == depth + 1,
+                          juce::String(static_cast<int>(proc.session->undoDepth() - depth)) + " steps");
+                    proc.session->undo();
+                    check("  ... which undo takes back", std::abs(val(1) - before2) < 1e-3f && std::abs(val(6) - before7) < 1e-3f);
+                    strip->mouseDoubleClick(mev({ barX(2), L.getY() + 5.0f }, { barX(2), L.getY() + 5.0f }, 2));
+                    check("a double-click zeroes a bar", std::abs(val(2)) < 1e-3f);
+                    proc.session->undo();
+                    // routing an LFO to Position from the editor
+                    for (int k = 0; k < 6; ++k)
+                        if (auto* q = proc.apvts.getParameter("mS" + juce::String(k))) q->setValueNotifyingHost(0.0f);
+                    te->wobble.triggerClick();
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                    const auto& dests = fracture::Params::get().dests();
+                    const int dst = 1 + static_cast<int>(std::find(dests.begin(), dests.end(), fracture::Ids::get().tblPos) - dests.begin());
+                    check("Wobble with LFO 1 routes LFO 1 to Table position in a free slot",
+                          static_cast<int>(proc.apvts.getRawParameterValue("mS0")->load()) == 1
+                              && static_cast<int>(proc.apvts.getRawParameterValue("mD0")->load()) == dst
+                              && std::abs(proc.apvts.getRawParameterValue("mA0")->load() - 50.0f) < 0.5f);
+                    // a picture of it, with a band on Table and the LFO moving
+                    if (auto* m = proc.apvts.getParameter("m0a")) m->setValueNotifyingHost(m->convertTo0to1(static_cast<float>(fracture::Mode::Table)));
+                    if (auto* q = proc.apvts.getParameter("tblPos")) q->setValueNotifyingHost(q->convertTo0to1(45.0f));
+                    runBlocks(proc, 40, 256, peak, bad);
+                    juce::Image tshot(juce::Image::ARGB, w, h, true);
+                    { juce::Graphics g(tshot); editor->paintEntireComponent(g, true); }
+                    juce::File tfile(juce::File::getCurrentWorkingDirectory().getChildFile(shotPath)
+                                         .withFileExtension("").getFullPathName() + "-table.png");
+                    tfile.deleteFile();
+                    if (auto stream = std::unique_ptr<juce::FileOutputStream>(tfile.createOutputStream())){
+                        juce::PNGImageFormat png; png.writeImageToStream(tshot, *stream);
+                    }
+                    check("the Table runs clean in the plugin", bad == 0 && peak <= 1.0, "peak " + juce::String(peak, 3));
+                }
+                fe->setTableOpen(false);
+                check("  ... and closes again", fe->tableEditor() == nullptr);
             } else check("the editor is a FractureEditor", false);
         }
     }
