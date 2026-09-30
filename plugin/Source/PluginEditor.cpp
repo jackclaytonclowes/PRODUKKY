@@ -119,6 +119,7 @@ KnobBox::KnobBox(FractureProcessor& p, const juce::String& paramId, juce::Colour
     attach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, info.id, slider);
     valueText = fmtValue(info, slider.getValue());
+    addChildComponent(entry);
     if (beside) setSize(34 + 52, 44);             // knob, then its value to the right
     else setSize(small ? wSmall : w, small ? hSmall : h);
 }
@@ -144,6 +145,33 @@ void KnobBox::paint(juce::Graphics& g){
                juce::Justification::centred);
 }
 void KnobBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); slider.setTooltip(tip); }
+
+// the readout under (or beside) the knob, which is also where a value is typed
+juce::Rectangle<int> KnobBox::valueArea() const {
+    const int d = isSmall ? 34 : 46;
+    if (beside) return { d + 2, 14, getWidth() - d - 2, 30 };
+    return juce::Rectangle<int>(0, d + (showCaption ? 15 : 2), getWidth(), 12).expanded(0, 2)
+               .getIntersection(getLocalBounds());
+}
+void KnobBox::mouseDown(const juce::MouseEvent& e){
+    if (!valueArea().contains(e.getPosition())) return;
+    entry.begin(valueText, valueArea(), mono(isSmall ? 10.0f : 11.0f), ink, face,
+                [this](const juce::String& t){ return typeValue(t); });
+}
+// Read in the panel's own units (session::parseTyped), clamped to the range,
+// and set inside a gesture so it is one undo step like a drag
+bool KnobBox::typeValue(const juce::String& text){
+    double v = 0.0;
+    if (!session::parseTyped(text, info.unit == "note", v)) return false;
+    if (info.unit == "x") v = std::pow(10.0, v / 20.0);        // drive is shown in dB
+    v = juce::jlimit(static_cast<double>(info.min), static_cast<double>(info.max), v);
+    auto* param = proc.apvts.getParameter(info.id);
+    if (param == nullptr) return false;
+    param->beginChangeGesture();
+    param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(v)));
+    param->endChangeGesture();
+    return true;
+}
 void ChoiceBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); box.setTooltip(tip); }
 void ToggleBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); button.setTooltip(tip); }
 

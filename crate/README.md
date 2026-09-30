@@ -234,13 +234,13 @@ tests, because nobody involved in building this has heard it:
 - 44.1 / 48 / 96 kHz, block sizes 16 to 1024, and everything at once: finite and bounded
 - undo, redo and A/B: the same seventeen checks as FRACTURE's, on the same file
 
-`host_smoke` adds 70 more at the host level, including a synthetic transport: the plugin
+`host_smoke` adds 72 more at the host level, including a synthetic transport: the plugin
 sees the tempo, notices when playback stops, re-declares its latency when the grid changes,
 recalls all twenty-six presets, round-trips its state, and paints its editor to a PNG — twice,
 the second time at half size, checking the corner panels are scaled rather than cropped. It
 also takes undo, A/B and your presets through a real parameter tree: a drag is one step, a
 session saved on B reopens on B with A held, a saved preset reads as named choices and
-loads back, and the header's buttons and Ctrl + Shift + Z do what they say.
+loads back, and the header's buttons and Ctrl + Shift + Z do what they say. A value typed under a knob lands in its units as one undo step; text that is not a number is refused, and Escape changes nothing.
 
 ## The presets
 

@@ -386,4 +386,79 @@ inline bool undoKeys(const juce::KeyPress& key, Session& s){
     return false;
 }
 
+// ---------------------------------------------------------------- typed values
+// What someone typed into a knob's value, read in the units the panel shows:
+// "2.2k" (or "2200", "2.2 kHz"), "+3", "-6 dB", "50%", "12 ms", "/4" (the
+// downsample readout), "off" (zero) and, where noteNames is set, "A3", "C#2"
+// or "A3 +12c" as MIDI note numbers. Anything else after the number (a unit)
+// is ignored. False when there is no number to be found.
+inline bool parseTyped(const juce::String& typed, bool noteNames, double& out){
+    juce::String t = typed.trim().toLowerCase();
+    if (t.isEmpty()) return false;
+    if (t == "off"){ out = 0.0; return true; }
+    if (noteNames && t[0] >= 'a' && t[0] <= 'g'){
+        static const int semis[] = { 9, 11, 0, 2, 4, 5, 7 };      // a b c d e f g
+        int k = semis[t[0] - 'a'], i = 1;
+        if (i < t.length() && t[i] == '#'){ ++k; ++i; }
+        else if (i < t.length() && t[i] == 'b'){ --k; ++i; }
+        const juce::String rest = t.substring(i).trim();
+        if (rest.isEmpty() || !(juce::CharacterFunctions::isDigit(rest[0]) || rest[0] == '-')) return false;
+        const int octave = rest.getIntValue();
+        double cents = 0.0;
+        const int sign = rest.indexOfAnyOf("+-", 1);
+        if (sign > 0) cents = rest.substring(sign).getDoubleValue();
+        out = (octave + 1) * 12 + k + cents / 100.0;
+        return true;
+    }
+    if (t.startsWithChar('/')) t = t.substring(1).trim();
+    if (t.startsWithChar('+')) t = t.substring(1).trim();
+    const juce::String number = t.initialSectionContainingOnly("-0123456789.");
+    if (number.isEmpty() || !number.containsAnyOf("0123456789")) return false;
+    out = number.getDoubleValue();
+    if (t.substring(number.length()).trim().startsWithChar('k')) out *= 1000.0;
+    return true;
+}
+
+// The box a value is typed into: shown over the readout, Enter applies,
+// Escape or clicking elsewhere puts it away. The caller does the applying
+// (inside a gesture, so it is one undo step) and supplies the colours.
+class ValueEntry : public juce::TextEditor {
+public:
+    ValueEntry(){
+        setJustification(juce::Justification::centred);
+        setSelectAllWhenFocused(true);
+        setTitle("Type a value");
+        onReturnKey = [this]{ finish(true); };
+        onEscapeKey = [this]{ finish(false); };
+        onFocusLost = [this]{ finish(false); };
+        setVisible(false);
+    }
+    // apply returns false for text it could not use, which leaves the box open
+    void begin(const juce::String& text, juce::Rectangle<int> where, const juce::Font& font,
+               juce::Colour ink, juce::Colour face, std::function<bool(const juce::String&)> apply){
+        apply_ = std::move(apply);
+        setColour(juce::TextEditor::backgroundColourId, face);
+        setColour(juce::TextEditor::textColourId, ink);
+        setColour(juce::TextEditor::outlineColourId, ink);
+        setColour(juce::TextEditor::focusedOutlineColourId, ink);
+        setColour(juce::TextEditor::highlightColourId, ink.withAlpha(0.2f));
+        setFont(font);
+        setBounds(where);
+        setText(text, false);
+        setVisible(true);
+        toFront(true);
+        grabKeyboardFocus();
+        selectAll();
+    }
+    bool isEditing() const { return isVisible(); }
+private:
+    void finish(bool keep){
+        if (!isVisible()) return;
+        if (keep && apply_ && !apply_(getText())){ selectAll(); return; }
+        setVisible(false);
+        if (auto* p = getParentComponent()) p->repaint();
+    }
+    std::function<bool(const juce::String&)> apply_;
+};
+
 } // namespace session

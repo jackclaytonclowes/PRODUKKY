@@ -16,6 +16,10 @@ public:
     void paint(juce::Graphics&) override;
     void refresh();                                    // value text and mod tick
     void setState(bool idle, const juce::String& tip); // dimmed or not, and its tooltip
+    void mouseDown(const juce::MouseEvent&) override;  // on the value: type one in
+    bool typeValue(const juce::String& text);          // what Enter does, for the tests too
+    juce::String id() const { return info.id; }
+    juce::Rectangle<int> valueArea() const;
     static constexpr int w = 62, h = 76, wSmall = 56, hSmall = 62;
 private:
     FractureProcessor& proc;
@@ -24,6 +28,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attach;
     juce::String caption, valueText;
     bool isSmall, showCaption, beside;
+    session::ValueEntry entry;
 };
 
 class ChoiceBox : public juce::Component {

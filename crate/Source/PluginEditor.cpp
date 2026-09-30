@@ -81,6 +81,7 @@ KnobBox::KnobBox(CrateProcessor& p, const juce::String& paramId, juce::Colour hu
     attach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         proc.apvts, info.id, slider);
     valueText = fmtValue(info, slider.getValue());
+    addChildComponent(entry);
     setSize(w, h);
 }
 void KnobBox::resized(){ slider.setBounds((getWidth() - 46) / 2, 0, 46, 46); }
@@ -92,6 +93,25 @@ void KnobBox::paint(juce::Graphics& g){
     g.drawText(valueText, 0, 63, getWidth(), 12, juce::Justification::centred);
 }
 void KnobBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); slider.setTooltip(tip); }
+
+void KnobBox::mouseDown(const juce::MouseEvent& e){
+    if (!valueArea().contains(e.getPosition())) return;
+    entry.begin(valueText, valueArea(), mono(11.0f), ink, face,
+                [this](const juce::String& t){ return typeValue(t); });
+}
+// Read in the panel's own units (session::parseTyped), clamped to the range,
+// and set inside a gesture so it is one undo step like a drag
+bool KnobBox::typeValue(const juce::String& text){
+    double v = 0.0;
+    if (!session::parseTyped(text, false, v)) return false;
+    v = juce::jlimit(static_cast<double>(info.min), static_cast<double>(info.max), v);
+    auto* param = proc.apvts.getParameter(info.id);
+    if (param == nullptr) return false;
+    param->beginChangeGesture();
+    param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(v)));
+    param->endChangeGesture();
+    return true;
+}
 void ChoiceBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); box.setTooltip(tip); }
 void ToggleBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); button.setTooltip(tip); }
 

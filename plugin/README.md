@@ -416,12 +416,12 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   and a value that did not round-trip exactly is not taken for an edit; A and B keep
   separate histories, B opens as a copy of A, and a switch is never an undo step
 
-`host_smoke` — 119 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 121 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
 and comes back out unchanged; a knob drag is one undo step (a version that committed on
 every value fails five checks), and so are a pad drag, a stroke across the steps, a preset
 and a paste; a session saved on B reopens on B with A held; your presets save, list in
-natural order and load back; the header's buttons and Ctrl + Z work; a half-size editor still draws its bottom-right corner, and
+natural order and load back; the header's buttons and Ctrl + Z work; a value typed under a knob (2.5k, -6 dB, 12 dB of drive, C#4) lands in its units as one undo step, text that is not a number is refused and Escape changes nothing; a half-size editor still draws its bottom-right corner, and
 **the editor renders to a PNG** at both sizes so the interface can be looked at without
 opening a DAW.
 

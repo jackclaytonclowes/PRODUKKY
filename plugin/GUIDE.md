@@ -20,6 +20,7 @@ The panel reads in the order the sound flows: top row first, left to right, then
 - A faded control does nothing with the current settings. Hover over it and the tooltip says why, for example "Feedback is at 0%" or "Nothing in the matrix uses LFO 1". You can still move it, ready for later.
 - **Tips** at the top turns these hover notes on and off. The choice is remembered.
 - **Guide** opens this page. Press it again to close it.
+- **Knobs**: drag up or down. Double-click puts one back to its default. **Click the number under a knob to type a value**, in the units it shows (2.5k, 800, -6, 50%), then press Enter; Escape leaves it as it was. Drive is typed in dB, as it reads, and FB pitch as a note (A3, C#2) or a number.
 
 ## Undo, compare and your presets
 

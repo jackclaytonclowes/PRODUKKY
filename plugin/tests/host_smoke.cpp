@@ -363,6 +363,62 @@ int main(int argc, char** argv){
                           "X " + juce::String(get("xyX"), 1) + ", Y " + juce::String(get("xyY"), 1));
                     setP("xyX", 0.0f); setP("xyY", 0.0f);
                 } else check("the XY pad is on the panel", false);
+
+                // typing a value: click the readout, type, Enter. Each is one
+                // undo step; text it cannot read leaves the box open and the
+                // value alone; Escape puts it away unchanged
+                {
+                    std::function<void(juce::Component*, std::vector<KnobBox*>&)> knobs =
+                        [&](juce::Component* c, std::vector<KnobBox*>& out){
+                            if (auto* k = dynamic_cast<KnobBox*>(c)) out.push_back(k);
+                            for (auto* ch : c->getChildren()) knobs(ch, out);
+                        };
+                    std::vector<KnobBox*> all; knobs(editor.get(), all);
+                    auto knob = [&](const char* id) -> KnobBox* {
+                        for (auto* k : all) if (k->id() == id) return k;
+                        return nullptr;
+                    };
+                    auto type = [&](KnobBox* k, const char* text, bool enter = true){
+                        const auto at = k->valueArea().getCentre().toFloat();
+                        k->mouseDown(ev(k, at, at));
+                        juce::TextEditor* box = nullptr;
+                        for (auto* ch : k->getChildren())
+                            if (auto* te = dynamic_cast<juce::TextEditor*>(ch)) box = te;
+                        if (box == nullptr || !box->isVisible()) return false;
+                        box->setText(text, false);
+                        box->keyPressed(juce::KeyPress(enter ? juce::KeyPress::returnKey : juce::KeyPress::escapeKey));
+                        // the text box answers Return and Escape with a posted message
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+                        return true;
+                    };
+                    auto* S = proc.session.get();
+                    struct Case { const char* id; const char* text; float want; };
+                    const Case cases[] = { { "fltFreq", "2.5k", 2500.0f }, { "fltFreq", "800 Hz", 800.0f },
+                                           { "d0a", "12", 3.98107f }, { "fbNote", "C#4", 61.0f },
+                                           { "outGain", "-6 dB", -6.0f }, { "outGain", "+40", 12.0f } };
+                    juce::String bad;
+                    for (const auto& c : cases){
+                        auto* k = knob(c.id);
+                        const size_t depth = S->undoDepth();
+                        if (k == nullptr){ bad << " [" << c.id << ": no knob]"; continue; }
+                        if (!type(k, c.text)){ bad << " [" << c.id << ": no box]"; continue; }
+                        const float got = get(c.id);
+                        if (std::abs(got - c.want) > 0.01f * std::max(1.0f, std::abs(c.want)) || S->undoDepth() != depth + 1)
+                            bad << " [" << c.id << " '" << c.text << "': " << juce::String(got, 3)
+                                << ", " << (int) (S->undoDepth() - depth) << " steps]";
+                    }
+                    check("typing a value sets it, in the panel's units, as one undo step", bad.isEmpty(), bad);
+                    if (auto* k = knob("outGain")){
+                        setP("outGain", 1.0f);
+                        type(k, "loud");
+                        bool open = false;
+                        for (auto* ch : k->getChildren())
+                            if (auto* te = dynamic_cast<juce::TextEditor*>(ch)) open = te->isVisible();
+                        type(k, "-9", false);
+                        check("text it cannot read is refused, and Escape changes nothing",
+                              open && std::abs(get("outGain") - 1.0f) < 0.01f, juce::String(get("outGain"), 2));
+                    }
+                }
             }
 
             // the drawn filter: a resonant notch, processed once so the engine

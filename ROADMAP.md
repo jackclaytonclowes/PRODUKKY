@@ -63,7 +63,7 @@ Mac only; nobody has judged the sound against references yet.
 
 - [x] **M** Modulation and smoothing on a fixed clock, independent of the buffer size
 - [x] **S** Version in the header
-- [ ] **S** Type a value into any knob
+- [x] **S** Type a value into any knob (both plugins: click the number under it)
 - [x] **S** Short fade and a feedback clear on preset change: measured instead of built. Switching
   between eight pairs of presets mid-note, the biggest jump is at least 7 dB under what the presets
   make on their own. Build it only if someone hears a click

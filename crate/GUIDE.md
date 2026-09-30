@@ -17,6 +17,7 @@ Everything runs left to right and top to bottom on the panel, which is also the 
 - A faded control does nothing with the current settings. Hover over it and the tooltip says why, for example "Env is off". You can still move it, ready for later.
 - **Tips** at the top turns these hover notes on and off. The choice is remembered.
 - **Guide** opens this page. Press it again to close it.
+- **Knobs**: drag up or down. Double-click puts one back to its default. **Click the number under a knob to type a value**, in the units it shows (2.5k, 800, -6, 50%), then press Enter; Escape leaves it as it was.
 
 ## Undo, compare and your presets
 

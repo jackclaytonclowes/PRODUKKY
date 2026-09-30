@@ -13,6 +13,10 @@ public:
     void paint(juce::Graphics&) override;
     void refresh();
     void setState(bool idle, const juce::String& tip);   // dimmed or not, and what the tooltip says
+    void mouseDown(const juce::MouseEvent&) override;    // on the value: type one in
+    bool typeValue(const juce::String& text);            // what Enter does, for the tests too
+    juce::String id() const { return info.id; }
+    juce::Rectangle<int> valueArea() const { return { 0, 61, getWidth(), 16 }; }
     static constexpr int w = 66, h = 78;
 private:
     CrateProcessor& proc;
@@ -20,6 +24,7 @@ private:
     juce::Slider slider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attach;
     juce::String caption, valueText;
+    session::ValueEntry entry;
 };
 
 class ChoiceBox : public juce::Component {
