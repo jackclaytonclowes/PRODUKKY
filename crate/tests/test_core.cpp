@@ -771,6 +771,57 @@ int main(){
               w.bad == 0 && w.peak <= 1.0, f2s(w.peak, 3));
     }
     {
+        // When each trigger lands, straight from the detector. A flam is two
+        // hits 20 to 30 ms apart; the first version held for 40 ms and then
+        // fired late, in the first hit's tail, opening the filter on nothing
+        auto triggers = [&](const std::vector<double>& x){
+            HitEnv h; h.prepare(sr); h.setDecay(40);
+            std::vector<double> at; long last = 0;
+            for (size_t i = 0; i < x.size(); ++i){
+                h.process(x[i]);
+                if (h.hits != last){ last = h.hits; at.push_back(1000.0 * static_cast<double>(i) / sr); }
+            }
+            return at;
+        };
+        std::mt19937 rng(3);
+        std::uniform_real_distribution<double> d(-1.0, 1.0);
+        auto snare = [&](std::vector<double>& v, double ms, double amp){
+            const size_t s = static_cast<size_t>(ms * sr / 1000.0);
+            for (size_t i = 0; i < static_cast<size_t>(0.3 * sr) && s + i < v.size(); ++i)
+                v[s + i] += amp * std::exp(-static_cast<double>(i) / (0.060 * sr)) * d(rng);
+        };
+        std::string bad;
+        const double flams[][3] = { { 20, 0.2, 0.5 }, { 30, 0.2, 0.5 }, { 25, 0.5, 0.5 } };
+        for (const auto& f : flams){
+            std::vector<double> v(static_cast<size_t>(0.5 * sr), 0.0);
+            snare(v, 100.0, f[1]); snare(v, 100.0 + f[0], f[2]);
+            const auto at = triggers(v);
+            const bool ok = at.size() == 2 && std::fabs(at[0] - 100.0) < 1.0 && at[1] >= 100.0 + f[0]
+                            && at[1] < 100.0 + f[0] + 4.0;
+            if (!ok){
+                bad += " [" + f2s(f[0], 0) + " ms flam:";
+                for (double t : at) bad += " " + f2s(t - 100.0, 1);
+                bad += "]";
+            }
+        }
+        check("a flam is two triggers, each within 4 ms of its hit", bad.empty(), bad);
+
+        // the audition loop's eleven kicks and snares each trigger within 2 ms,
+        // and the sixteenth hats between them do not all open the filter
+        const auto loop = audition::makeLoop(sr, false);
+        std::vector<double> mono(loop.l.size());
+        for (size_t i = 0; i < mono.size(); ++i) mono[i] = 0.5 * (loop.l[i] + loop.r[i]);
+        const auto at = triggers(mono);
+        const double beat16 = 60000.0 / 90.0 / 4.0;
+        const int drums[] = { 0, 4, 7, 10, 12, 16, 20, 23, 26, 28, 30 };   // kicks and snares
+        int found = 0;
+        for (int k : drums)
+            for (double t : at) if (t >= k * beat16 && t < k * beat16 + 2.0){ ++found; break; }
+        check("every kick and snare in the loop triggers, on time, and most hats do not",
+              found == 11 && at.size() <= 16,
+              std::to_string(found) + " of 11 drums, " + std::to_string(at.size()) + " triggers in all");
+    }
+    {
         // the decay knob is a time constant: 1/e of the way down after that long
         HitEnv h; h.prepare(sr); h.setDecay(50);
         int peakAt = -1;

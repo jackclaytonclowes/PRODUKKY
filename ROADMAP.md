@@ -62,9 +62,11 @@ Mac only; nobody has judged the sound against references yet.
 ## FRACTURE
 
 - [x] **M** Modulation and smoothing on a fixed clock, independent of the buffer size
-- [ ] **S** Version in the header
+- [x] **S** Version in the header
 - [ ] **S** Type a value into any knob
-- [ ] **S** Short fade and a feedback clear on preset change
+- [x] **S** Short fade and a feedback clear on preset change: measured instead of built. Switching
+  between eight pairs of presets mid-note, the biggest jump is at least 7 dB under what the presets
+  make on their own. Build it only if someone hears a click
 - [ ] **S** Table "Start from…": fill the bars with another mode's harmonics
 - [ ] **S** The anti-aliasing in the browser version
 - [ ] **M** Per-band stereo: L/R, mid only, side only
@@ -81,10 +83,11 @@ Mac only; nobody has judged the sound against references yet.
 
 ## CRATE
 
-- [ ] **S** Version in the header
+- [x] **S** Version in the header
 - [ ] **S** Keep the sub: a crossover so the low end skips the converter
 - [ ] **S** A "bits in use" meter by the converter
-- [ ] **S** Flams: re-arm the hit detector on a level drop, not a fixed 40 ms hold
+- [x] **S** Flams: the detector now looks for a rise, with a 10 ms hold. It also finds all eleven
+  drums in the audition loop (it found nine). Equal-level rolls still merge: needs spectral onsets
 - [ ] **M** Optional 5 ms lookahead for the hit envelope
 - [ ] **M** More machines: S950, MPC60, SP-12
 - [ ] **M** Dust in time with the song

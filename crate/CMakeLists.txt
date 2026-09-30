@@ -85,6 +85,7 @@ target_compile_definitions(host_smoke PUBLIC
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
     JUCE_MODAL_LOOPS_PERMITTED=1
     JucePlugin_Name="CRATE"
+    JucePlugin_VersionString="${PROJECT_VERSION}"
     JucePlugin_ManufacturerCode=0x46726374
     JucePlugin_PluginCode=0x43727431)
 target_link_libraries(host_smoke

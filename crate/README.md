@@ -175,7 +175,7 @@ a file leaves out loads at its default.
 
 ## What is verified, and how
 
-`npm run test:crate` — 91 assertions, no JUCE needed (`VERBOSE=1` prints the measured
+`npm run test:crate` — 93 assertions, no JUCE needed (`VERBOSE=1` prints the measured
 value behind every one). These are measurements, not smoke
 tests, because nobody involved in building this has heard it:
 
@@ -213,7 +213,11 @@ tests, because nobody involved in building this has heard it:
   control the panel would dim (130 in all) is moved end to end and the output must be
   bit-identical
 - **the hit envelope counts hits**: eight snare-like bursts in are eight triggers out, and
-  a sustained tone triggers once at most. Each hit brings the first 10 ms through about
+  a sustained tone triggers once at most. A flam (20, 25 or 30 ms, soft-then-loud or
+  equal) is two triggers, each within 4 ms of its hit, and all eleven kicks and snares of
+  the audition loop trigger within 2 ms while most of the hats between them do not. The
+  first detector failed both: it fired a flam's second hit 40 ms late, in the first one's
+  tail, and missed two of the eleven drums. Each hit brings the first 10 ms through about
   15 dB brighter against the resting filter, the tail 250 ms later is the resting filter
   to within 0.01 dB, and Decay is the time constant it claims (0.368 after one of them)
 - **tune leaves the pitch alone** (the fundamental stays put, nothing appears an octave down)
@@ -266,8 +270,9 @@ default went linear (it is now "Twelve bit, companded", the old default's sound)
   oversampler's filters do, which gives it about half a millisecond, enough to bring the
   first millisecond of each hit through 2.5 dB brighter than a detector with none. The
   hardware knew about the note before the sound did; matching that fully needs real
-  lookahead, and so more latency. It also merges hits closer than 40 ms (flams, fast
-  rolls) into one.
+  lookahead, and so more latency. Flams now trigger twice, but a roll of equal hits 20 or
+  30 ms apart still reads as one or two, because each lands on the tails of the last;
+  separating those needs a detector that looks at the spectrum.
 - The oversampler removes the audible aliases of the four-pole's drive but not a
   harmonic sitting just past the host's Nyquist: 25 kHz folds to 23 kHz at 48 kHz, in
   the half-band filter's transition. Inaudible at 48 kHz; at 44.1 kHz the same harmonic

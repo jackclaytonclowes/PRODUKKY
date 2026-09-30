@@ -489,7 +489,16 @@ void CrateEditor::paintDesign(juce::Graphics& g){
     header.removeFromLeft(14);
     g.setColour(ink);
     g.setFont(grot(30.0f, true));
-    g.drawText("CRATE", header.removeFromTop(30), juce::Justification::topLeft);
+    {
+        // the version beside the name, as in FRACTURE
+        const auto titleRow = header.removeFromTop(30);
+        g.drawText("CRATE", titleRow, juce::Justification::topLeft);
+        const int nameW = juce::roundToInt(juce::GlyphArrangement::getStringWidth(grot(30.0f, true), "CRATE"));
+        g.setColour(dim);
+        g.setFont(grot(11.0f, true));
+        g.drawText("v" JucePlugin_VersionString, titleRow.withTrimmedLeft(nameW + 8).withTrimmedBottom(5),
+                   juce::Justification::bottomLeft);
+    }
     drawTracked(g, "Twelve-bit drum processor", header, 9.0f, 2.6f, juce::Justification::left, dim);
 
     area.removeFromTop(10);

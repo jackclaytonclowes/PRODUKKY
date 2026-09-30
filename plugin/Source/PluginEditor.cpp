@@ -1347,7 +1347,17 @@ void FractureEditor::paintDesign(juce::Graphics& g){
     header.removeFromLeft(14);
     g.setColour(ink);
     g.setFont(grot(32.0f, true));
-    g.drawText("FRACTURE", header.removeFromTop(32), juce::Justification::topLeft);
+    {
+        // the version beside the name, so "which one have I got?" is answered
+        // by looking, not by digging in the plug-in folder
+        const auto titleRow = header.removeFromTop(32);
+        g.drawText("FRACTURE", titleRow, juce::Justification::topLeft);
+        const int nameW = juce::roundToInt(juce::GlyphArrangement::getStringWidth(grot(32.0f, true), "FRACTURE"));
+        g.setColour(dim);
+        g.setFont(grot(11.0f, true));
+        g.drawText("v" JucePlugin_VersionString, titleRow.withTrimmedLeft(nameW + 8).withTrimmedBottom(5),
+                   juce::Justification::bottomLeft);
+    }
     drawTracked(g, "Multi-band multi-fx distortion", header, 9.0f, 2.6f,
                 juce::Justification::left, dim);
 
