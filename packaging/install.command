@@ -37,6 +37,12 @@ install_bundle() {
         # and a quarantined plug-in is refused SILENTLY by the host — Logic
         # simply does not list it, with no error to explain why
         xattr -dr com.apple.quarantine "$dest/$(basename "$src")" 2>/dev/null
+        # and sign it again where it now lives, with the ad-hoc identity every Mac
+        # has. The builds are unsigned by any developer, and a bundle whose
+        # signature no longer matches its files (after a copy tool or an unzip
+        # has touched it) is refused by Logic as "could not be opened"
+        codesign --force --deep --sign - "$dest/$(basename "$src")" >/dev/null 2>&1 \
+            || printf '  (could not re-sign %s; it may still load)\n' "$what"
         printf '  ✓ %s\n' "$what"
     else
         printf '  ✗ %s could not be copied\n' "$what"

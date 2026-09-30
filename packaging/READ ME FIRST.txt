@@ -4,7 +4,7 @@ FRACTURE and CRATE
 Two audio plugins, in one disk image.
 
 FRACTURE — multi-band multi-fx distortion. Three bands, two serial drive stages
-each with fourteen shaper modes, a bit crusher, a feedback loop, a resonant
+each with fifteen shaper modes (one of them a table of harmonics you draw), a bit crusher, a feedback loop, a resonant
 filter, two LFOs and an envelope follower into a six-slot modulation matrix.
 
 CRATE — twelve-bit drum processor. A 26.04 kHz sample clock, companded twelve-bit
@@ -29,6 +29,15 @@ INSTALLING
 3. Terminal opens, the installer copies both plugins into your own plug-in
    folders, and then runs Apple's own validator on each Audio Unit. Two passes
    and you are done.
+
+Use the installer rather than dragging the plugins into the plug-in folders
+yourself. A dragged copy keeps the mark macOS puts on everything downloaded,
+and Logic then refuses it ("could not be opened", or a validation failure). The
+installer clears that mark and re-signs each plugin where it lands. If you have
+already dragged them in, quit Logic, open Terminal and run:
+
+    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/*.component ~/Library/Audio/Plug-Ins/VST3/*.vst3
+    killall -9 AudioComponentRegistrar
 
 Restart Logic afterwards. They appear under Audio Units → Fracture → Distortion
 and Audio Units → Crate → Distortion. If they do not show up, quit Logic, open

@@ -95,7 +95,7 @@ Mac only; nobody has judged the sound against references yet.
 
 ## Shared and shipping
 
-- [ ] **S** Installer re-signs ad hoc; the site says to use the installer, not drag
+- [x] **S** Installer re-signs ad hoc; the site says to use the installer, not drag
 - [ ] **S** A licence (AGPLv3 to match JUCE's free licence, or a paid JUCE licence)
 - [x] **S** Stale docs: "fourteen modes", "44 presets"
 - [ ] **M** Developer ID signing and notarisation in CI ($99 a year)

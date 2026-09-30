@@ -147,8 +147,18 @@
             <li>Restart your DAW. In Logic, look under Audio Units, then Fracture or Crate.</li>
           </ol>
           <p>Drag the app to Applications if you want the standalone version too.</p>
+          <p class="note"><strong>Use the installer, do not drag the plugins in yourself.</strong>
+          A dragged copy keeps the mark macOS puts on every download, and Logic then refuses it:
+          "could not be opened", or a failed validation. The installer clears that mark and
+          re-signs each plugin where it lands.</p>
         </div>
         <div class="prose">
+          <h3>If Logic says it could not be opened</h3>
+          <p>Usually the plugins were dragged in rather than installed. Quit Logic, open
+          Terminal, run these two lines, then start Logic again:</p>
+          <pre>xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/*.component ~/Library/Audio/Plug-Ins/VST3/*.vst3
+killall -9 AudioComponentRegistrar</pre>
+          <p>In Logic, Settings, then Plug-in Manager, choose Reset &amp; Rescan Selection for each.</p>
           <h3>If it does not show up in Logic</h3>
           <p>Quit Logic, open Terminal, run this, then start Logic again:</p>
           <pre>killall -9 AudioComponentRegistrar</pre>
