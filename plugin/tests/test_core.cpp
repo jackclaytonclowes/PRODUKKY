@@ -1675,6 +1675,74 @@ int main(int argc, char** argv){
               "rms " + f2s(r.rms));
     }
 
+    // The same audio at another buffer size must be the same sound. Hosts pick
+    // the size, and a bounce may use a different one from playback. With the
+    // modulation worked out once per host block, six presets differed between
+    // 64 and 1024 (Rift-ish by -4.8 dB, the envelope on Downsample stepping
+    // every 21 ms). Every preset, plus a fast LFO and the envelope on the
+    // drive, over the first two seconds of the audition loop, at 64, 100 (not
+    // a multiple of the control step) and 1024 samples a block.
+    std::printf("\nBuffer size does not change the sound\n");
+    {
+        audition::Stereo loop = audition::makeLoop(48000.0, true);
+        loop.l.resize(96000); loop.r.resize(96000);
+        auto renderAt = [&](const std::vector<std::pair<int, float>>& vals, int block){
+            Engine e; e.prepare(48000.0, block);
+            for (int i = 0; i < P.count(); ++i) e.setParam(i, P[i].def);
+            for (const auto& kv : vals) e.setParam(kv.first, kv.second);
+            e.seedFrom(0);
+            audition::Stereo o = loop; double ppq = 0.0;
+            for (size_t i = 0; i < o.l.size(); i += static_cast<size_t>(block)){
+                const int m = static_cast<int>(std::min<size_t>(static_cast<size_t>(block), o.l.size() - i));
+                Transport t; t.bpm = 90; t.ppq = ppq; t.playing = true; t.valid = true;
+                e.setTransport(t);
+                float* io[2] = { o.l.data() + i, o.r.data() + i };
+                e.process(io, 2, m);
+                ppq += m / 48000.0 * 1.5;
+            }
+            return o;
+        };
+        auto diffDb = [](const audition::Stereo& a, const audition::Stereo& b){
+            double d = 0.0, s = 0.0;
+            for (size_t i = 4800; i < a.l.size(); ++i){
+                d += (a.l[i] - b.l[i]) * (a.l[i] - b.l[i]) + (a.r[i] - b.r[i]) * (a.r[i] - b.r[i]);
+                s += a.l[i] * a.l[i] + a.r[i] * a.r[i];
+            }
+            return d <= 0.0 ? -300.0 : 10.0 * std::log10(d / s);
+        };
+        std::vector<std::pair<std::string, std::vector<std::pair<int, float>>>> cases;
+        for (const auto& pr : factoryPresets()){
+            std::vector<std::pair<int, float>> vals;
+            for (const auto& kv : audition::parseFlatJson(pr.json)){
+                const int idx = P.index(kv.first); float v = 0.0f; const auto& j = kv.second;
+                if (idx >= 0 && patchValueToParam(P[idx], j.text, j.isNumber, j.number, j.isBool, j.boolean, v))
+                    vals.push_back({ idx, v });
+            }
+            cases.push_back({ pr.name, vals });
+        }
+        {
+            auto I = [&](const char* s){ return P.index(s); };
+            cases.push_back({ "a 20 Hz LFO and the envelope on the drive", {
+                { I("d0a"), 6.0f }, { I("m0a"), static_cast<float>(Mode::Fold) }, { I("l1Rate"), 20.0f },
+                { I("mS0"), 1.0f }, { I("mD0"), 1.0f + static_cast<float>(
+                      std::find(P.dests().begin(), P.dests().end(), I("d0a")) - P.dests().begin()) },
+                { I("mA0"), 60.0f }, { I("mS1"), 3.0f }, { I("mD1"), 1.0f + static_cast<float>(
+                      std::find(P.dests().begin(), P.dests().end(), I("redux")) - P.dests().begin()) },
+                { I("mA1"), 50.0f }, { I("crMix"), 100.0f } } });
+        }
+        double worst = -300.0; std::string worstName, over;
+        for (const auto& c : cases){
+            const audition::Stereo ref = renderAt(c.second, 64);
+            for (int block : { 100, 1024 }){
+                const double d = diffDb(ref, renderAt(c.second, block));
+                if (d > worst){ worst = d; worstName = c.first + " at " + std::to_string(block); }
+                if (d > -50.0) over += " [" + c.first + " at " + std::to_string(block) + ": " + f2s(d, 1) + " dB]";
+            }
+        }
+        check("every preset sounds the same at 64, 100 and 1024 samples a block (within -50 dB)",
+              over.empty(), over.empty() ? "worst " + f2s(worst, 1) + " dB, " + worstName : over);
+    }
+
     std::printf("\n%d assertions passed, %zu failed\n", passed, failures.size());
     for (const auto& f : failures) std::printf("  - %s\n", f.c_str());
     return failures.empty() ? 0 : 1;

@@ -61,7 +61,7 @@ Mac only; nobody has judged the sound against references yet.
 
 ## FRACTURE
 
-- [ ] **M** Modulation and smoothing on a fixed clock, independent of the buffer size
+- [x] **M** Modulation and smoothing on a fixed clock, independent of the buffer size
 - [ ] **S** Version in the header
 - [ ] **S** Type a value into any knob
 - [ ] **S** Short fade and a feedback clear on preset change
@@ -94,7 +94,7 @@ Mac only; nobody has judged the sound against references yet.
 
 - [ ] **S** Installer re-signs ad hoc; the site says to use the installer, not drag
 - [ ] **S** A licence (AGPLv3 to match JUCE's free licence, or a paid JUCE licence)
-- [ ] **S** Stale docs: "fourteen modes", "44 presets"
+- [x] **S** Stale docs: "fourteen modes", "44 presets"
 - [ ] **M** Developer ID signing and notarisation in CI ($99 a year)
 - [ ] **M** Windows VST3, Linux VST3 and CLAP builds
 - [ ] **S** Steinberg's VST3 validator and pluginval on the Mac in CI

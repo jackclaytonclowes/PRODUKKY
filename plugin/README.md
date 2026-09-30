@@ -4,7 +4,8 @@
 words. It is also built into the plugin (the Guide button at the top), and ships on the
 disk image as "How it works.md". This README is the engineering detail behind it.
 
-A native port of `../fx/fracture.html`. Same signal path, same fourteen shapers, same
+A native port of `../fx/fracture.html`. Same signal path, same fourteen shapers (plus the
+plugin-only Table), same
 parameter ids, same browser presets — so a patch copied out of the browser version loads
 here and means the same thing.
 
@@ -151,10 +152,22 @@ deliberately different, and the tests pin each one:
 - **The pre-filters drop out of circuit at their extremes.** A 2nd-order highpass parked at
   20 Hz still costs 0.8 dB at 30 Hz, which the browser version paid on every default patch.
 
-Two things the plugin gains from being a plugin: modulation runs per block instead of at
-animation-frame rate, and the random LFO shapes are seeded from the transport position, so
+Two things the plugin gains from being a plugin: modulation runs every 32 samples on the
+engine's own clock instead of at animation-frame rate, and the random LFO shapes are seeded from the transport position, so
 two bounces of the same bar are identical. `test_core` renders the same passage twice and
 requires the samples to match bit for bit.
+
+The 32 samples are counted by the engine, not taken from the host's buffer. Until 0.1.2 the
+modulation was worked out once per host block, so the sound depended on the buffer size the
+host chose: rendered at 64 and at 1024 samples a block, six presets came out audibly
+different (Rift-ish by -4.8 dB, the envelope moving Downsample in 21 ms steps at 1024). A
+host can process a bounce, or a track that is not record-armed, at a different size from
+live playback, so a bounce did not have to match what was heard. Now the steps fall on the
+same samples at any buffer size; a host block that ends mid-step just stops the sample loop
+there, and the next one carries on. The envelope follower hears the step before the one it
+is setting up (0.67 ms at 48 kHz), since that step's audio may not have arrived yet. Knob
+moves from the host still glide across the host's block. CPU is unchanged to within 0.1%
+of a core.
 
 ## The filter, and the tremolo
 
@@ -343,7 +356,7 @@ The menu rereads the folder every time it opens.
 
 ## What is verified, and where
 
-`npm run test:core` — 156 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 157 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -363,6 +376,11 @@ measured):
 - every browser preset loads and renders, and every value in every browser patch
   maps to a plugin parameter
 - 44.1 / 48 / 96 kHz, and block sizes from 16 to 1024
+- **the buffer size does not change the sound**: every preset, and a 20 Hz LFO with the
+  envelope on the drive, rendered at 64, 100 and 1024 samples a block must agree to within
+  -50 dB (the worst is -60.6, a hard-edged tremolo whose phase is taken from the song
+  position). With the modulation once per host block the same test finds Rift-ish at
+  -4.6 dB and the fast LFO at +3.9
 
 and, for the ladder and the tremolo, measured from rendered audio rather than read back
 from the coefficients, because a nonlinear feedback loop has no coefficients to read:
@@ -451,7 +469,7 @@ opening a DAW.
 
 ## The presets
 
-Forty-four, in two groups.
+Forty-seven, in two groups.
 
 **Twenty-two browser presets**, from `fx/fracture.html`, which both versions play. The first
 thirteen show off the drive section; the other nine are chosen by use rather than by
@@ -460,7 +478,7 @@ bass (**Bass — harmonics driven, sub clean**, **808**), a vocal (**Vocal — w
 presence**), a guitar-like part (**Amp — crunchy rhythm**, **Fuzz**), a mix (**Mix bus — a
 touch of tape**) or an effect (**Radio — the AM band**).
 
-**Twenty-two plugin-only presets**, in `core/FactoryPresets.h`, which need what the browser does
+**Twenty-five plugin-only presets**, in `core/FactoryPresets.h`, which need what the browser does
 not have:
 - tuned feedback: **Tuned comb**, **Resonator**, **Growl**, **Kick tuned to the key** (a C1
   resonator under the low band), **Snare ring** (G4), **Comb on the fifth**
@@ -474,6 +492,8 @@ not have:
   feedback up**, **Macros — 1 folds and crushes, 2 widens and repeats**. These are
   levelled at every corner of the pad and both ends of each macro, not only where they
   are saved, because that is where they will be dragged
+- the Table: **harmonic wobble** (an LFO across the frames), **an octave up** (the 2nd and
+  4th drawn in), **the harder you play, the more harmonics** (the envelope on Position)
 
 They use the same patch JSON and the same import as everything else. A patch copied from a
 plugin-only preset into the browser loses the parts the browser does not have. Adding a

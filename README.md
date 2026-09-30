@@ -4,7 +4,7 @@ Two audio effect plugins, built with JUCE as Audio Unit, VST3 and a standalone a
 
 - **FRACTURE** (`plugin/`) is a multi-band, multi-FX distortion after Output's Thermal and
   Minimal Audio's Rift. It splits the sound into up to three bands, each with two drive
-  stages and fourteen modes. It also has a crusher, feedback that can ring at a note, an
+  stages and fifteen modes. It also has a crusher, feedback that can ring at a note, an
   analogue-style filter with a rhythm and a drawn response, a modulation matrix, an XY pad
   and macros, and a Table mode whose harmonics you draw. It has 47 presets.
 - **CRATE** (`crate/`) is a twelve-bit drum processor after the SP-1200 and Akai S900: the
@@ -31,8 +31,8 @@ cmake -B plugin/build -S plugin && cmake --build plugin/build --target Fracture_
 cmake -B crate/build  -S crate  && cmake --build crate/build  --target Crate_VST3 -j
 ```
 
-`.github/workflows/macos.yml` does the Mac build on GitHub. Run it from the Actions tab, or
-push a `v*` tag to attach the disk image to a release.
+`.github/workflows/macos.yml` does the Mac build on GitHub. Run it from the Actions tab (fill
+in "release" with a tag such as `v0.1.2` to publish it), or push a `v*` tag.
 
 ## Testing
 
@@ -54,6 +54,7 @@ test measures, what has not been verified, and why.
 ## Layout
 
 ```
+ROADMAP.md       what is next, and what could sit alongside these two
 plugin/          FRACTURE: core/ (JUCE-free DSP), Source/ (wrapper and editor), tests/, packaging/
 crate/           CRATE, laid out the same way
 fx/              the browser version and its design sources

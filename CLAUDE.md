@@ -64,6 +64,12 @@ wrapper change done.
   it, feeding every filter and anti-aliased shaper its sample pairs swapped (clang did not,
   so Mac builds never showed it). One call per statement. `test_core` feeds a ramp and
   fails on any step backwards.
+- **Modulation runs on the engine's clock, not the host's block.** `Engine::process` works out
+  the LFOs, envelope and matrix every `controlStep` (32) samples counted from reset, and a
+  host block that ends mid-step just pauses the sample loop. Anything that depends on the
+  host's block size makes a bounce differ from playback; `test_core` renders every preset at
+  64, 100 and 1024 and requires the same sound. Per-step state the sample loop needs goes in
+  `Step`, not in locals.
 - **The shapers are anti-aliased (ADAA, `core/Shapers.h`).** A new shaper mode needs its
   antiderivative in `antiderivative()`, or an entry in `hasAntiderivative()` saying why
   not. Each anti-aliased stage adds half a sample at the oversampled rate, which

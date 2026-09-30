@@ -82,7 +82,12 @@ public:
         const Params& P = Params::get();
         base_.assign(P.count(), 0.0f);
         mv_.assign(P.count(), 0.0f);
-        for (int i = 0; i < P.count(); ++i) base_[i] = P[i].def;
+        isFloat_.assign(P.count(), 0);
+        for (int i = 0; i < P.count(); ++i){
+            base_[i] = P[i].def;
+            isFloat_[i] = P[i].kind == Kind::Float;
+        }
+        target_ = from_ = base_;
 
         mod_.prepare(sampleRate);
         rhythm_.prepare(sampleRate);
@@ -124,11 +129,12 @@ public:
         rhythm_.reset();
         trem_.reset();
         first_ = true;
+        pos_ = 0; sumSq_ = 0.0; sumN_ = 0;
         inPeak = outPeak = 0.0f;
     }
 
-    void setParam(int i, float v){ if (i >= 0 && i < static_cast<int>(base_.size())) base_[i] = v; }
-    float getParam(int i) const { return base_[static_cast<size_t>(i)]; }
+    void setParam(int i, float v){ if (i >= 0 && i < static_cast<int>(target_.size())) target_[i] = v; }
+    float getParam(int i) const { return target_[static_cast<size_t>(i)]; }
     void setParamById(const char* id, float v){ setParam(Params::get().index(id), v); }
 
     void setOversampling(int choice){          // 0 = off, 1 = 2x, 2 = 4x
@@ -167,30 +173,77 @@ public:
     // (0..1), for the editor to mark; -1 until a band has used it
     double tablePosition() const { return tableReady_ ? curvePos_ : -1.0; }
 
+    // The modulation (LFOs, envelope, tremolo, the matrix) and everything set
+    // up from it are worked out once every controlStep samples, on the
+    // engine's own sample clock, not once per host block. So they happen at
+    // the same moments whatever buffer size the host uses, and a bounce at
+    // 1024 matches playback at 64 or at 100. Worked out once per host block,
+    // six presets rendered audibly differently at 64 and 1024 (Rift-ish by
+    // -4.8 dB, the envelope on Downsample stepping every 21 ms); test_core
+    // renders every preset at several sizes to hold it.
+    //
+    // A host block that ends inside a step just stops the sample loop there;
+    // the next one carries on with the same step. The envelope hears the step
+    // before (two thirds of a millisecond at 48 kHz), because the audio of the
+    // step it is setting up may not have arrived yet.
+    //
+    // A host moves a knob once per block, and it still glides across the
+    // host's block: each step starts from where the value has got to on a
+    // straight line to the new one. Choices and switches change at once.
+    static constexpr int controlStep = 32;
+
     void process(float* const* io, int numChannels, int n){
         if (n <= 0) return;
         const int nch = std::clamp(numChannels, 1, maxChannels);
-        const Ids& id = Ids::get();
+        const size_t np = target_.size();
+        if (first_) from_ = target_;       // after a reset, start where the knobs are
+        bool moving = false;
+        for (size_t i = 0; i < np && !moving; ++i) moving = isFloat_[i] && target_[i] != from_[i];
+        const Transport host = transport_;
+        inPeak = outPeak = 0.0f;
+        for (int done = 0; done < n;){
+            if (pos_ == 0){
+                if (!moving) base_ = target_;
+                else {
+                    const float t = std::min(1.0f, static_cast<float>(done + controlStep) / static_cast<float>(n));
+                    for (size_t i = 0; i < np; ++i)
+                        base_[i] = isFloat_[i] ? from_[i] + (target_[i] - from_[i]) * t : target_[i];
+                }
+                transport_ = host;
+                if (host.valid && host.playing) transport_.ppq = host.ppq + done / sr_ * host.bpm / 60.0;
+                beginStep();
+            }
+            const int len = std::min(n - done, controlStep - pos_);
+            float* sub[maxChannels];
+            for (int ch = 0; ch < nch; ++ch) sub[ch] = io[ch] + done;
+            runSamples(sub, nch, len);
+            pos_ += len; done += len;
+            if (pos_ == controlStep){ endStep(); pos_ = 0; }
+        }
+        from_ = base_;
+        transport_ = host;
+    }
 
-        // ---- modulation, once per block
-        double rms = 0.0;
-        for (int ch = 0; ch < nch; ++ch)
-            for (int i = 0; i < n; ++i) rms += static_cast<double>(io[ch][i]) * io[ch][i];
-        rms = std::sqrt(rms / static_cast<double>(n * nch));
+private:
+    void beginStep(){
+        const Ids& id = Ids::get();
+        // ---- modulation, once a step
+        const double rms = sumN_ > 0 ? std::sqrt(sumSq_ / static_cast<double>(sumN_)) : 0.0;
+        sumSq_ = 0.0; sumN_ = 0;
         mod_.setTrem(trem_.value());               // the tremolo is a matrix source too
-        mod_.update(n, rms * dbToGain(base_[id.inGain]), base_.data(), transport_);
+        mod_.update(controlStep, rms * dbToGain(base_[id.inGain]), base_.data(), transport_);
         applyMatrix(mod_, base_.data(), mv_.data());
 
         setOversampling(static_cast<int>(mv_[id.osFactor]));
 
-        // ---- per-block configuration
+        // ---- the step's configuration
         const int nb = static_cast<int>(mv_[id.bands]) + 1;
         const double osSr = sr_ * osFactor_;
         const bool wasFirst = first_;          // setR below clears first_
         int solo = 0;
         for (int b = 0; b < numBands; ++b) if (mv_[id.bandSolo[b]] > 0.5f) { solo = b + 1; break; }
 
-        for (int ch = 0; ch < nch; ++ch){
+        for (int ch = 0; ch < maxChannels; ++ch){
             preHP_[ch].set(Biquad::HighPass, mv_[id.preHP], sr_);
             preLP_[ch].set(Biquad::LowPass,  mv_[id.preLP], sr_);
             // the crossovers and tilts start the block where the last one left
@@ -222,7 +275,7 @@ public:
 
         // on the first block after a reset, jump to the target instead of
         // gliding up from zero, or the plugin fades in on every transport start
-        auto setR = [&](Ramp& r, double t){ if (first_) r.snap(t); else r.target(t, n); };
+        auto setR = [&](Ramp& r, double t){ if (first_) r.snap(t); else r.target(t, controlStep); };
 
         const bool ag = mv_[id.autoGain] > 0.5f;
         for (int b = 0; b < numBands; ++b){
@@ -288,10 +341,10 @@ public:
                 d = beatsForDiv(static_cast<int>(mv_[id.fbDiv]) + 1) * 60.0 / bpm * sr_
                     - (fbThru ? latency_ : 0) - 1.0;
             }
-            for (int ch = 0; ch < nch; ++ch){
+            for (int ch = 0; ch < maxChannels; ++ch){
                 if (fbMode == 0) fb_[ch].setMs(mv_[id.fbTime]);
                 else if (first_ || fbModeWas_ != fbMode) fb_[ch].rampToSamples(d, 0);
-                else fb_[ch].rampToSamples(d, n);
+                else fb_[ch].rampToSamples(d, controlStep);
             }
             fbModeWas_ = fbMode;
         }
@@ -341,9 +394,60 @@ public:
             gliding = mv_[id.x1] != x1Was_ || mv_[id.x2] != x2Was_;
             for (int b = 0; b < numBands; ++b) gliding = gliding || mv_[id.bandTone[b]] != toneWas_[b];
         }
-        // ---- per sample
+        st_.nb = nb;
+        st_.osSr = osSr;
+        st_.gliding = gliding;
+        st_.tableGliding = tableGliding;
+        st_.tableOn = tableOn;
+        st_.tblPosNow = tblPosNow;
+        st_.fbThru = fbThru;
+        st_.preHPOn = preHPOn;
+        st_.preLPOn = preLPOn;
+        st_.bits = bits;
+        st_.redux = redux;
+        st_.safety = safety;
+        st_.ft = ft;
+        st_.circuit = circuit;
+        st_.sections = sections;
+        st_.fmix = fmix;
+        st_.rhDepth = rhDepth;
+        st_.rhythmOn = rhythmOn;
+        st_.cutoffBase = cutoffBase;
+        st_.tremOn = tremOn;
+    }
+
+    void endStep(){
+        const Ids& id = Ids::get();
+        x1Was_ = mv_[id.x1]; x2Was_ = mv_[id.x2];
+        if (st_.tableOn) tblPosWas_ = st_.tblPosNow;
+        for (int b = 0; b < numBands; ++b) toneWas_[b] = mv_[id.bandTone[b]];
+    }
+
+    void runSamples(float* const* io, int nch, int n){
+        const Ids& id = Ids::get();
+        const int tableMode = static_cast<int>(Mode::Table);
+        const int nb = st_.nb;
+        const bool gliding = st_.gliding;
+        const bool tableGliding = st_.tableGliding;
+        const double osSr = st_.osSr;
+        const double tblPosNow = st_.tblPosNow;
+        const bool fbThru = st_.fbThru;
+        const bool preHPOn = st_.preHPOn;
+        const bool preLPOn = st_.preLPOn;
+        const double bits = st_.bits;
+        const int redux = st_.redux;
+        const bool safety = st_.safety;
+        const int ft = st_.ft;
+        const int circuit = st_.circuit;
+        const int sections = st_.sections;
+        const double fmix = st_.fmix;
+        const double rhDepth = st_.rhDepth;
+        const bool rhythmOn = st_.rhythmOn;
+        const double cutoffBase = st_.cutoffBase;
+        const bool tremOn = st_.tremOn;
         double inPk = 0.0, outPk = 0.0;
         for (int i = 0; i < n; ++i){
+            const int k = pos_ + i;          // where in the control step
             // the rhythm runs whether or not it is turned up, so it stays in
             // phase; it retunes the filter every 16 samples (a third of a
             // millisecond at 48 kHz), which is smooth and a sixteenth the cost
@@ -353,8 +457,8 @@ public:
             // at each block edge; measured on a sine under a host-rate sweep
             // that is +6 to +8 dB of inharmonic zipper. So they glide across the
             // block, retuned every 16 samples, and only when they are moving
-            if (gliding && (i & 15) == 0){
-                const double t = std::min(1.0, (i + 16) / static_cast<double>(n));
+            if (gliding && (k & 15) == 0){
+                const double t = std::min(1.0, (k + 16) / static_cast<double>(controlStep));
                 const double x1 = x1Was_ + (mv_[id.x1] - x1Was_) * t;
                 const double x2 = x2Was_ + (mv_[id.x2] - x2Was_) * t;
                 for (int ch = 0; ch < nch; ++ch){
@@ -363,13 +467,13 @@ public:
                         setTilt(bands_[b], ch, toneWas_[b] + (mv_[id.bandTone[b]] - toneWas_[b]) * t, osSr);
                 }
             }
-            if (tableGliding && (i & 15) == 0){
-                const double t = std::min(1.0, (i + 16) / static_cast<double>(n));
+            if (tableGliding && (k & 15) == 0){
+                const double t = std::min(1.0, (k + 16) / static_cast<double>(controlStep));
                 curvePos_ = tblPosWas_ + (tblPosNow - tblPosWas_) * t;
                 frames_.curveAt(curvePos_, curve_);
                 ++curveVersion_;
             }
-            if (rhythmOn && (i & 15) == 0){
+            if (rhythmOn && (k & 15) == 0){
                 for (int ch = 0; ch < nch; ++ch){
                     const double f = cutoffBase * std::exp2(rhDepth * rhythm_.value(ch));
                     if (circuit == Ladder::Clean) setCleanFilter(ch, ft, f);
@@ -386,6 +490,7 @@ public:
             }
             double y[maxChannels] = { 0.0, 0.0 };
             for (int ch = 0; ch < nch; ++ch){
+                sumSq_ += static_cast<double>(io[ch][i]) * io[ch][i];
                 const double xin = static_cast<double>(io[ch][i]) * gIn;
                 inPk = std::max(inPk, std::fabs(xin));
                 const double dryS = dry_[ch].process(xin);
@@ -467,14 +572,35 @@ public:
                 io[ch][i] = static_cast<float>(o);
             }
         }
-        inPeak = static_cast<float>(inPk);
-        outPeak = static_cast<float>(outPk);
-        x1Was_ = mv_[id.x1]; x2Was_ = mv_[id.x2];
-        if (tableOn) tblPosWas_ = tblPosNow;
-        for (int b = 0; b < numBands; ++b) toneWas_[b] = mv_[id.bandTone[b]];
+        sumN_ += n * nch;
+        inPeak = std::max(inPeak, static_cast<float>(inPk));
+        outPeak = std::max(outPeak, static_cast<float>(outPk));
     }
 
-private:
+    // what beginStep worked out, for the sample loop to use until the next step
+    struct Step {
+        int nb = 0;
+        double osSr = 0;
+        bool gliding = false;
+        bool tableGliding = false;
+        bool tableOn = false;
+        double tblPosNow = 0;
+        bool fbThru = false;
+        bool preHPOn = false;
+        bool preLPOn = false;
+        double bits = 0;
+        int redux = 0;
+        bool safety = false;
+        int ft = 0;
+        int circuit = 0;
+        int sections = 0;
+        double fmix = 0;
+        double rhDepth = 0;
+        bool rhythmOn = false;
+        double cutoffBase = 0;
+        bool tremOn = false;
+    } st_;
+
     struct Band {
         Biquad dcA[maxChannels], dcB[maxChannels], tiltLo[maxChannels], tiltHi[maxChannels];
         Oversampler os[maxChannels];
@@ -495,6 +621,11 @@ private:
     double curvePos_ = -1.0, tblPosWas_ = 0.0;
     bool tableReady_ = false;
     std::vector<float> base_, mv_;
+    std::vector<float> target_, from_;     // what the host set, and what it set a block ago
+    std::vector<char> isFloat_;
+    int pos_ = 0;                          // samples into the current control step
+    double sumSq_ = 0.0;                   // the step's input, for the envelope
+    long sumN_ = 0;
     Band bands_[numBands];
     Biquad preHP_[maxChannels], preLP_[maxChannels];
     Biquad xLP1a_[maxChannels], xLP1b_[maxChannels], xHP1a_[maxChannels], xHP1b_[maxChannels];
