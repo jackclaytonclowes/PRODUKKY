@@ -55,6 +55,7 @@ The panel reads in the order the sound flows: top row first, left to right, then
 - A full sine comes out with exactly the harmonics you drew. On real sounds you get the same recipe as a character. **Drive A** or **Drive B** sets how fully it comes through: the recipe is exact when the sound fills the curve.
 - **Position** morphs through the frames: frame 1 at 0%, frame 4 at 100%, blended in between. The frames light up to show where it is.
 - **Wobble with LFO 1** routes LFO 1 to Position in a free matrix slot, so the harmonics move on their own. Any other source works too: pick **Table position** as a target in the matrix.
+- **Start from...** fills a frame with the harmonics another drive mode makes, so you can begin from Tube or Fold and edit from there. **All four frames, gentle to hard** fills them with one mode at rising drive, so Position becomes a drive sweep. Wrap and Rectify are not offered: their sharp edges need more than sixteen harmonics.
 - The previews show the curve at the current position, one cycle of a sine through it, and the harmonics that come out.
 - Try the presets starting with **Table —**.
 

@@ -568,6 +568,49 @@ static void testHistory(){
     }
 }
 
+// "Start from": the bars that give another mode's sound
+static void testStartFrom(){
+    // the bars are the mode's own harmonics, measured independently: one
+    // period of shape(4 cos t), sampled and taken through a plain DFT
+    std::string off;
+    for (int m : { static_cast<int>(Mode::Soft), static_cast<int>(Mode::Tube), static_cast<int>(Mode::Tape),
+                   static_cast<int>(Mode::Diode), static_cast<int>(Mode::Fold) }){
+        double bars[tableHarmonics]; barsFromShaper(m, startFromDrive, bars);
+        constexpr int n = 2048;
+        double a[tableHarmonics + 1] = {}, peak = 0.0;
+        for (int k = 1; k <= tableHarmonics; ++k){
+            for (int j = 0; j < n; ++j)
+                a[k] += shape(m, startFromDrive * std::cos(2.0 * M_PI * j / n)) * std::cos(2.0 * M_PI * k * j / n);
+            a[k] *= 2.0 / n; peak = std::max(peak, std::fabs(a[k]));
+        }
+        double worst = 0.0;
+        for (int k = 1; k <= tableHarmonics; ++k)
+            worst = std::max(worst, std::fabs(a[k] / peak - bars[k - 1]));
+        if (worst > 0.006) off += std::string(" [") + modeName(m) + " " + f2s(worst * 100, 2) + "%]";
+    }
+    check("Start from: the bars are the mode's own harmonics (to half a percent)", off.empty(), off);
+
+    double soft[tableHarmonics], tube[tableHarmonics];
+    barsFromShaper(static_cast<int>(Mode::Soft), startFromDrive, soft);
+    barsFromShaper(static_cast<int>(Mode::Tube), startFromDrive, tube);
+    double evenSoft = 0.0;
+    for (int k = 1; k < tableHarmonics; k += 2) evenSoft = std::max(evenSoft, std::fabs(soft[k]));
+    check("  ... so Soft starts with no even harmonics and Tube with a 2nd",
+          evenSoft == 0.0 && std::fabs(tube[1]) > 0.03,
+          "Soft's largest even " + f2s(evenSoft * 100, 1) + "%, Tube's 2nd " + f2s(tube[1] * 100, 1) + "%");
+
+    const double eSoft = startFromError(static_cast<int>(Mode::Soft), startFromDrive);
+    const double eTube = startFromError(static_cast<int>(Mode::Tube), startFromDrive);
+    const double eTape = startFromError(static_cast<int>(Mode::Tape), startFromDrive);
+    const double eWrap = startFromError(static_cast<int>(Mode::Wrap), startFromDrive);
+    check("  ... and drawn, Soft, Tube and Tape are within 1.5% of their own curves",
+          eSoft < 0.015 && eTube < 0.015 && eTape < 0.015,
+          f2s(eSoft * 100, 2) + "%, " + f2s(eTube * 100, 2) + "%, " + f2s(eTape * 100, 2) + "%");
+    check("  ... while Wrap, which sixteen harmonics cannot draw, is not offered",
+          eWrap > 0.3 && !startFromFits(static_cast<int>(Mode::Wrap)) && startFromFits(static_cast<int>(Mode::Tube)),
+          "Wrap " + f2s(eWrap * 100, 0) + "% out");
+}
+
 int main(int argc, char** argv){
     const char* csv = argc > 1 ? argv[1] : "plugin/tests/shaper_reference.csv";
     const char* presetsPath = argc > 2 ? argv[2] : "plugin/tests/presets.json";
@@ -1378,6 +1421,7 @@ int main(int argc, char** argv){
     std::printf("\nTable mode\n");
     testHarmonicTable();
     testTableInEngine();
+    testStartFrom();
 
     std::printf("\nZipper noise\n");
     {

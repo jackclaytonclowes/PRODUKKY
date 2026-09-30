@@ -25,6 +25,7 @@
 #pragma once
 #include <cmath>
 #include <algorithm>
+#include "Shapers.h"
 
 namespace fracture {
 
@@ -129,5 +130,63 @@ private:
     double x1_ = 0.0, F1_ = 0.0;
     unsigned version_ = ~0u;
 };
+
+// "Start from": the bars that give another mode's sound, so a frame can begin
+// as Tube or Fold and be edited from there rather than drawn from nothing.
+// They are that mode's Chebyshev coefficients at the given drive, which is to
+// say exactly the harmonics it makes of a full-scale sine:
+//     c_k = (2 / pi) * integral over 0..pi of shape(drive * cos t) cos(k t) dt,
+// taken by the midpoint rule at 4096 points, then scaled so the largest bar is
+// 100%. Past the 16th harmonic nothing can be drawn, so a hard-edged mode
+// (Wrap, Quantize) comes back smoothed; the smooth ones come back close to
+// their own curve (test_core measures how close). Bars under half a percent
+// are left at zero, so what was silent in the source stays silent in the bars.
+inline void barsFromShaper(int mode, double drive, double* bars){
+    constexpr int n = 4096;
+    double c[tableHarmonics] = {};
+    for (int j = 0; j < n; ++j){
+        const double t = M_PI * (j + 0.5) / n;
+        const double y = shape(mode, drive * std::cos(t));
+        for (int k = 0; k < tableHarmonics; ++k) c[k] += y * std::cos((k + 1) * t);
+    }
+    double peak = 0.0;
+    for (int k = 0; k < tableHarmonics; ++k){ c[k] *= 2.0 / n; peak = std::max(peak, std::fabs(c[k])); }
+    for (int k = 0; k < tableHarmonics; ++k){
+        const double b = peak > 0.0 ? c[k] / peak : 0.0;
+        bars[k] = std::fabs(b) < 0.005 ? 0.0 : b;
+    }
+}
+// the drive one frame is filled at, and the four "all frames, gentle to hard"
+// uses, so that Position sweeps the mode from barely touched to driven hard
+inline constexpr double startFromDrive = 4.0;
+inline constexpr double startFromDrives[tableFrames] = { 1.0, 2.0, 4.0, 8.0 };
+
+// How far the drawn version is from the real curve: the RMS difference over
+// -1..1 once the drawn one is scaled to fit best, as a fraction of the real
+// one. Soft, Tube, Tape and Warm come back within 1% at drive 4; Wrap is 61%
+// out, because its jumps are made of harmonics far past the 16th
+inline double startFromError(int mode, double drive){
+    double bars[tableHarmonics];
+    barsFromShaper(mode, drive, bars);
+    TableCurve c; c.build(bars);
+    double gg = 0.0, gf = 0.0, ff = 0.0, e = 0.0;
+    constexpr int n = 1001;
+    double g[n], f[n];
+    for (int i = 0; i < n; ++i){
+        const double x = -1.0 + 2.0 * i / (n - 1);
+        g[i] = shape(mode, drive * x); f[i] = c.f(x);
+        gg += g[i] * g[i]; gf += g[i] * f[i]; ff += f[i] * f[i];
+    }
+    const double a = ff > 0.0 ? gf / ff : 0.0;
+    for (int i = 0; i < n; ++i) e += (g[i] - a * f[i]) * (g[i] - a * f[i]);
+    return gg > 0.0 ? std::sqrt(e / gg) : 1.0;
+}
+// offered in the menu only if every drive it could be filled at comes back
+// within 15%: a frame that does not sound like its name would be a false label
+inline bool startFromFits(int mode){
+    if (mode < 0 || mode >= numBrowserModes) return false;
+    for (double d : startFromDrives) if (startFromError(mode, d) > 0.15) return false;
+    return true;
+}
 
 } // namespace fracture

@@ -591,6 +591,37 @@ int main(int argc, char** argv){
                     strip->mouseDoubleClick(mev({ barX(2), L.getY() + 5.0f }, { barX(2), L.getY() + 5.0f }, 2));
                     check("a double-click zeroes a bar", std::abs(val(2)) < 1e-3f);
                     proc.session->undo();
+                    // Start from: frame 3 filled with Tube, the rest left alone, one undo step
+                    {
+                        auto bar = [&](int f, int k){ return proc.apvts.getRawParameterValue("tb" + juce::String(f + 1) + "h" + juce::String(k + 1))->load(); };
+                        float was[fracture::tableFrames][fracture::tableHarmonics];
+                        for (int f = 0; f < fracture::tableFrames; ++f)
+                            for (int k = 0; k < fracture::tableHarmonics; ++k) was[f][k] = bar(f, k);
+                        const size_t d0 = proc.session->undoDepth();
+                        te->startFrom(2, static_cast<int>(fracture::Mode::Tube));
+                        double want[fracture::tableHarmonics];
+                        fracture::barsFromShaper(static_cast<int>(fracture::Mode::Tube), fracture::startFromDrive, want);
+                        float worst = 0.0f; bool othersKept = true;
+                        for (int k = 0; k < fracture::tableHarmonics; ++k){
+                            worst = std::max(worst, std::abs(bar(2, k) - static_cast<float>(want[k] * 100.0)));
+                            for (int f : { 0, 1, 3 }) othersKept = othersKept && bar(f, k) == was[f][k];
+                        }
+                        check("Start from Tube fills frame 3 with Tube's harmonics, and only frame 3",
+                              worst < 0.05f && othersKept && std::abs(bar(2, 1)) > 3.0f,
+                              "worst bar off by " + juce::String(worst, 3) + ", 2nd harmonic " + juce::String(bar(2, 1), 1) + "%");
+                        check("  ... as one undo step, which undo takes back",
+                              proc.session->undoDepth() == d0 + 1 && (proc.session->undo(), bar(2, 1) == was[2][1] && bar(2, 0) == was[2][0]),
+                              juce::String(static_cast<int>(proc.session->undoDepth() - d0)) + " steps");
+                        te->startFrom(-1, static_cast<int>(fracture::Mode::Soft));
+                        // gentle to hard: the 3rd harmonic grows frame by frame
+                        const bool growing = std::abs(bar(0, 2)) < std::abs(bar(1, 2)) && std::abs(bar(1, 2)) < std::abs(bar(2, 2))
+                                             && std::abs(bar(2, 2)) < std::abs(bar(3, 2));
+                        check("  ... and all four frames from Soft go from gentle to hard",
+                              growing && te->startButton.isVisible() && !te->startButton.getBounds().isEmpty(),
+                              "3rd harmonic " + juce::String(bar(0, 2), 0) + " " + juce::String(bar(1, 2), 0) + " "
+                                  + juce::String(bar(2, 2), 0) + " " + juce::String(bar(3, 2), 0) + "%");
+                        proc.session->undo();
+                    }
                     // routing an LFO to Position from the editor
                     for (int k = 0; k < 6; ++k)
                         if (auto* q = proc.apvts.getParameter("mS" + juce::String(k))) q->setValueNotifyingHost(0.0f);

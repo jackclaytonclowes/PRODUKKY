@@ -837,7 +837,9 @@ TableEditor::TableEditor(FractureProcessor& p) : proc(p){
     }
     position = std::make_unique<KnobBox>(proc, "tblPos", yellow);
     addAndMakeVisible(*position);
-    for (auto* b : { &wobble, &close }) addAndMakeVisible(*b);
+    for (auto* b : { &wobble, &startButton, &close }) addAndMakeVisible(*b);
+    startButton.setTooltip("Fill a frame with the harmonics another drive mode makes, then edit from there");
+    startButton.onClick = [this]{ showStartMenu(); };
     wobble.setTooltip("Route LFO 1 to Table position in a free matrix slot, so the harmonics move on their own");
     wobble.onClick = [this]{ routeLfo(); };
     close.onClick = [this]{ if (onClose) onClose(); };
@@ -863,6 +865,46 @@ void TableEditor::routeLfo(){
     d->setValueNotifyingHost(d->convertTo0to1(static_cast<float>(dst)));
     amt->setValueNotifyingHost(amt->convertTo0to1(50.0f));
     for (auto* q : { src, d, amt }) q->endChangeGesture();
+}
+void TableEditor::showStartMenu(){
+    // Frame 1 to 4, each with the modes sixteen harmonics can draw
+    // (startFromFits), then all four frames at rising drive
+    juce::PopupMenu menu;
+    auto modes = [](int frameCode){
+        juce::PopupMenu m;
+        for (int mode = 0; mode < numBrowserModes; ++mode)
+            if (startFromFits(mode)) m.addItem(1 + frameCode * 32 + mode, modeName(mode));
+        return m;
+    };
+    for (int f = 0; f < tableFrames; ++f) menu.addSubMenu("Frame " + juce::String(f + 1), modes(f));
+    menu.addSeparator();
+    menu.addSubMenu("All four frames, gentle to hard", modes(tableFrames));
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&startButton),
+        [safe = juce::Component::SafePointer<TableEditor>(this)](int id){
+            if (safe == nullptr || id <= 0) return;
+            const int code = (id - 1) / 32, mode = (id - 1) % 32;
+            safe->startFrom(code == tableFrames ? -1 : code, mode);
+        });
+}
+void TableEditor::startFrom(int frame, int mode){
+    const Ids& id = Ids::get();
+    const Params& P = Params::get();
+    std::vector<juce::RangedAudioParameter*> touched;
+    std::vector<float> values;
+    for (int f = 0; f < tableFrames; ++f){
+        if (frame >= 0 && f != frame) continue;
+        double bars[tableHarmonics];
+        barsFromShaper(mode, frame >= 0 ? startFromDrive : startFromDrives[f], bars);
+        for (int k = 0; k < tableHarmonics; ++k){
+            touched.push_back(proc.apvts.getParameter(P[id.tblBar[f][k]].id));
+            values.push_back(static_cast<float>(bars[k] * 100.0));
+        }
+    }
+    // every bar inside one open gesture, so the whole fill is one undo step
+    for (auto* q : touched) q->beginChangeGesture();
+    for (size_t i = 0; i < touched.size(); ++i) touched[i]->setValueNotifyingHost(touched[i]->convertTo0to1(values[i]));
+    for (auto* q : touched) q->endChangeGesture();
+    for (auto& s : strips) s->repaint();
 }
 void TableEditor::timerCallback(){
     position->refresh();
@@ -896,6 +938,8 @@ void TableEditor::resized(){
     position->setBounds(controls.removeFromTop(KnobBox::h).withSizeKeepingCentre(KnobBox::w, KnobBox::h));
     controls.removeFromTop(12);
     wobble.setBounds(controls.removeFromTop(34).reduced(6, 0));
+    controls.removeFromTop(8);
+    startButton.setBounds(controls.removeFromTop(34).reduced(6, 0));
     noteArea = controls.reduced(6, 10);
     r.removeFromLeft(18);
     const int pw = (r.getWidth() - 36) / 3;

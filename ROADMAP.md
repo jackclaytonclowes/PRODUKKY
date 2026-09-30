@@ -67,7 +67,7 @@ Mac only; nobody has judged the sound against references yet.
 - [x] **S** Short fade and a feedback clear on preset change: measured instead of built. Switching
   between eight pairs of presets mid-note, the biggest jump is at least 7 dB under what the presets
   make on their own. Build it only if someone hears a click
-- [ ] **S** Table "Start from…": fill the bars with another mode's harmonics
+- [x] **S** Table "Start from…": fill the bars with another mode's harmonics (and all four frames at rising drive)
 - [ ] **S** The anti-aliasing in the browser version
 - [ ] **M** Per-band stereo: L/R, mid only, side only
 - [ ] **M** Sidechain input for the envelope follower (check old Logic sessions still open)

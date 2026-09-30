@@ -275,12 +275,20 @@ recurrence). Position glides across each block rather than stepping when an LFO 
 The bars are 64 parameters, not offered for automation: undo, A/B, presets, Copy patch and
 sessions all carry them with no extra machinery. The browser version has no Table mode.
 
+**Start from...** fills a frame with another mode's harmonics: its Chebyshev coefficients at
+drive 4, which are exactly what it makes of a full-scale sine (`barsFromShaper`), scaled so
+the largest bar is 100%. "All four frames, gentle to hard" fills them at drive 1, 2, 4 and 8,
+so Position becomes a drive sweep. Drawn back out, Soft, Tube and Tape land within 1% of
+their own curves; a mode is offered only if it stays within 15% at every one of those drives,
+which leaves out Wrap (61% out at drive 4: its jumps are made of harmonics past the 16th)
+and Rectify. The whole fill is one undo step.
+
 Tested: a full-scale sine through a drawing of 1, 3 and 5 comes out as exactly those, to
 1e-12, and through the whole engine to 0.01 dB; silence stays silent for 200 random drawings;
 the antiderivative is exact; Position lands on each frame; an LFO on it moves the 3rd
 harmonic by 150 dB; and the block edges of a 512-sample render sit 38 dB under the signal
 (stepping instead measures 19, and fails). In the host test, a mouse stroke across a frame
-sets every bar it crosses in one undo step.
+sets every bar it crosses in one undo step. Start from: the bars match the mode's harmonics measured separately by a DFT to half a percent, Soft has no even bars and Tube has a 2nd, and in the host test a fill changes only its frame, is one undo step, and the four-frame fill grows frame by frame.
 
 ## Seeing the filter
 
@@ -356,7 +364,7 @@ The menu rereads the folder every time it opens.
 
 ## What is verified, and where
 
-`npm run test:core` — 157 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 161 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -416,7 +424,7 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   and a value that did not round-trip exactly is not taken for an edit; A and B keep
   separate histories, B opens as a copy of A, and a switch is never an undo step
 
-`host_smoke` — 121 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 124 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
 and comes back out unchanged; a knob drag is one undo step (a version that committed on
 every value fails five checks), and so are a pad drag, a stroke across the steps, a preset

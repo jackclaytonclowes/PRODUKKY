@@ -210,10 +210,15 @@ public:
     void resized() override;
     HarmonicStrip* strip(int f){ return strips[static_cast<size_t>(f)].get(); }
     juce::TextButton wobble { "Wobble with LFO 1" };   // public for the tests
+    juce::TextButton startButton { "Start from..." };
+    // fill one frame (0..3) with a mode's harmonics, or all four (-1) with it
+    // at rising drive; one undo step. What the Start from menu calls
+    void startFrom(int frame, int mode);
     std::function<void()> onClose;
 private:
     void timerCallback() override;
     void routeLfo();
+    void showStartMenu();
     FractureProcessor& proc;
     std::array<std::unique_ptr<HarmonicStrip>, fracture::tableFrames> strips;
     std::unique_ptr<KnobBox> position;
