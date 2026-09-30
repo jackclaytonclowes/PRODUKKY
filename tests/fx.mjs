@@ -92,6 +92,69 @@ const ENVELOPE = `async (patch, seconds) => {
   return { L: env[0], R: env[1], worklet: eng.crushAvailable };
 }`;
 
+/* A sine or a quiet noise through the whole engine, returning the samples, for
+   the anti-aliasing and the delay checks. `fallback` builds the old
+   WaveShaperNode alone instead, to compare against. */
+const SIGNAL = `async (patch, kind, freq, amp, seconds, fallback) => {
+  const sr = 48000, len = Math.round(sr*seconds);
+  const ctx = new OfflineAudioContext(2, len, sr);
+  const buf = ctx.createBuffer(2, len, sr);
+  let seed = 7;
+  const rnd = () => (seed = (seed*16807) % 2147483647)/2147483647*2 - 1;
+  for (let c = 0; c < 2; c++){
+    const d = buf.getChannelData(c);
+    // 'tones' is 24 sines from 200 Hz to 8 kHz at random phases: broadband,
+    // but clear of the filters that sit at the edges of the band
+    const tones = Array.from({ length:24 }, (_, k) => [200*Math.pow(40, k/23), Math.PI*2*Math.abs(rnd())]);
+    for (let i = 0; i < len; i++) d[i] = kind === 'sine' ? amp*Math.sin(2*Math.PI*freq*i/sr)
+      : kind === 'tones' ? amp*tones.reduce((acc, [f, ph]) => acc + Math.sin(2*Math.PI*f*i/sr + ph), 0)/24
+      : amp*rnd();
+  }
+  const s = ctx.createBufferSource(); s.buffer = buf;
+  let shaperLoaded = false;
+  if (fallback){
+    const m = window.FX.MODES.find(x => x.id === patch.m0a);
+    const D = 40, curve = new Float32Array(32769);
+    for (let i = 0; i < curve.length; i++){ const x = i/(curve.length-1)*2 - 1; curve[i] = Math.max(-1, Math.min(1, m.fn(x*D))); }
+    const g = ctx.createGain(); g.gain.value = patch.d0a/D;
+    const w = ctx.createWaveShaper(); w.curve = curve; w.oversample = '4x';
+    s.connect(g); g.connect(w); w.connect(ctx.destination);
+  } else {
+    const eng = window.FX.createEngine(ctx);
+    await eng.initWorklet();
+    shaperLoaded = !!eng.shaperAvailable;
+    window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+    s.connect(eng.input);
+  }
+  s.start();
+  const r = await ctx.startRendering();
+  return { input: Array.from(buf.getChannelData(0)), out: Array.from(r.getChannelData(0)), shaperLoaded };
+}`;
+
+// energy that is not a harmonic of f0, against the fundamental, below 18 kHz
+function aliasDb(x, f0, sr = 48000){
+  const N = 1 << 14, start = x.length - N;
+  const re = new Float64Array(N), im = new Float64Array(N);
+  for (let i = 0; i < N; i++) re[i] = x[start + i]*(0.5 - 0.5*Math.cos(2*Math.PI*i/N));
+  for (let i = 1, j = 0; i < N; i++){ let bit = N >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit;
+    if (i < j){ [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; } }
+  for (let len = 2; len <= N; len <<= 1){
+    const ang = -2*Math.PI/len;
+    for (let i = 0; i < N; i += len) for (let k = 0; k < len/2; k++){
+      const wr = Math.cos(ang*k), wi = Math.sin(ang*k);
+      const a = i + k, b = a + len/2;
+      const tr = re[b]*wr - im[b]*wi, ti = re[b]*wi + im[b]*wr;
+      re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+    }
+  }
+  const bin = sr/N; let fund = 0, alias = 0;
+  for (let k = 1; k < N/2 && k*bin < 18000; k++){
+    const p = re[k]*re[k] + im[k]*im[k], h = k*bin/f0, off = Math.abs(h - Math.round(h))*f0;
+    if (off < 4*bin){ if (Math.round(h) === 1) fund += p; } else alias += p;
+  }
+  return 10*Math.log10(alias/fund);
+}
+
 const stats = a => {
   const mean = a.reduce((x, y) => x + y, 0)/a.length;
   return { mean, min: Math.min(...a), max: Math.max(...a) };
@@ -163,6 +226,30 @@ async function main() {
     return bad;
   });
   check('every mode is bounded and passes through zero', shapers.length === 0, shapers.join(', '));
+  // F, each mode's antiderivative, is what the anti-aliasing runs on: over any
+  // stretch, F(b) - F(a) must be the area under f, jumps and corners included
+  const antis = await page.evaluate(() => {
+    const bad = []; let seed = 3, checked = 0;
+    const rnd = () => (seed = (seed*16807) % 2147483647)/2147483647;
+    for (const m of window.FX.MODES){
+      if (!m.F) continue;
+      checked++;
+      let worst = 0;
+      for (let k = 0; k < 200; k++){
+        const x0 = -40 + 80*rnd(), x1 = x0 + 6*rnd() - 3, n = 20000, h = (x1 - x0)/n;
+        let area = 0;
+        for (let i = 0; i < n; i++) area += m.fn(x0 + (i + 0.5)*h)*h;
+        // the sum itself is out by up to a step at each of Wrap's jumps (at
+        // most two in a stretch this long); every other mode is continuous
+        const allowed = m.id === 'wrap' ? 1e-5 + 2*Math.abs(h) : 1e-5;
+        worst = Math.max(worst, Math.abs((m.F(x1) - m.F(x0)) - area) / allowed * 1e-5);
+      }
+      if (worst > 1e-5) bad.push(m.id + ' ' + worst.toExponential(1));
+    }
+    return { bad, checked };
+  });
+  check('each antiderivative F is the area under its mode (12 modes; Warp and Quantize have none)',
+    antis.bad.length === 0 && antis.checked === 12, antis.bad.join(', ') + ` (${antis.checked} checked)`);
 
   console.log('\nOffline render');
   const base = await render({});
@@ -204,6 +291,44 @@ async function main() {
   const dryOnly = await render({ mix: 0 });
   check('dry/wet at 0 passes the input through', dryOnly.bad === 0 && dryOnly.rms > 0.01,
     'rms ' + dryOnly.rms.toFixed(4));
+
+  console.log('\nThe drive shaper (the plugin\'s oversampling and anti-aliasing)');
+  {
+    const wrapPatch = { bands: '1', m0a: 'wrap', d0a: 25, autoGain: false, safety: false, mix: 100 };
+    const now = await page.evaluate(`(${SIGNAL})(${JSON.stringify(wrapPatch)}, 'sine', 3700, 0.5, 0.6, false)`);
+    const old = await page.evaluate(`(${SIGNAL})(${JSON.stringify(wrapPatch)}, 'sine', 3700, 0.5, 0.6, true)`);
+    check('the drive shaper worklet loaded', now.shaperLoaded === true);
+    const aNow = aliasDb(now.out, 3700), aOld = aliasDb(old.out, 3700);
+    check('Wrap on a 3.7 kHz tone: aliasing well under the note, and far under the old shaper',
+      aNow < -12 && aNow < aOld - 15, `${aNow.toFixed(1)} dB against ${aOld.toFixed(1)} dB with WaveShaperNode`);
+
+    // The dry and wet paths must arrive together, or any mix between them
+    // comb-filters. Each is rendered on its own, quietly so the shapers are
+    // linear, and the wet one must line up with the dry one to within a sample
+    // (the pre-filters' own delay). With the dry paths left undelayed the wet
+    // one is 96 samples behind
+    const quiet = { autoGain: false, bands: '1', d0a: 1 };
+    const take = async patch => (await page.evaluate(`(${SIGNAL})(${JSON.stringify(Object.assign({}, quiet, patch))}, 'tones', 0, 0.002, 0.5, false)`)).out;
+    const lineUp = (x, y) => {
+      let best = { lag: 0, r: -2 };
+      for (let lag = -200; lag <= 200; lag++){
+        let g = 0, ex = 0, ey = 0;
+        for (let i = 8000; i < x.length - 200; i++){ const a = x[i], b = y[i + lag]; g += a*b; ex += a*a; ey += b*b; }
+        const r = g/Math.sqrt(ex*ey);
+        if (r > best.r) best = { lag, r };
+      }
+      return best;
+    };
+    const dryOut = await take({ mix: 0 });
+    for (const [name, patch, against] of [
+      ['the main dry path and the wet path', { mix: 100 }, dryOut],
+      ['the main dry path and the wet path with stage B on', { mix: 100, sb0: true, d0b: 1 }, dryOut],
+      ['a band\'s dry share and its shaped share', { mix: 100 }, await take({ mix: 100, mx0: 0 })],
+    ]){
+      const lu = lineUp(against, await take(patch));
+      check(`${name} arrive together`, Math.abs(lu.lag) <= 1 && lu.r > 0.95, `offset ${lu.lag} samples, correlation ${lu.r.toFixed(3)}`);
+    }
+  }
 
   console.log('\nModulation');
   const modded = await render({ bands: '1', d0a: 12, mS0: 'lfo1', mD0: 'd0a', mA0: 100, l1Rate: 8 }, 0.4);

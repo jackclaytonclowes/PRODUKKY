@@ -8,7 +8,7 @@ destructive digital modes, feedback, a resonant filter after the drive, and modu
 patched to anything).
 
 ```
-npm run test:fx          # headless smoke test, 59 assertions
+npm run test:fx          # headless smoke test, 74 assertions
 npm run test:fx:head     # same, in a visible browser
 open fx/fracture.html    # or just double-click it
 ```
@@ -118,17 +118,35 @@ move under modulation.
 
 ## Things that are load-bearing
 
-- **Drive is a gain into a fixed curve, never a rebuilt curve.** `WaveShaperNode` clamps
-  its input to [-1,1], so each mode's curve is built once over the domain [-40, +40] and
-  the pre-gain is set to `drive/40`. Feeding a signal at that gain evaluates `f(s*drive)`
-  exactly, which makes drive an ordinary `AudioParam`: automatable and modulatable,
-  without ever swapping a curve. Swapping curves at control rate clicks.
+- **Drive is a gain into a fixed shaper, never a rebuilt curve.** The shaper clamps its
+  input to [-1,1] and evaluates each mode over [-40, +40], and the pre-gain is set to
+  `drive/40`. Feeding a signal at that gain evaluates `f(s*drive)` exactly, which makes
+  drive an ordinary `AudioParam`: automatable and modulatable, without ever swapping a
+  curve. Swapping curves at control rate clicks.
+- **The shaper is the plugin's, in a worklet.** 4x oversampling with the plugin's
+  half-band filters, and first-order antiderivative anti-aliasing: each mode in `MODES`
+  carries `F`, its antiderivative, and the output is the average of `f` over each step,
+  `(F(x) - F(x1)) / (x - x1)`. `WaveShaperNode`'s own `'4x'` could do neither, and Wrap on
+  a 3.7 kHz tone left its aliasing louder than the note; now it is 15 dB or more under
+  the old shaper and well under the note. Fed the same input, the worklet matches the
+  plugin's `Oversampler` and `AntialiasedShaper` to float32 rounding. The filters are in
+  polyphase form (the same sums, a quarter of the arithmetic): about 3% of a core per
+  stereo stage, and a bypassed stage B is skipped. If the worklet cannot load, a
+  `WaveShaperNode` with the same curve stands in, as before.
+- **`F` must match the plugin's `antiderivative()`** in `plugin/core/Shapers.h`, mode for
+  mode. The suite checks each `F` against the area under `f` over 200 random stretches.
+- **Every wet path is 96 samples late, and the dry paths wait for it.** Each shaper worklet
+  is 48 samples (the filters' latency), and stage B is a second one, so the path around
+  stage B is delayed 48 samples and every dry path 96: a band is equally late with stage B
+  on or off, the bands sum in step, and a half mix does not comb-filter. The suite renders
+  dry and wet apart and requires them to line up to within a sample (the pre-filters' own
+  delay); without the delays they are 48 or 96 samples apart.
 - **The safety clip does not oversample.** Every per-band shaper runs at 4x, but an
   oversampled shaper overshoots its own ceiling by ~20% (measured, because the resampling
   filters ring), which defeats the point of a last-stage limiter. The safety stage is a
   plain tanh with a -0.9 dBFS ceiling, so the output is genuinely bounded. The test
   asserts it.
-- **The worklet loads from a `data:` URL.** It carries the bit crusher, the ladder and
+- **The worklet loads from a `data:` URL.** It carries the bit crusher, the ladder, the drive shapers and
   the tremolo, because none of the three is expressible as a graph of built-in nodes, and
   from a `data:` URL because Chrome refuses to load an `AudioWorklet` module from a
   `blob:` URL on a `file://` page, and double-clicking the

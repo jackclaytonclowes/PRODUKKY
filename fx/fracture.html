@@ -298,12 +298,16 @@ kbd{background:var(--face);border:1.5px solid var(--ink);border-radius:0;
 
    Two things are worth knowing before editing the DSP:
 
-   1. Drive is a gain into a FIXED waveshaper curve, never a rebuilt curve.
-      WaveShaperNode clamps its input to [-1,1], so a curve is built over the
-      domain [-D_MAX, +D_MAX] and the pre-gain is set to drive/D_MAX. Feeding
-      a signal s at that gain evaluates f(s * drive) exactly, which means
-      drive is an ordinary AudioParam: it can be automated and modulated
-      without ever swapping a curve (swapping curves at control rate clicks).
+   1. Drive is a gain into a FIXED shaper, never a rebuilt curve. The shaper
+      clamps its input to [-1,1] and evaluates f over [-D_MAX, +D_MAX], and
+      the pre-gain is set to drive/D_MAX. Feeding a signal s at that gain
+      evaluates f(s * drive) exactly, which means drive is an ordinary
+      AudioParam: it can be automated and modulated without ever swapping a
+      curve (swapping curves at control rate clicks). The shaper is the
+      'shaper' worklet below, which is the plugin's: 4x oversampling with the
+      same filters, and the same anti-aliasing (each mode's F, its
+      antiderivative). A WaveShaperNode with that curve stands in until the
+      worklet loads, or if it cannot.
    2. Every shaper has unity slope at the origin and saturates towards ±1, so
       a mode change at a given drive does not jump in level. The "Harmonics"
       mode is the one deliberate exception - Chebyshev mixing gives it a
@@ -321,7 +325,8 @@ const D_MAX = 40;          // curve domain: drive can reach +32 dB
 const CURVE_N = 32769;     // ~820 curve points across ±1 at unity drive
 
 const MODES = [
-  { id:'soft', name:'Soft',      fn: x => Math.tanh(x) },
+  { id:'soft', name:'Soft',      fn: x => Math.tanh(x),
+    F: x => { const a = Math.abs(x); return a + Math.log1p(Math.exp(-2*a)) - Math.LN2; } },
   // Tube: tanh, with the positive half topping out at 0.6 instead of 1. Both
   // halves leave zero at the same slope as Soft, so quiet signals match, but
   // they bend differently, which adds the even harmonics (the 2nd above all)
@@ -329,25 +334,36 @@ const MODES = [
   // like every mode, so switching to it does not jump in level. (The first
   // version, (e^0.8x - e^-1.2x) / (e^0.8x + e^-1.2x), looked asymmetric but
   // reduces to tanh(x) exactly: Tube was Soft under another name.)
-  { id:'tube', name:'Tube',      fn: x => x >= 0 ? 0.6*Math.tanh(x/0.6) : Math.tanh(x) },
-  { id:'warm', name:'Warm',      fn: x => Math.sign(x)*(1-Math.exp(-Math.abs(x))) },
-  { id:'diode',name:'Diode',     fn: x => x > 0 ? 1-Math.exp(-x) : -0.55*(1-Math.exp(x/0.55)) },
-  { id:'hard', name:'Hard',      fn: x => clamp(x,-1,1) },
-  { id:'tape', name:'Tape',      fn: x => { const t = Math.tanh(x); return t - 0.12*t*t*t; } },
-  { id:'fold', name:'Fold',      fn: x => { const y = ((x+1)%4+4)%4; return y < 2 ? y-1 : 3-y; } },
-  { id:'sine', name:'Sine',      fn: x => Math.sin(x) },
+  { id:'tube', name:'Tube',      fn: x => x >= 0 ? 0.6*Math.tanh(x/0.6) : Math.tanh(x),
+    F: x => { const a = Math.abs(x >= 0 ? x/0.6 : x), lc = a + Math.log1p(Math.exp(-2*a)) - Math.LN2; return x >= 0 ? 0.36*lc : lc; } },
+  { id:'warm', name:'Warm',      fn: x => Math.sign(x)*(1-Math.exp(-Math.abs(x))),
+    F: x => { const a = Math.abs(x); return a + Math.exp(-a) - 1; } },
+  { id:'diode',name:'Diode',     fn: x => x > 0 ? 1-Math.exp(-x) : -0.55*(1-Math.exp(x/0.55)),
+    F: x => x > 0 ? x + Math.exp(-x) - 1 : -0.55*x + 0.3025*(Math.exp(x/0.55) - 1) },
+  { id:'hard', name:'Hard',      fn: x => clamp(x,-1,1),
+    F: x => { const a = Math.abs(x); return a <= 1 ? 0.5*x*x : a - 0.5; } },
+  { id:'tape', name:'Tape',      fn: x => { const t = Math.tanh(x); return t - 0.12*t*t*t; },
+    F: x => { const a = Math.abs(x), t = Math.tanh(x); return 0.88*(a + Math.log1p(Math.exp(-2*a)) - Math.LN2) + 0.06*t*t; } },
+  { id:'fold', name:'Fold',      fn: x => { const y = ((x+1)%4+4)%4; return y < 2 ? y-1 : 3-y; },
+    F: x => { const y = ((x+1)%4+4)%4; return y < 2 ? 0.5*y*y - y : 3*(y-2) - 0.5*(y*y-4); } },
+  { id:'sine', name:'Sine',      fn: x => Math.sin(x),
+    F: x => -Math.cos(x) },
   { id:'warp', name:'Warp',      fn: x => Math.sin(x + 0.35*Math.sin(2*x)) },
-  { id:'wrap', name:'Wrap',      fn: x => ((x+1)%2+2)%2 - 1 },   // discontinuous, brutal
+  { id:'wrap', name:'Wrap',      fn: x => ((x+1)%2+2)%2 - 1,     // discontinuous, brutal
+    F: x => { const u = ((x+1)%2+2)%2; return u*(0.5*u - 1); } },
   { id:'gap',  name:'Gap',       fn: x => {                      // crossover / dead-zone grit
       const dz = 0.12, a = Math.abs(x);
       return a < dz ? 0 : Math.tanh(Math.sign(x)*(a-dz)*1.25);
-    } },
-  { id:'rect', name:'Rectify',   fn: x => { const t = Math.tanh(x); return 0.5*t + 0.5*Math.abs(t); } },
+    },
+    F: x => { const a = Math.abs(x); if (a < 0.12) return 0; const v = 1.25*(a-0.12); return (v + Math.log1p(Math.exp(-2*v)) - Math.LN2)/1.25; } },
+  { id:'rect', name:'Rectify',   fn: x => { const t = Math.tanh(x); return 0.5*t + 0.5*Math.abs(t); },
+    F: x => x > 0 ? x + Math.log1p(Math.exp(-2*x)) - Math.LN2 : 0 },
   { id:'bits', name:'Quantize',  fn: x => { const t = clamp(x,-1,1), s = 7; return Math.round(t*s)/s; } },
   { id:'harm', name:'Harmonics', fn: x => {                      // Chebyshev 1/3/5
       const t = clamp(x,-1,1), t3 = 4*t*t*t - 3*t, t5 = 16*Math.pow(t,5) - 20*t*t*t + 5*t;
       return 0.5*t + 0.35*t3 + 0.15*t5;
-    } }
+    },
+    F: x => { const a = Math.abs(x); if (a > 1) return a - 0.9; const t2 = x*x; return t2*(0.1 + t2*(-0.4 + 0.4*t2)); } }
 ];
 const MODE_BY_ID = Object.fromEntries(MODES.map(m => [m.id, m]));
 
@@ -573,7 +589,112 @@ class Trem extends AudioWorkletProcessor {
 registerProcessor('trem', Trem);
 `;
 
-const WORKLET_SRC = CRUSH_WORKLET + LADDER_WORKLET + TREM_WORKLET;
+/* ------------------------------------------------------- the drive shaper
+   The plugin's drive stage, in a worklet: 4x oversampling with the plugin's
+   linear-phase half-band filters (plugin/core/Oversampler.h, 65 taps a stage,
+   48 samples of delay in all), and first-order antiderivative anti-aliasing
+   (plugin/core/Shapers.h): the output is the average of f over the step from
+   one oversampled input to the next, (F(x) - F(x1)) / (x - x1), which is what
+   takes the aliasing a shaper leaves after oversampling down to where it is
+   no longer heard. Warp and Quantize have no F and are shaped directly, as in
+   the plugin. WaveShaperNode's own '4x' can do neither.
+
+   The filters are written in polyphase form: a half-band filter is zero at
+   every other tap, and upsampling feeds it zeros half the time, so the same
+   sums take a quarter of the arithmetic. A block of silence after the filters
+   have emptied is passed straight through as silence (a bypassed stage B gets
+   exact zeros). */
+const SHAPER_LATENCY = 48;
+const SHAPER_WORKLET = `
+const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
+const FN = [${MODES.map(m => m.fn.toString()).join(',\n')}];
+const FA = [${MODES.map(m => m.F ? m.F.toString() : 'null').join(',\n')}];
+const D_MAX = ${D_MAX};
+const TAPS = 65, M = 32;
+const H = (() => {
+  const h = new Float64Array(TAPS); let sum = 0;
+  for (let i = 0; i < TAPS; i++){
+    const n = i - M;
+    const sinc = n === 0 ? 0.5 : Math.sin(Math.PI*0.5*n)/(Math.PI*n);
+    const w = 0.42 - 0.5*Math.cos(2*Math.PI*i/(TAPS-1)) + 0.08*Math.cos(4*Math.PI*i/(TAPS-1));
+    h[i] = sinc*w; sum += h[i];
+  }
+  for (let i = 0; i < TAPS; i++) h[i] /= sum;
+  return h;
+})();
+const HC = H[M];                                             // the centre tap
+const HO = Float64Array.from({ length:M }, (_, q) => H[2*q+1]); // the odd taps
+const R = 64, MASK = 63;                                     // ring buffers
+class Stage {                        // one 2x stage, up and down, one channel
+  constructor(){ this.x = new Float64Array(R); this.a = new Float64Array(R); this.b = new Float64Array(R); this.px = 0; this.pa = 0; }
+  up(x, out, o){                     // zero-stuffed, so y[2j] is the centre tap alone
+    const X = this.x; X[this.px] = x;
+    out[o] = 2*HC*X[(this.px - 16) & MASK];
+    let acc = 0;
+    for (let q = 0; q < M; q++) acc += HO[q]*X[(this.px - q) & MASK];
+    out[o+1] = 2*acc;
+    this.px = (this.px + 1) & MASK;
+  }
+  down(a, b){                        // keeps every other output
+    const A = this.a, B = this.b, p = this.pa;
+    A[p] = a;
+    let acc = HC*A[(p - 16) & MASK];
+    for (let q = 0; q < M; q++) acc += HO[q]*B[(p - 1 - q) & MASK];
+    B[p] = b;
+    this.pa = (p + 1) & MASK;
+    return acc;
+  }
+}
+class Chan {
+  constructor(){ this.s1 = new Stage(); this.s2 = new Stage(); this.x1 = 0; this.F1 = 0; this.m = -1; this.t = new Float64Array(4); }
+}
+class Shaper extends AudioWorkletProcessor {
+  constructor(){
+    super();
+    this.mode = 0; this.ch = []; this.quiet = 1e9;
+    this.port.onmessage = e => { this.mode = e.data.mode; };
+  }
+  shape(c, u){
+    const m = this.mode, v = D_MAX*clamp(u, -1, 1), F = FA[m];
+    if (!F){ c.x1 = v; c.m = -1; return FN[m](v); }
+    if (c.m !== m){ c.m = m; c.F1 = F(c.x1); }
+    const Fv = F(v), dx = v - c.x1;
+    const y = Math.abs(dx) > 1e-5 ? (Fv - c.F1)/dx : FN[m](0.5*(v + c.x1));
+    c.x1 = v; c.F1 = Fv;
+    return y;
+  }
+  process(inputs, outputs){
+    const inp = inputs[0], out = outputs[0];
+    if (!inp || inp.length === 0){ for (const o of out) o.fill(0); this.quiet = 1e9; return true; }
+    let silent = true;
+    for (const d of inp){ for (let i = 0; i < d.length; i++) if (d[i] !== 0){ silent = false; break; } if (!silent) break; }
+    this.quiet = silent ? this.quiet + inp[0].length : 0;
+    if (this.quiet > 512){ for (const o of out) o.fill(0); return true; }
+    for (let c = 0; c < out.length; c++){
+      const d = inp[Math.min(c, inp.length - 1)], o = out[c];
+      const st = this.ch[c] || (this.ch[c] = new Chan()), t = st.t;
+      for (let i = 0; i < d.length; i++){
+        st.s1.up(d[i], t, 0);
+        const a = t[0], b = t[1];
+        st.s2.up(a, t, 2);
+        const fa1 = this.shape(st, t[2]);
+        const fa2 = this.shape(st, t[3]);
+        const da = st.s2.down(fa1, fa2);
+        st.s2.up(b, t, 2);
+        const fb1 = this.shape(st, t[2]);
+        const fb2 = this.shape(st, t[3]);
+        const db = st.s2.down(fb1, fb2);
+        o[i] = st.s1.down(da, db);
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('shaper', Shaper);
+`;
+const MODE_INDEX = Object.fromEntries(MODES.map((m, i) => [m.id, i]));
+
+const WORKLET_SRC = CRUSH_WORKLET + LADDER_WORKLET + TREM_WORKLET + SHAPER_WORKLET;
 
 /* ------------------------------------------------------------------- engine */
 function createEngine(ctx){
@@ -620,10 +741,15 @@ function createEngine(ctx){
     b.out  = g(1);
 
     const A = b.stage[0], B = b.stage[1];
-    b.in.connect(b.dryG); b.dryG.connect(b.out);
+    // the band's dry share waits for both shapers, 96 samples (set once they load)
+    b.dryDly = ctx.createDelay(0.01); b.dryDly.delayTime.value = 0;
+    b.in.connect(b.dryDly); b.dryDly.connect(b.dryG); b.dryG.connect(b.out);
     b.in.connect(A.pre); A.pre.connect(A.shp); A.shp.connect(A.post); A.post.connect(A.dc);
     A.dc.connect(b.tiltLo); b.tiltLo.connect(b.tiltHi);
-    b.tiltHi.connect(b.bOff); b.bOff.connect(b.wet);
+    // stage B's own shaper is 48 samples late; so is the path around it, so a
+    // band is equally late with B on or off and the bands still sum in step
+    b.offDly = ctx.createDelay(0.01); b.offDly.delayTime.value = 0;
+    b.tiltHi.connect(b.bOff); b.bOff.connect(b.offDly); b.offDly.connect(b.wet);
     b.tiltHi.connect(b.bOn);
     b.bOn.connect(B.pre); B.pre.connect(B.shp); B.shp.connect(B.post); B.post.connect(B.dc);
     B.dc.connect(b.wet);
@@ -695,7 +821,9 @@ function createEngine(ctx){
 
   e.input.connect(e.inGain);
   e.inGain.connect(e.inAn);
-  e.inGain.connect(e.dry); e.dry.connect(e.mixBus);
+  // so does the whole dry path, or a half mix would comb-filter
+  e.dryDly = ctx.createDelay(0.01); e.dryDly.delayTime.value = 0;
+  e.inGain.connect(e.dryDly); e.dryDly.connect(e.dry); e.dry.connect(e.mixBus);
   e.inGain.connect(e.preHP); e.preHP.connect(e.preLP);
   e.sum.connect(e.postIn);
   e.postIn.connect(e.crushIn);
@@ -744,7 +872,9 @@ function createEngine(ctx){
   e.setMode = (bi, si, id) => {
     const b = e.bands[bi];
     b.mode[si] = id;
-    b.stage[si].shp.curve = curveFor(id);
+    const s = b.stage[si];
+    if (s.node) s.node.port.postMessage({ mode: MODE_INDEX[id] });
+    else s.shp.curve = curveFor(id);
   };
   e.applyBandGains = () => {
     for (let i = 0; i < 3; i++){
@@ -841,6 +971,20 @@ function createEngine(ctx){
         e.tremIn.connect(trem); trem.connect(e.tremOut);
         e.tremNode = trem;
         trem.port.onmessage = ev => { e.tremValue = ev.data; };
+        // the drive shapers: the worklet in place of each WaveShaperNode, and
+        // the dry paths delayed to match it
+        for (const b of e.bands) for (let si = 0; si < 2; si++){
+          const s = b.stage[si];
+          const node = new AudioWorkletNode(ctx, 'shaper', { numberOfInputs:1, numberOfOutputs:1 });
+          node.port.postMessage({ mode: MODE_INDEX[b.mode[si]] });
+          s.pre.disconnect(s.shp); s.shp.disconnect();
+          s.pre.connect(node); node.connect(s.post);
+          s.node = node;
+        }
+        const lat = SHAPER_LATENCY/ctx.sampleRate;
+        e.dryDly.delayTime.value = 2*lat;
+        for (const b of e.bands){ b.dryDly.delayTime.value = 2*lat; b.offDly.delayTime.value = lat; }
+        e.shaperAvailable = true;
         e.crushAvailable = true;
         return true;
       } catch (err){

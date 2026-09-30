@@ -73,7 +73,9 @@ wrapper change done.
 - **The shapers are anti-aliased (ADAA, `core/Shapers.h`).** A new shaper mode needs its
   antiderivative in `antiderivative()`, or an entry in `hasAntiderivative()` saying why
   not. Each anti-aliased stage adds half a sample at the oversampled rate, which
-  `splitResponse()` includes so the tuned loop stays in tune.
+  `splitResponse()` includes so the tuned loop stays in tune. The browser version runs the
+  same scheme in its `shaper` worklet: each mode in `fx/fracture.html`'s `MODES` carries
+  `F`, which must match `antiderivative()` mode for mode.
 - **Table (the drawn mode) is plugin-only and lives in `core/HarmonicTable.h`.** `shape()` has
   only a stand-in for it; the engine and the editor build the real curve from the 64 bar
   parameters. The bars are parameters so undo, A/B and presets carry them, marked not
