@@ -85,6 +85,93 @@ inline double shape(int mode, double x){
     }
 }
 
+// ---------------------------------------------------------------- anti-aliasing
+// A shaper applied sample by sample makes harmonics the sample rate cannot hold,
+// and they fold back into the audible band as inharmonic fizz. Oversampling
+// moves the fold-back point up; it does not stop the harmonics. Wrap is the
+// worst case: every boundary crossing is a jump from +1 to -1 in one sample,
+// whose harmonics fall off slowly and without end. At 4x, Wrap on a 3.7 kHz
+// tone came out with its aliasing 6 dB under the note (the Rift preset's
+// "crackle", the first thing anyone reported on hearing it).
+//
+// First-order antiderivative anti-aliasing (ADAA): instead of f(x[n]), output
+// the average of f over the straight line from x[n-1] to x[n],
+//     (F(x[n]) - F(x[n-1])) / (x[n] - x[n-1]),   F' = f,
+// which is what an ideal band-limited sampler would see of a jump or a corner.
+// It costs half a sample of delay at the oversampled rate and a gentle top-end
+// roll-off there (a fraction of a dB at 20 kHz, at 4x).
+//
+// antiderivative() is F for every mode that has one in closed form. Warp is
+// left alone (its aliasing already measures under -65 dB), and so is Quantize,
+// whose steps are the sound the mode is for. test_core checks every F against
+// f by differentiating it, and checks each is continuous across the breakpoints.
+
+// log(cosh(x)) without overflow: the antiderivative of tanh
+inline double logCosh(double x){
+    const double a = std::fabs(x);
+    return a + std::log1p(std::exp(-2.0 * a)) - 0.6931471805599453;
+}
+
+inline bool hasAntiderivative(int mode){
+    switch (static_cast<Mode>(mode)){
+    case Mode::Warp: case Mode::Bits: case Mode::Count: return false;
+    default: return mode >= 0 && mode < static_cast<int>(Mode::Count);
+    }
+}
+
+inline double antiderivative(int mode, double x){
+    switch (static_cast<Mode>(mode)){
+    case Mode::Soft:
+    case Mode::Tube:  return logCosh(x);            // Tube's formula reduces to tanh(x) exactly
+    case Mode::Warm: { const double a = std::fabs(x); return a + std::exp(-a) - 1.0; }
+    case Mode::Diode: return x > 0 ? x + std::exp(-x) - 1.0
+                                   : -0.55 * x + 0.3025 * (std::exp(x / 0.55) - 1.0);
+    case Mode::Hard: { const double a = std::fabs(x); return a <= 1.0 ? 0.5 * x * x : a - 0.5; }
+    case Mode::Tape: { const double t = std::tanh(x); return 0.88 * logCosh(x) + 0.06 * t * t; }
+    case Mode::Fold: {                              // a triangle wave, so F is periodic
+        const double y = posMod(x + 1.0, 4.0);
+        return y < 2.0 ? 0.5 * y * y - y : 3.0 * (y - 2.0) - 0.5 * (y * y - 4.0);
+    }
+    case Mode::Sine:  return -std::cos(x);
+    case Mode::Wrap: { const double u = posMod(x + 1.0, 2.0); return u * (0.5 * u - 1.0); }
+    case Mode::Gap: {
+        const double dz = 0.12, k = 1.25, a = std::fabs(x);
+        return a < dz ? 0.0 : logCosh(k * (a - dz)) / k;
+    }
+    case Mode::Rect:  return x > 0 ? logCosh(x) : 0.0;
+    case Mode::Harm: {                              // 0.2t - 1.6t^3 + 2.4t^5 inside, +-1 outside
+        const double a = std::fabs(x);
+        if (a > 1.0) return a - 0.9;
+        const double t2 = x * x;
+        return t2 * (0.1 + t2 * (-0.4 + 0.4 * t2));
+    }
+    default: return 0.0;
+    }
+}
+
+// One shaper stage with ADAA, for one channel. Holds the previous input, so a
+// band keeps one per stage per channel.
+class AntialiasedShaper {
+public:
+    void reset(){ x1_ = 0.0; F1_ = 0.0; mode_ = -1; }
+    double process(int mode, double x){
+        if (!enabled_ || !hasAntiderivative(mode)){ x1_ = x; mode_ = -1; return shape(mode, x); }
+        if (mode != mode_){ mode_ = mode; F1_ = antiderivative(mode, x1_); }
+        const double F = antiderivative(mode, x);
+        const double dx = x - x1_;
+        // for a tiny step the difference quotient is all rounding error, and
+        // the average of f over it is f at the middle to within that error
+        const double y = std::fabs(dx) > 1.0e-5 ? (F - F1_) / dx : shape(mode, 0.5 * (x + x1_));
+        x1_ = x; F1_ = F;
+        return y;
+    }
+    void setEnabled(bool on){ enabled_ = on; }      // off only for the tests' comparison
+private:
+    double x1_ = 0.0, F1_ = 0.0;
+    int mode_ = -1;
+    bool enabled_ = true;
+};
+
 // Loudness match so that turning drive up is a change of character rather than
 // just a change of level. Same exponent as the browser version.
 inline double autoGainFor(double drive){ return std::pow(drive, -0.55); }

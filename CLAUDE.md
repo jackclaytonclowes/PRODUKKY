@@ -59,6 +59,15 @@ wrapper change done.
 - **Control changes glide.** Crossovers, tilts and filter retunes ramp every 16 samples,
   because stepping them once per host block zippered by 6 to 8 dB. The zipper test compares
   512-sample and 16-sample automation.
+- **The oversampler's callback is stateful, so it must be called in order.** Never write
+  `down(f(a), f(b))`: C++ leaves the order of the two calls unspecified, and GCC reversed
+  it, feeding every filter and anti-aliased shaper its sample pairs swapped (clang did not,
+  so Mac builds never showed it). One call per statement. `test_core` feeds a ramp and
+  fails on any step backwards.
+- **The shapers are anti-aliased (ADAA, `core/Shapers.h`).** A new shaper mode needs its
+  antiderivative in `antiderivative()`, or an entry in `hasAntiderivative()` saying why
+  not. Each anti-aliased stage adds half a sample at the oversampled rate, which
+  `splitResponse()` includes so the tuned loop stays in tune.
 - **Tests measure; they do not restate the code.** Several early tests passed against
   broken code: a dry/wet check that compared a signal with itself, a pitch test that
   measured group delay. Prove each new test fails when the fix is removed.

@@ -108,6 +108,7 @@ public:
                 Band& bd = bands_[b];
                 for (auto* f : { &bd.dcA[ch], &bd.dcB[ch], &bd.tiltLo[ch], &bd.tiltHi[ch] }) f->reset();
                 bd.os[ch].reset();
+                bd.shA[ch].reset(); bd.shB[ch].reset();
             }
             for (auto* f : { &xLP1a_[ch], &xLP1b_[ch], &xHP1a_[ch], &xHP1b_[ch],
                              &xLP2a_[ch], &xLP2b_[ch], &xHP2a_[ch], &xHP2b_[ch], &xAP_[ch] })
@@ -138,6 +139,13 @@ public:
         for (int ch = 0; ch < maxChannels; ++ch) dry_[ch].setDelay(latency_);
     }
     int latencySamples() const { return latency_; }
+    // the tests compare against the shapers without ADAA; nothing else turns it off
+    void setAntialiasing(bool on){
+        antialias_ = on;
+        for (auto& bd : bands_) for (int ch = 0; ch < maxChannels; ++ch){
+            bd.shA[ch].setEnabled(on); bd.shB[ch].setEnabled(on);
+        }
+    }
     void seedFrom(int64_t playheadSamples){ mod_.seedFrom(playheadSamples); }
     // the host's clock, for the synced LFOs and the tremolo
     void setTransport(const Transport& t){ transport_ = t; }
@@ -370,12 +378,13 @@ public:
                     const bool sB = bd.stageB;
                     Biquad& dcA = bd.dcA[ch]; Biquad& dcB = bd.dcB[ch];
                     Biquad& tLo = bd.tiltLo[ch]; Biquad& tHi = bd.tiltHi[ch];
+                    AntialiasedShaper& shA = bd.shA[ch]; AntialiasedShaper& shB = bd.shB[ch];
                     const double out = bd.os[ch].process(bandIn[b], [&](double s){
-                        double v = shape(mA, s * driveA) * postA;
+                        double v = shA.process(mA, s * driveA) * postA;
                         v = dcA.process(v);
                         v = tHi.process(tLo.process(v));
                         if (sB){
-                            v = shape(mB, v * driveB) * postB;
+                            v = shB.process(mB, v * driveB) * postB;
                             v = dcB.process(v);
                         }
                         return s + (v - s) * mix;      // the band's own dry/wet
@@ -424,6 +433,7 @@ private:
     struct Band {
         Biquad dcA[maxChannels], dcB[maxChannels], tiltLo[maxChannels], tiltHi[maxChannels];
         Oversampler os[maxChannels];
+        AntialiasedShaper shA[maxChannels], shB[maxChannels];   // ADAA: see Shapers.h
         Ramp driveA, driveB, postA, postB, mix, level;
         int modeA = 0, modeB = 4;
         bool stageB = false;
@@ -431,6 +441,7 @@ private:
     double sr_ = 44100.0;
     int maxBlock_ = 512, osFactor_ = 0, latency_ = 0;
     bool first_ = true;
+    bool antialias_ = true;
     std::vector<float> base_, mv_;
     Band bands_[numBands];
     Biquad preHP_[maxChannels], preLP_[maxChannels];
@@ -521,8 +532,17 @@ private:
             const bool audible = mv_[id.bandMute[b]] < 0.5f && (solo == 0 || solo == b + 1);
             if (!audible) continue;
             const Band& bd = bands_[b];
+            // an anti-aliased stage averages this sample with the last one
+            // (Shapers.h), which to a small signal is (1 + z^-1) / 2 at the
+            // oversampled rate: half a sample of delay the loop has to allow for
+            const std::complex<double> adaa = 0.5 * (1.0 + std::polar(1.0, -wOs));
+            const bool stageB = mv_[id.bandStageB[b]] > 0.5f;
             std::complex<double> wet = bd.dcA[0].at(wOs);
-            if (mv_[id.bandStageB[b]] > 0.5f) wet *= bd.dcB[0].at(wOs);
+            if (antialias_ && hasAntiderivative(bd.modeA)) wet *= adaa;
+            if (stageB){
+                wet *= bd.dcB[0].at(wOs);
+                if (antialias_ && hasAntiderivative(bd.modeB)) wet *= adaa;
+            }
             const double m = mv_[id.bandMix[b]] / 100.0;
             sum += xo[b] * ((1.0 - m) + m * wet) * dbToGain(mv_[id.bandLevel[b]]);
         }

@@ -96,17 +96,31 @@ public:
         return d + d / 2;                            // outer stage + inner stage
     }
 
+    // The callback keeps state (filters, and the anti-aliased shapers, which
+    // remember the previous sample), so it must see the samples in order. Each
+    // call is its own statement for that reason: in down(f(a), f(b)) C++ leaves
+    // the order of the two calls unspecified, and GCC made the second first,
+    // which fed every stateful stage its pairs swapped. Clang happened to go
+    // left to right, which is why no Mac build showed it.
     template <typename Fn>
     inline double process(double x, Fn&& f){
         if (factor_ == 1) return f(x);
         double a, b;
         s1_.up(x, a, b);
-        if (factor_ == 2) return s1_.down(f(a), f(b));
+        if (factor_ == 2){
+            const double fa = f(a);
+            const double fb = f(b);
+            return s1_.down(fa, fb);
+        }
         double a1, a2, b1, b2;
         s2_.up(a, a1, a2);
-        const double da = s2_.down(f(a1), f(a2));
+        const double fa1 = f(a1);
+        const double fa2 = f(a2);
+        const double da = s2_.down(fa1, fa2);
         s2_.up(b, b1, b2);
-        const double db = s2_.down(f(b1), f(b2));
+        const double fb1 = f(b1);
+        const double fb2 = f(b2);
+        const double db = s2_.down(fb1, fb2);
         return s1_.down(da, db);
     }
 private:

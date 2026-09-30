@@ -113,13 +113,24 @@ with a bare compiler, and the plugin layer stays thin enough to read in one sitt
 
 ## What the port changed on purpose
 
-The browser version's constraints are not a plugin's constraints, so five things are
+The browser version's constraints are not a plugin's constraints, so six things are
 deliberately different, and the tests pin each one:
 
 - **Drive evaluates `f(x · drive)` per sample.** The browser had to bake a fixed curve over
   [-40, +40] and pre-scale into it, because `WaveShaperNode` clamps its input and swapping
   curves at control rate clicks. Natively that machinery is unnecessary, so the
   curve-interpolation error is gone too.
+- **The shapers are anti-aliased.** The first listening report was crackle and high-end
+  fizz, worst on the Rift preset. Measured, it was aliasing: Wrap jumps from +1 to -1 in
+  one sample, and at 4x a 3.7 kHz tone came out with its fold-back 7.5 dB under the note.
+  Every shaper with a closed-form antiderivative now uses first-order ADAA
+  (`core/Shapers.h`): it outputs the average of the curve over the step between samples.
+  In the audible band that takes Wrap from -7.5 to -38 dB on that tone, Rift's fold into
+  wrap from -13 to -35 dB at 1.2 kHz, and Fold, Hard, Gap, Rectify and Harmonics down by 20
+  to 35 dB, while a low note's first twenty harmonics move by 0.001 dB. Warp is already
+  clean and Quantize's steps are its sound, so both are left alone. Each stage adds half a
+  sample of delay at the oversampled rate, which the tuned feedback loop now allows for.
+  The browser version is unchanged and aliases as it always did.
 - **Oversampling is real work now.** `oversample: '4x'` was one string; here it is a
   65-tap linear-phase FIR pair per band, which is why the plugin reports 48 samples of
   latency at 4x, 32 at 2x, 0 with it off. `test_core` measures the actual delay through the

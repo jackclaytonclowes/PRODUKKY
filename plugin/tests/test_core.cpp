@@ -120,6 +120,124 @@ static double inharmonicDb(const std::vector<float>& x, double f0, double sr){
 // ------------------------------------------------------- shaper parity vs JS
 static double db(double gain){ return 20.0 * std::log10(std::max(gain, 1.0e-12)); }
 
+// ----------------------------------------------------------- anti-aliasing
+// Shapers.h averages each anti-aliased shaper over the step between samples,
+// using its antiderivative. Three things have to hold: every antiderivative
+// really is one, the oversampler hands the stateful stages their samples in
+// order (it once did not, under GCC), and the result is less aliasing in the
+// audible band without a different sound underneath.
+
+// energy below topHz that is not a harmonic of f0, against the harmonics, in
+// dB. A Blackman-Harris window keeps its own leakage near -90 dB, so the
+// measure can see a shaper get cleaner rather than hitting its own floor
+static double aliasDb(const std::vector<float>& x, double f0, double sr, double topHz){
+    const size_t n = 65536;
+    std::vector<std::complex<double>> a(n);
+    for (size_t i = 0; i < n; ++i){
+        const double t = 2.0 * M_PI * i / (n - 1);
+        a[i] = x[x.size() - n + i] * (0.35875 - 0.48829 * std::cos(t) + 0.14128 * std::cos(2 * t) - 0.01168 * std::cos(3 * t));
+    }
+    fftInPlace(a);
+    double harm = 0.0, junk = 0.0; const double binHz = sr / n;
+    for (size_t k = 3; k < n / 2; ++k){
+        const double f = k * binHz, p = std::norm(a[k]);
+        const double off = std::fabs(f / f0 - std::round(f / f0)) * f0;
+        if (off < 8.0 * binHz) harm += p; else if (f > 30.0 && f < topHz) junk += p;
+    }
+    return 10.0 * std::log10(std::max(junk, 1e-30) / std::max(harm, 1e-30));
+}
+static std::vector<float> sineThrough(const Patch& patch, double f0, bool antialias, double sr = 48000.0){
+    Engine e; e.prepare(sr, 256); applyPatch(e, patch); e.setAntialiasing(antialias); e.seedFrom(0);
+    const int n = 65536 + static_cast<int>(sr * 0.5);
+    std::vector<float> L(n), R(n);
+    for (int i = 0; i < n; ++i) L[i] = R[i] = static_cast<float>(0.5 * std::sin(2.0 * M_PI * f0 * i / sr));
+    for (int i = 0; i < n; i += 256){ float* io[2] = { L.data() + i, R.data() + i }; e.process(io, 2, std::min(256, n - i)); }
+    return L;
+}
+
+static void testAntialiasing(){
+    // 1. F' = f for every mode that claims an antiderivative, and F has no jumps
+    {
+        double worstSlope = 0.0, worstJump = 0.0; std::string where;
+        std::mt19937 rng(7);
+        std::uniform_real_distribution<double> d(-12.0, 12.0);
+        for (int m = 0; m < static_cast<int>(Mode::Count); ++m){
+            if (!hasAntiderivative(m)) continue;
+            for (int k = 0; k < 4000; ++k){
+                const double x = d(rng), h = 1.0e-6;
+                const double slope = (antiderivative(m, x + h) - antiderivative(m, x - h)) / (2.0 * h);
+                // right at a jump or corner the difference quotient straddles it
+                if (std::fabs(shape(m, x + 1e-4) - shape(m, x - 1e-4)) > 1e-2) continue;
+                const double err = std::fabs(slope - shape(m, x));
+                if (err > worstSlope){ worstSlope = err; where = modeName(m) + (" at " + f2s(x, 3)); }
+            }
+            // continuity on a fine grid: F may change by at most max|f| per step
+            const double step = 1.0e-4;
+            for (double x = -12.0; x < 12.0; x += step){
+                const double jump = std::fabs(antiderivative(m, x + step) - antiderivative(m, x)) - 1.001 * step;
+                worstJump = std::max(worstJump, jump);
+            }
+        }
+        check("anti-aliasing: every antiderivative differentiates back to its shaper", worstSlope < 1.0e-5,
+              "worst " + f2s(worstSlope, 8) + " (" + where + ")");
+        check("anti-aliasing: and none of them jumps (a jump would click)", worstJump < 1.0e-9,
+              "worst excess " + f2s(worstJump, 12));
+    }
+    // 2. the oversampler hands its callback the samples in time order. A linear
+    //    ramp stays a linear ramp through the half-band filters once they have
+    //    filled, so any step backwards means a swapped pair
+    for (int factor : { 2, 4 }){
+        Oversampler os; os.prepare(factor);
+        double prev = -1e9; int backwards = 0, calls = 0;
+        for (int i = 0; i < 2000; ++i)
+            os.process(i * 0.001, [&](double s){
+                if (i > 200){ if (s < prev) ++backwards; ++calls; }
+                prev = s; return s;
+            });
+        check("the oversampler feeds its stages in order at " + std::to_string(factor) + "x",
+              backwards == 0 && calls > 0, std::to_string(backwards) + " of " + std::to_string(calls) + " out of order");
+    }
+    // 3. less aliasing in the audible band, where it was heard
+    Patch wrap; wrap.v = { { "bands", 0 }, { "d0a", 9 }, { "m0a", 9 }, { "mx0", 100 } };
+    Patch rift; rift.v = { { "bands", 0 }, { "d0a", 9 }, { "m0a", 6 }, { "sb0", 1 }, { "d0b", 5 },
+                          { "m0b", 9 }, { "t0", -2 }, { "mx0", 100 } };
+    Patch fold; fold.v = { { "bands", 0 }, { "d0a", 9 }, { "m0a", 6 }, { "mx0", 100 } };
+    struct Case { const char* name; Patch p; double f0, atMost, gain; };
+    const Case cases[] = {
+        { "Wrap on 1.2 kHz",             wrap, 1234.5, -40.0, 20.0 },
+        { "Wrap on 3.7 kHz",             wrap, 3721.3, -30.0, 20.0 },
+        { "Fold on 3.7 kHz",             fold, 3721.3, -55.0, 20.0 },
+        { "Rift's fold into wrap, 1.2 kHz", rift, 1234.5, -30.0, 15.0 },
+    };
+    for (const auto& c : cases){
+        const double on = aliasDb(sineThrough(c.p, c.f0, true), c.f0, 48000.0, 16000.0);
+        const double off = aliasDb(sineThrough(c.p, c.f0, false), c.f0, 48000.0, 16000.0);
+        check(std::string("anti-aliasing: ") + c.name + ", aliasing under 16 kHz",
+              on < c.atMost && off - on > c.gain,
+              f2s(off, 1) + " dB without, " + f2s(on, 1) + " dB with");
+    }
+    // 4. the same sound underneath: on a low note, where there was little to
+    //    alias, the harmonics come out at the same levels
+    {
+        Patch p; p.v = { { "bands", 0 }, { "d0a", 6 }, { "m0a", 6 }, { "mx0", 100 } };
+        const double sr = 48000.0, f0 = 110.0;
+        const auto a = sineThrough(p, f0, true), b = sineThrough(p, f0, false);
+        double worst = 0.0;
+        for (int h = 1; h <= 20; ++h){
+            const double w = 2.0 * M_PI * f0 * h / sr;
+            std::complex<double> ga = 0.0, gb = 0.0;
+            for (size_t i = a.size() - 48000; i < a.size(); ++i){
+                const auto z = std::polar(1.0, -w * static_cast<double>(i));
+                ga += static_cast<double>(a[i]) * z; gb += static_cast<double>(b[i]) * z;
+            }
+            if (std::abs(gb) > 1e-3 * 48000) worst = std::max(worst, std::fabs(db(std::abs(ga) / std::abs(gb))));
+        }
+        check("anti-aliasing: the first twenty harmonics of a low note are unchanged, within 0.3 dB",
+              worst < 0.3, "worst " + f2s(worst, 3) + " dB");
+    }
+}
+
+
 // A render the caller supplies the input for, with a transport, for the things
 // that cannot be measured from noise: an impulse into a self-oscillating
 // filter, a flat level through a tremolo, an LFO locked to a tempo.
@@ -1075,6 +1193,9 @@ int main(int argc, char** argv){
         check("at the defaults the feedback controls are dimmed and the drive is not",
               fbDimmed && !driveDimmed, std::to_string(idleNow.size()) + " dimmed");
     }
+
+    std::printf("\nAnti-aliasing\n");
+    testAntialiasing();
 
     std::printf("\nZipper noise\n");
     {
