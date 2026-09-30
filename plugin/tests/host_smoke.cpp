@@ -549,6 +549,9 @@ int main(int argc, char** argv){
                     // a picture of it, with a band on Table and the LFO moving
                     if (auto* m = proc.apvts.getParameter("m0a")) m->setValueNotifyingHost(m->convertTo0to1(static_cast<float>(fracture::Mode::Table)));
                     if (auto* q = proc.apvts.getParameter("tblPos")) q->setValueNotifyingHost(q->convertTo0to1(45.0f));
+                    // the LFO the button routed would pull the picture wherever its
+                    // phase happens to be; with it at zero the shot is a steady 45%
+                    if (auto* q = proc.apvts.getParameter("mA0")) q->setValueNotifyingHost(q->convertTo0to1(0.0f));
                     runBlocks(proc, 40, 256, peak, bad);
                     juce::Image tshot(juce::Image::ARGB, w, h, true);
                     { juce::Graphics g(tshot); editor->paintEntireComponent(g, true); }

@@ -43,8 +43,8 @@ a failure. Use it before you publish.
 
 ## Publishing it
 
-`site.json` already points both Download buttons at the v0.1.0 release, which CI built
-(`Fracture-and-Crate-0.1.0-macOS.dmg`, one image holding both plugins). That link only
+`site.json` already points both Download buttons at the v0.1.1 release, which CI built
+(`Fracture-and-Crate-0.1.1-macOS.dmg`, one image holding both plugins). That link only
 works for the public once **the repository is public**. While it is private, visitors get a
 404 from GitHub.
 

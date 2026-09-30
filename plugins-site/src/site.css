@@ -66,6 +66,8 @@ a:focus-visible,.btn:focus-visible{outline:3px solid var(--blue);outline-offset:
 /* ---------- a plugin */
 .plugin .shot{border-bottom:2px solid var(--ink);background:var(--ground)}
 .plugin .shot img{width:100%}
+.plugin .shot.extra{margin:0;border-top:2px solid var(--ink);border-bottom:0}
+.plugin .shot.extra figcaption{padding:10px 22px 14px;font-size:13px;color:var(--dim);background:var(--panel)}
 .plugin .cols{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:32px}
 @media (max-width:860px){ .plugin .cols{grid-template-columns:minmax(0,1fr);gap:20px} }
 .plugin h3{font:900 32px/1 var(--black);margin:0 0 4px;letter-spacing:-.01em}

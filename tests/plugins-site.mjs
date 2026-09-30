@@ -169,7 +169,7 @@ async function main() {
   check('the page loads with its title', info.title === 'Fracture & Crate' && /Two plugins/.test(info.h1));
   await page.evaluate(async () => { for (const i of document.images) { i.loading = 'eager'; await i.decode().catch(() => {}); } });
   const widths = await page.evaluate(() => [...document.images].map(i => i.naturalWidth));
-  check('both screenshots load, each with a description', widths.length === 2 && widths.every(w => w > 1000)
+  check('all three screenshots load, each with a description', widths.length === 3 && widths.every(w => w > 1000)
         && info.images.every(i => i.alt.length > 40), JSON.stringify(widths));
   const local = info.downloads.find(d => d.href === `downloads/${dmgName}`);
   check('FRACTURE links to its disk image, as a download', local && local.dl, JSON.stringify(info.downloads));
