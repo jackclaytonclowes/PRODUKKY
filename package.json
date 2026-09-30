@@ -1,6 +1,6 @@
 {
   "name": "fracture-crate",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "FRACTURE, a multi-band multi-FX distortion, and CRATE, a twelve-bit drum processor: JUCE plugins, a browser version, and a download site.",
   "type": "module",
