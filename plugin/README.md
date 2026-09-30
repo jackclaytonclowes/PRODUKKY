@@ -398,7 +398,7 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   and a value that did not round-trip exactly is not taken for an edit; A and B keep
   separate histories, B opens as a copy of A, and a switch is never an undo step
 
-`host_smoke` — 112 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 119 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
 and comes back out unchanged; a knob drag is one undo step (a version that committed on
 every value fails five checks), and so are a pad drag, a stroke across the steps, a preset

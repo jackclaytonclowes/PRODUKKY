@@ -976,6 +976,8 @@ FractureEditor::FractureEditor(FractureProcessor& p)
         [this](const juce::File& f){ return proc.loadUserPreset(f); } }, "FRACTURE");
     canvas.addAndMakeVisible(presetMenu->box);
     canvas.addAndMakeVisible(presetMenu->saveButton);
+    canvas.addAndMakeVisible(presetMenu->prev);
+    canvas.addAndMakeVisible(presetMenu->next);
     sessionBar = std::make_unique<session::SessionBar>(*proc.session, yellow);
     canvas.addAndMakeVisible(*sessionBar);
     setWantsKeyboardFocus(true);
@@ -1367,15 +1369,20 @@ void FractureEditor::layoutDesign(){
     if (! built) return;                               // selectBand() runs before the panels do
     auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
     auto header = area.removeFromTop(46);
-    auto right = header.removeFromRight(1050);
+    auto right = header.removeFromRight(1100);
     sessionBar->setBounds(right.removeFromLeft(session::SessionBar::preferredWidth).withSizeKeepingCentre(
         session::SessionBar::preferredWidth, 30));
-    right.removeFromLeft(24);
+    right.removeFromLeft(20);
     tipsButton.setBounds(right.removeFromLeft(70).withSizeKeepingCentre(70, 30));
     right.removeFromLeft(8);
     guideButton.setBounds(right.removeFromLeft(84).withSizeKeepingCentre(84, 30));
-    right.removeFromLeft(16);
+    right.removeFromLeft(14);
+    // previous, the menu, next: presets one click apart without opening the list
+    presetMenu->prev.setBounds(right.removeFromLeft(30).withSizeKeepingCentre(30, 30));
+    right.removeFromLeft(2);
     presetMenu->box.setBounds(right.removeFromLeft(250).withSizeKeepingCentre(250, 30));
+    right.removeFromLeft(2);
+    presetMenu->next.setBounds(right.removeFromLeft(30).withSizeKeepingCentre(30, 30));
     right.removeFromLeft(4);
     presetMenu->saveButton.setBounds(right.removeFromLeft(60).withSizeKeepingCentre(60, 30));
     right.removeFromLeft(8);

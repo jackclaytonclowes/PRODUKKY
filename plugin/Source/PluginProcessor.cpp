@@ -149,7 +149,10 @@ int FractureProcessor::getNumPrograms(){ return static_cast<int>(factoryPresets(
 const juce::String FractureProcessor::getProgramName(int index){
     const auto& all = factoryPresets();
     if (index < 0 || index >= static_cast<int>(all.size())) return {};
-    return all[static_cast<size_t>(index)].name;
+    // the names are UTF-8 (they have em dashes); juce::String(const char*)
+    // would read them as ASCII and turn every dash into mojibake, in the
+    // preset menu and in the host's own preset list
+    return juce::String::fromUTF8(all[static_cast<size_t>(index)].name);
 }
 void FractureProcessor::setCurrentProgram(int index){
     const auto& all = factoryPresets();

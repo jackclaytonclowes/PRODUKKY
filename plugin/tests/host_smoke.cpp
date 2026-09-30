@@ -75,6 +75,21 @@ int main(int argc, char** argv){
               "bad " + juce::String(bad) + " peak " + juce::String(peak, 3));
     }
 
+    {   // every name reaches the host as written: UTF-8, dashes and all, not
+        // read as ASCII into mojibake (which is how they used to arrive)
+        const auto& all = fracture::factoryPresets();
+        juce::String wrong; bool anyDash = false;
+        for (int i = 0; i < proc.getNumPrograms(); ++i){
+            const juce::String n = proc.getProgramName(i);
+            if (n.toStdString() != std::string(all[static_cast<size_t>(i)].name)
+                || n.containsChar(static_cast<juce::juce_wchar>(0xE2)) || n.containsChar(static_cast<juce::juce_wchar>(0xC2)))
+                wrong << " [" << n << "]";
+            anyDash = anyDash || n.containsChar(static_cast<juce::juce_wchar>(0x2014));
+        }
+        check("every preset name reaches the host exactly as written", wrong.isEmpty(), wrong);
+        check("  ... em dashes included", anyDash);
+    }
+
     std::printf("\nState\n");
     proc.setCurrentProgram(3);
     juce::MemoryBlock state;
@@ -416,6 +431,44 @@ int main(int argc, char** argv){
                           && box->getNumItems() > static_cast<int>(fracture::factoryPresets().size()));
                     box->setSelectedItemIndex(3, juce::sendNotificationSync);
                     check("  ... and choosing a factory one from it still loads it", proc.getCurrentProgram() == 3);
+
+                    // the arrows either side of the menu, one preset at a time
+                    auto ids = [&]{ return box->getSelectedId(); };
+                    (void)ids;
+                    std::vector<juce::Component*> arrows;
+                    std::function<void(juce::Component*)> collect = [&](juce::Component* c){
+                        if (dynamic_cast<session::ArrowButton*>(c)) arrows.push_back(c);
+                        for (auto* ch : c->getChildren()) collect(ch);
+                    };
+                    collect(editor.get());
+                    session::ArrowButton* prevB = nullptr; session::ArrowButton* nextB = nullptr;
+                    for (auto* a : arrows){
+                        auto* b = static_cast<session::ArrowButton*>(a);
+                        if (b->getName() == "Next preset") nextB = b; else prevB = b;
+                    }
+                    check("there are previous and next arrows by the preset menu", prevB && nextB
+                          && prevB->isVisible() && nextB->isVisible() && prevB->getRight() <= box->getX()
+                          && nextB->getX() >= box->getRight());
+                    if (prevB && nextB){
+                        const int n = proc.getNumPrograms();
+                        proc.setCurrentProgram(3);
+                        nextB->triggerClick(); juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+                        const bool fwd = proc.getCurrentProgram() == 4;
+                        prevB->triggerClick(); prevB->triggerClick(); juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+                        const bool back = proc.getCurrentProgram() == 2;
+                        check("  ... next and previous step one preset each way", fwd && back,
+                              "now " + juce::String(proc.getCurrentProgram()));
+                        proc.setCurrentProgram(n - 1);
+                        nextB->triggerClick(); juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+                        check("  ... past the last factory preset comes one of yours", proc.userPresetName() == "My bass",
+                              proc.userPresetName());
+                        nextB->triggerClick(); juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+                        check("  ... and past the last of yours it goes round to the first",
+                              proc.getCurrentProgram() == 0 && proc.userPresetName().isEmpty());
+                        prevB->triggerClick(); juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+                        check("  ... and back again from the first", proc.userPresetName() == "My bass");
+                        proc.setCurrentProgram(0);
+                    }
                 } else check("the editor has a preset menu", false);
                 auto* bar = fe->sessionBar.get();
                 auto* prm = proc.apvts.getParameter("d0a");

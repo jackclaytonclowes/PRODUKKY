@@ -237,6 +237,30 @@ public:
     void showPopup() override { if (beforePopup) beforePopup(); juce::ComboBox::showPopup(); }
 };
 
+// A square button with a drawn triangle, in the look's own colours. Drawn
+// rather than set as text, so it does not depend on a font having the glyph.
+class ArrowButton : public juce::Button {
+public:
+    explicit ArrowButton(bool forward) : juce::Button(forward ? "Next preset" : "Previous preset"), fwd(forward){}
+    void paintButton(juce::Graphics& g, bool over, bool down) override {
+        auto r = getLocalBounds().toFloat();
+        const auto face = findColour(juce::TextButton::buttonColourId);
+        const auto ink = findColour(juce::TextButton::textColourOffId);
+        g.setColour(down || over ? face.darker(0.08f) : face);
+        g.fillRect(r);
+        g.setColour(ink);
+        g.drawRect(r, 2.0f);
+        const float s = juce::jmin(r.getWidth(), r.getHeight()) * 0.26f;
+        const auto c = r.getCentre();
+        juce::Path t;
+        if (fwd) t.addTriangle(c.x - s * 0.8f, c.y - s, c.x - s * 0.8f, c.y + s, c.x + s, c.y);
+        else     t.addTriangle(c.x + s * 0.8f, c.y - s, c.x + s * 0.8f, c.y + s, c.x - s, c.y);
+        g.fillPath(t);
+    }
+private:
+    bool fwd;
+};
+
 // The preset menu and its Save button: the factory list, then the presets you
 // saved, then a way to find them on disk. The processor side is passed in as
 // functions so CRATE and FRACTURE share this without sharing a base class.
@@ -254,10 +278,33 @@ public:
         saveButton.setTooltip("Save these settings as a preset of your own, in Documents/"
                               + product_ + "/Presets");
         saveButton.onClick = [this]{ saveAs(); };
+        prev.setTooltip("Previous preset");
+        next.setTooltip("Next preset");
+        prev.onClick = [this]{ step(-1); };
+        next.onClick = [this]{ step(+1); };
     }
 
     PresetBox box;
     juce::TextButton saveButton { "Save" };
+    ArrowButton prev { false }, next { true };
+
+    // one preset along: the factory list, then yours, round and round. From a
+    // state that matches none (a preset loaded and then changed still counts
+    // as that preset), it starts from where the menu shows
+    void step(int direction){
+        refill();
+        std::vector<int> order;
+        for (int i = 0; i < proc_.getNumPrograms(); ++i) order.push_back(i + 1);
+        for (int k = 0; k < files_.size(); ++k) order.push_back(userBase + k + 1);
+        if (order.empty()) return;
+        const int now = currentId();
+        const auto it = std::find(order.begin(), order.end(), now);
+        const int n = static_cast<int>(order.size());
+        int at = it == order.end() ? (direction > 0 ? -1 : 0) : static_cast<int>(it - order.begin());
+        at = ((at + direction) % n + n) % n;
+        chosen(order[static_cast<size_t>(at)]);
+        box.setSelectedId(order[static_cast<size_t>(at)], juce::dontSendNotification);
+    }
 
     void refill(){
         box.clear(juce::dontSendNotification);

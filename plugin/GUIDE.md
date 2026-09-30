@@ -7,6 +7,7 @@ The panel reads in the order the sound flows: top row first, left to right, then
 ## Quick start
 
 - Pick a preset from the menu at the top right and change **Drive A** in the Drive panel. That is the heart of the plugin.
+- The **arrows** either side of the preset menu step to the previous and next preset without opening the list. They run through the factory presets and then yours, and wrap round at the ends.
 - Turn **Dry/wet** (in Output, bottom right) down to blend with the clean sound.
 - **Auto gain** keeps the level steady as you add drive, so you hear the character, not just loudness.
 - Presets named for a job (**Drum bus**, **Bass**, **808**, **Vocal**, **Amp**, **Mix bus**) are the quickest way in: pick the one that matches the track.

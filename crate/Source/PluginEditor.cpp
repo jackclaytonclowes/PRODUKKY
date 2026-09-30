@@ -193,7 +193,7 @@ void FeelStrip::paint(juce::Graphics& g){
     const juce::String text = proc.transportRunning.load()
         ? juce::String(offsetMs, 1) + " ms late off the beat  ·  "
           + juce::String(push, 1) + " ms push  ·  " + juce::String(bpm, 1) + " BPM"
-        : juce::String("transport stopped — swing follows the host grid, so nothing moves");
+        : juce::String::fromUTF8("transport stopped \xe2\x80\x94 swing follows the host grid, so nothing moves");
     g.drawText(text, label, juce::Justification::centredLeft);
 }
 
@@ -323,6 +323,8 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
         [this](const juce::File& f){ return proc.loadUserPreset(f); } }, "CRATE");
     canvas.addAndMakeVisible(presetMenu->box);
     canvas.addAndMakeVisible(presetMenu->saveButton);
+    canvas.addAndMakeVisible(presetMenu->prev);
+    canvas.addAndMakeVisible(presetMenu->next);
     sessionBar = std::make_unique<session::SessionBar>(*proc.session, yellow);
     canvas.addAndMakeVisible(*sessionBar);
     setWantsKeyboardFocus(true);
@@ -507,13 +509,18 @@ void CrateEditor::layoutDesign(){
     auto header = area.removeFromTop(44);
     presetMenu->saveButton.setBounds(header.removeFromRight(56).withSizeKeepingCentre(56, 30));
     header.removeFromRight(4);
-    presetMenu->box.setBounds(header.removeFromRight(236).withSizeKeepingCentre(236, 30));
+    // previous, the menu, next: presets one click apart without opening the list
+    presetMenu->next.setBounds(header.removeFromRight(28).withSizeKeepingCentre(28, 30));
+    header.removeFromRight(2);
+    presetMenu->box.setBounds(header.removeFromRight(200).withSizeKeepingCentre(200, 30));
+    header.removeFromRight(2);
+    presetMenu->prev.setBounds(header.removeFromRight(28).withSizeKeepingCentre(28, 30));
     header.removeFromRight(10);
     // narrower than FRACTURE's: the header is 1080 wide, and the undo strip
     // has to clear the subtitle
-    guideButton.setBounds(header.removeFromRight(72).withSizeKeepingCentre(72, 30));
+    guideButton.setBounds(header.removeFromRight(64).withSizeKeepingCentre(64, 30));
     header.removeFromRight(6);
-    tipsButton.setBounds(header.removeFromRight(60).withSizeKeepingCentre(60, 30));
+    tipsButton.setBounds(header.removeFromRight(56).withSizeKeepingCentre(56, 30));
     header.removeFromRight(14);
     sessionBar->setBounds(header.removeFromRight(session::SessionBar::preferredWidth)
                               .withSizeKeepingCentre(session::SessionBar::preferredWidth, 30));

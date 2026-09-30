@@ -104,7 +104,7 @@ int CrateProcessor::getNumPrograms(){ return static_cast<int>(presets().size());
 const juce::String CrateProcessor::getProgramName(int index){
     const auto& all = presets();
     if (index < 0 || index >= static_cast<int>(all.size())) return {};
-    return all[static_cast<size_t>(index)].name;
+    return juce::String::fromUTF8(all[static_cast<size_t>(index)].name);   // UTF-8, not ASCII
 }
 void CrateProcessor::setCurrentProgram(int index){
     const auto& all = presets();
