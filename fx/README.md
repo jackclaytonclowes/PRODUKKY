@@ -34,15 +34,22 @@ the split frequency.
 
 | | | |
 |---|---|---|
-| **Soft** tanh | **Tube** asymmetric tanh | **Warm** exponential saturation |
+| **Soft** tanh | **Tube** tanh, top half capped at 0.6 | **Warm** exponential saturation |
 | **Diode** asymmetric exp clip | **Hard** clip | **Tape** soft with 3rd-order dip |
 | **Fold** triangle wavefolder | **Sine** sine fold | **Warp** phase-modulated fold |
 | **Wrap** discontinuous wrap-around | **Gap** dead-zone/crossover grit | **Rectify** half-wave |
 | **Quantize** step quantiser | **Harmonics** Chebyshev 1/3/5 | |
 
-Every mode has unity slope at the origin and saturates towards ±1, so changing mode at a
-given drive setting does not jump in level. **Harmonics** is the one deliberate exception
-— Chebyshev mixing gives it a shallow origin slope, and that is the character.
+Every mode has unity slope at the origin and stays within ±1, so changing mode at a given
+drive setting does not jump in level. **Harmonics** is the one deliberate exception —
+Chebyshev mixing gives it a shallow origin slope, and that is the character.
+
+**Tube** tops out at 0.6 on its positive half and at 1 on its negative half. The two halves
+bending differently is what adds even harmonics (the 2nd, an octave up, above all), which
+is the warmth. Soft is symmetric and adds none. The first Tube, `(e^0.8x − e^−1.2x) /
+(e^0.8x + e^−1.2x)`, looked asymmetric but reduces to `tanh(x)` exactly, so until this was
+found Tube and Soft were the same sound. `test_core` now requires Tube to carry the 2nd
+harmonic and Soft not to.
 
 ## The look
 

@@ -155,6 +155,34 @@ static std::vector<float> sineThrough(const Patch& patch, double f0, bool antial
     return L;
 }
 
+// Tube and Soft must be different sounds. They were not: Tube's first formula
+// reduced to tanh(x), Soft's, exactly. A symmetric curve makes only odd
+// harmonics; Tube caps its positive half lower, so the two halves bend
+// differently and it adds the 2nd.
+static void testTubeIsNotSoft(){
+    const double sr = 48000.0, f0 = 220.0;
+    auto harmonicDb = [&](const std::vector<float>& x, int h){         // re the fundamental
+        auto level = [&](int k){
+            const double w = 2.0 * M_PI * f0 * k / sr;
+            std::complex<double> g = 0.0;
+            for (size_t i = x.size() - 48000; i < x.size(); ++i)
+                g += static_cast<double>(x[i]) * std::polar(1.0, -w * static_cast<double>(i));
+            return std::abs(g);
+        };
+        return db(level(h) / level(1));
+    };
+    for (double drive : { 1.5, 4.0, 12.0 }){
+        Patch soft, tube;
+        soft.v = { { "bands", 0 }, { "d0a", static_cast<float>(drive) }, { "m0a", 0 }, { "mx0", 100 } };
+        tube.v = soft.v; tube.v["m0a"] = 1;
+        const auto a = sineThrough(soft, f0, true), b = sineThrough(tube, f0, true);
+        const double s2 = harmonicDb(a, 2), t2 = harmonicDb(b, 2);
+        check("Tube is not Soft at drive " + f2s(drive, 1) + ": it adds the 2nd harmonic, Soft does not",
+              t2 > -32.0 && s2 < -80.0 && t2 - s2 > 50.0,
+              "2nd harmonic: Tube " + f2s(t2, 1) + " dB, Soft " + f2s(s2, 1) + " dB");
+    }
+}
+
 static void testAntialiasing(){
     // 1. F' = f for every mode that claims an antiderivative, and F has no jumps
     {
@@ -172,9 +200,12 @@ static void testAntialiasing(){
                 if (err > worstSlope){ worstSlope = err; where = modeName(m) + (" at " + f2s(x, 3)); }
             }
             // continuity on a fine grid: F may change by at most max|f| per step
+            // (Tube's lower half reaches past 1, so each mode's own maximum)
             const double step = 1.0e-4;
+            double fmax = 0.0;
+            for (double x = -12.0; x <= 12.0; x += step) fmax = std::max(fmax, std::fabs(shape(m, x)));
             for (double x = -12.0; x < 12.0; x += step){
-                const double jump = std::fabs(antiderivative(m, x + step) - antiderivative(m, x)) - 1.001 * step;
+                const double jump = std::fabs(antiderivative(m, x + step) - antiderivative(m, x)) - (fmax * 1.001) * step;
                 worstJump = std::max(worstJump, jump);
             }
         }
@@ -1196,6 +1227,7 @@ int main(int argc, char** argv){
 
     std::printf("\nAnti-aliasing\n");
     testAntialiasing();
+    testTubeIsNotSoft();
 
     std::printf("\nZipper noise\n");
     {

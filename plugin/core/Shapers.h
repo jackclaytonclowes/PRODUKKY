@@ -50,15 +50,17 @@ inline double jsRound(double v){ return std::floor(v + 0.5); }
 // JavaScript's % keeps the sign of the dividend, like std::fmod.
 inline double posMod(double a, double n){ return std::fmod(std::fmod(a, n) + n, n); }
 
+constexpr double tubeCeiling = 0.6;     // where Tube's positive half tops out
+
 inline double shape(int mode, double x){
     switch (static_cast<Mode>(mode)){
     case Mode::Soft:  return std::tanh(x);
-    case Mode::Tube: {                              // asymmetric tanh
-        if (x >  40.0) return 1.0;
-        if (x < -40.0) return -1.0;
-        const double a = std::exp(x * 0.8), b = std::exp(-x * 1.2);
-        return (a - b) / (a + b);
-    }
+    case Mode::Tube:                                // tanh, with the top half capped at 0.6
+        // Both halves leave zero at Soft's slope and bend differently, which
+        // adds the even harmonics Soft cannot. The first version,
+        // (e^0.8x - e^-1.2x) / (e^0.8x + e^-1.2x), reduces to tanh(x) exactly,
+        // so Tube was Soft under another name
+        return x >= 0 ? tubeCeiling * std::tanh(x / tubeCeiling) : std::tanh(x);
     case Mode::Warm:  return (x < 0 ? -1.0 : 1.0) * (1.0 - std::exp(-std::fabs(x)));
     case Mode::Diode: return x > 0 ? 1.0 - std::exp(-x)
                                    : -0.55 * (1.0 - std::exp(x / 0.55));
@@ -121,8 +123,8 @@ inline bool hasAntiderivative(int mode){
 
 inline double antiderivative(int mode, double x){
     switch (static_cast<Mode>(mode)){
-    case Mode::Soft:
-    case Mode::Tube:  return logCosh(x);            // Tube's formula reduces to tanh(x) exactly
+    case Mode::Soft:  return logCosh(x);
+    case Mode::Tube:  return x >= 0 ? tubeCeiling * tubeCeiling * logCosh(x / tubeCeiling) : logCosh(x);
     case Mode::Warm: { const double a = std::fabs(x); return a + std::exp(-a) - 1.0; }
     case Mode::Diode: return x > 0 ? x + std::exp(-x) - 1.0
                                    : -0.55 * x + 0.3025 * (std::exp(x / 0.55) - 1.0);

@@ -322,10 +322,14 @@ const CURVE_N = 32769;     // ~820 curve points across ±1 at unity drive
 
 const MODES = [
   { id:'soft', name:'Soft',      fn: x => Math.tanh(x) },
-  { id:'tube', name:'Tube',      fn: x => {                      // asymmetric tanh
-      const a = Math.exp(x*0.8), b = Math.exp(-x*1.2);
-      return (a-b)/(a+b);
-    } },
+  // Tube: tanh, with the positive half topping out at 0.6 instead of 1. Both
+  // halves leave zero at the same slope as Soft, so quiet signals match, but
+  // they bend differently, which adds the even harmonics (the 2nd above all)
+  // that make it warm; Soft, being symmetric, makes none. It stays inside +-1
+  // like every mode, so switching to it does not jump in level. (The first
+  // version, (e^0.8x - e^-1.2x) / (e^0.8x + e^-1.2x), looked asymmetric but
+  // reduces to tanh(x) exactly: Tube was Soft under another name.)
+  { id:'tube', name:'Tube',      fn: x => x >= 0 ? 0.6*Math.tanh(x/0.6) : Math.tanh(x) },
   { id:'warm', name:'Warm',      fn: x => Math.sign(x)*(1-Math.exp(-Math.abs(x))) },
   { id:'diode',name:'Diode',     fn: x => x > 0 ? 1-Math.exp(-x) : -0.55*(1-Math.exp(x/0.55)) },
   { id:'hard', name:'Hard',      fn: x => clamp(x,-1,1) },
