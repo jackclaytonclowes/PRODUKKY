@@ -173,6 +173,29 @@ const READING = `async (patch, freq, seconds) => {
   return reading;
 }`;
 
+/* A sine whose period divides the frame exactly, through the engine, and the
+   level of each of its first eight harmonics against the first, in dB: for
+   checking that a drawn Table gives the harmonics that were drawn. */
+const HARMONICS = `async (patch) => {
+  const sr = 48000, len = sr, f0 = 375, N = 16384;           // 128 cycles in N
+  const ctx = new OfflineAudioContext(2, len, sr);
+  const buf = ctx.createBuffer(2, len, sr);
+  for (let c = 0; c < 2; c++){ const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = 0.5*Math.sin(2*Math.PI*f0*i/sr); }
+  const eng = window.FX.createEngine(ctx); await eng.initWorklet();
+  window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+  const s = ctx.createBufferSource(); s.buffer = buf; s.connect(eng.input); s.start();
+  const r = (await ctx.startRendering()).getChannelData(0);
+  const st = len - N, lv = [];
+  let bad = 0, peak = 0;
+  for (const v of r){ if (!Number.isFinite(v)) bad++; else peak = Math.max(peak, Math.abs(v)); }
+  for (let h = 1; h <= 8; h++){
+    let re = 0, im = 0;
+    for (let i = 0; i < N; i++){ const ph = 2*Math.PI*h*f0*i/sr; re += r[st+i]*Math.cos(ph); im += r[st+i]*Math.sin(ph); }
+    lv.push(Math.hypot(re, im));
+  }
+  return { db: lv.map(v => 20*Math.log10(v/lv[0] + 1e-30)), bad, peak };
+}`;
+
 // energy that is not a harmonic of f0, against the fundamental, below 18 kHz
 function aliasDb(x, f0, sr = 48000){
   const N = 1 << 14, start = x.length - N;
@@ -463,6 +486,76 @@ async function main() {
     }
   }
 
+  console.log('\nThe harmonic table');
+  {
+    // the curve alone: a full-scale cosine through it comes out as the bars
+    const maths = await page.evaluate(() => {
+      const { tableCurve, tableF, tableFF } = window.FX;
+      const harmonicsOf = t => {
+        const n = 4096, c = new Float64Array(17);
+        for (let j = 0; j < n; j++){ const th = Math.PI*(j + 0.5)/n, y = tableF(t, Math.cos(th)); for (let k = 0; k <= 16; k++) c[k] += y*Math.cos(k*th); }
+        return Array.from(c, (v, k) => v*(k ? 2 : 1)/n);
+      };
+      const bars = new Float64Array(16); bars[0] = 0.6; bars[2] = -0.3; bars[7] = 0.1;
+      const t = tableCurve(bars), h = harmonicsOf(t);
+      let worst = 0;
+      for (let k = 1; k <= 16; k++) worst = Math.max(worst, Math.abs(h[k] - bars[k - 1]/1.0));
+      // an even harmonic alone: shifted so that silence stays silent
+      const even = new Float64Array(16); even[1] = 1;
+      const te = tableCurve(even);
+      // F is the area under f, past the clamp included
+      let fWorst = 0;
+      for (let x = -1.5; x < 1.5; x += 0.01){ const d = (tableFF(t, x + 1e-5) - tableFF(t, x - 1e-5))/2e-5; fWorst = Math.max(fWorst, Math.abs(d - tableF(t, x))); }
+      let peak = 0;
+      const wild = Float64Array.from({ length: 16 }, (_, k) => (k % 3 ? 1 : -1));
+      const tw = tableCurve(wild);
+      for (let x = -1; x <= 1; x += 0.001) peak = Math.max(peak, Math.abs(tableF(tw, x)));
+      return { worst, even0: tableF(te, 0), fWorst, silent: tableF(tableCurve(new Float64Array(16)), 0.5), peak };
+    });
+    check('a full-scale sine through the curve comes out as the bars drawn (bars summing to 100%)',
+      maths.worst < 1e-6, 'worst ' + maths.worst.toExponential(1));
+    check('an even harmonic alone leaves silence silent', Math.abs(maths.even0) < 1e-12, String(maths.even0));
+    // (a central difference that straddles the corner at +-1, where the
+    // curve's slope jumps, is out by about its own step, 1e-5)
+    check('F is the curve\'s antiderivative, past the clamp too', maths.fWorst < 1e-4, maths.fWorst.toExponential(1));
+    check('no drawing exceeds full scale, and no bars is silence', maths.peak <= 1 + 1e-9 && maths.silent === 0,
+      `peak ${maths.peak.toFixed(4)}, empty ${maths.silent}`);
+
+    // through the engine, Drive 2 so the half-scale sine fills the curve
+    const harm = patch => page.evaluate(`(${HARMONICS})(${JSON.stringify(patch)})`);
+    const T = { bands: '1', m0a: 'table', d0a: 2, autoGain: false, safety: false };
+    const f1 = await harm({ ...T, tb1h2: 50 });
+    check('through the engine, frame 1 drawn with a 2nd at 50% gives a 2nd at -6.0 dB',
+      Math.abs(f1.db[1] + 6.02) < 0.1 && Math.max(...f1.db.slice(2)) < -60, f1.db.map(v => v.toFixed(2)).join(' '));
+    const f4 = await harm({ ...T, tblPos: 100 });
+    check('Position 100% is frame 4: the 3rd at 50/60, the 5th at 40/60, no evens',
+      Math.abs(f4.db[2] - 20*Math.log10(50/60)) < 0.1 && Math.abs(f4.db[4] - 20*Math.log10(40/60)) < 0.1 && f4.db[1] < -50,
+      f4.db.map(v => v.toFixed(2)).join(' '));
+    // halfway between frames 2 and 3: 100, 30, 25, 15, 17.5
+    const half = await harm({ ...T, tblPos: 50 });
+    const want = [30, 25, 15, 17.5].map(v => 20*Math.log10(v/100));
+    check('Position 50% blends frames 2 and 3 bar by bar',
+      want.every((w, i) => Math.abs(half.db[i + 1] - w) < 0.1), half.db.slice(1, 5).map(v => v.toFixed(2)).join(' ') + ' against ' + want.map(v => v.toFixed(2)).join(' '));
+    const wild = {};
+    for (let f = 1; f <= 4; f++) for (let k = 1; k <= 16; k++) wild[`tb${f}h${k}`] = ((f*7 + k*13) % 21) * 10 - 100;
+    const hot = await render({ bands: '1', m0a: 'table', d0a: 40, sb0: true, m0b: 'table', d0b: 40, tblPos: 37, ...wild });
+    check('Table at +32 dB, two stages, every bar drawn: finite and bounded',
+      hot.bad === 0 && hot.peak <= 0.95 && hot.rms > 0.0005, `bad ${hot.bad} peak ${hot.peak.toFixed(3)}`);
+    const mod = await page.evaluate(() => window.FX.PLIST.find(d => d.id === 'tblPos').mod === true);
+    check('Table position is a matrix target', mod);
+
+    // Start from: the modes that sixteen harmonics can draw, and how closely
+    const sf = await page.evaluate(() => {
+      const fx = window.FX, err = id => fx.startFromError(fx.MODES.find(m => m.id === id).fn, 4);
+      return { soft: err('soft'), tube: err('tube'), tape: err('tape'), warm: err('warm'),
+               offered: fx.START_FROM_MODES.map(m => m.id) };
+    });
+    check('Start from: Soft, Tube, Tape and Warm come back within 1% at drive 4',
+      sf.soft < 0.01 && sf.tube < 0.01 && sf.tape < 0.01 && sf.warm < 0.01, JSON.stringify(sf));
+    check('Start from does not offer Wrap or Rectify, whose edges need more than sixteen harmonics',
+      !sf.offered.includes('wrap') && !sf.offered.includes('rect') && sf.offered.includes('tube'), sf.offered.join(','));
+  }
+
   console.log('\nModulation');
   const modded = await render({ bands: '1', d0a: 12, mS0: 'lfo1', mD0: 'd0a', mA0: 100, l1Rate: 8 }, 0.4);
   check('lfo on drive renders finite', modded.bad === 0 && modded.rms > 0.005 && modded.peak <= 0.95,
@@ -557,10 +650,41 @@ async function main() {
     }
   }
 
+  console.log('\nThe harmonic table panel');
+  {
+    const hidden = () => page.evaluate(() => document.getElementById('tablePanel').classList.contains('hidden'));
+    check('the table panel starts closed', await hidden());
+    await page.evaluate(() => { const s = [...document.querySelectorAll('.bandpane.on select')][0]; s.value = 'table'; s.dispatchEvent(new Event('change')); });
+    check('choosing Table as a mode opens it', !(await hidden()) && await page.evaluate(() => window.FX.state.m0a === 'table'));
+    // draw across frame 1, left to right, from the top of the 3rd bar to the
+    // middle of the 6th: every bar crossed is filled
+    const cv = await page.$('#tFrames canvas');
+    const bb = await cv.boundingBox();
+    const lane = { x: bb.x + 8, y: bb.y + 26, w: bb.width - 16, h: bb.height - 44 };
+    const xOf = k => lane.x + (k + 0.5)*lane.w/16, yOf = v => lane.y + lane.h/2 - v/100*lane.h/2;
+    await page.mouse.move(xOf(2), yOf(90)); await page.mouse.down();
+    await page.mouse.move(xOf(5), yOf(0), { steps: 1 }); await page.mouse.up();
+    const drawn = await page.evaluate(() => [3, 4, 5, 6].map(k => window.FX.state[`tb1h${k}`]));
+    check('dragging across a frame sets every bar it crosses', drawn[0] > 80 && drawn[1] > 40 && drawn[2] > 15 && Math.abs(drawn[3]) < 8, drawn.join(', '));
+    await page.mouse.click(xOf(2), yOf(50), { clickCount: 2 });
+    check('double-clicking a bar zeroes it', await page.evaluate(() => window.FX.state.tb1h3 === 0));
+    await page.select('#tStart', '2:tube');
+    const fill = await page.evaluate(() => ({ f3: [1, 2, 3].map(k => window.FX.state[`tb3h${k}`]), f2: window.FX.state.tb2h3, sel: document.getElementById('tStart').value }));
+    check('Start from Tube fills frame 3 with Tube\'s harmonics, and only frame 3',
+      fill.f3[0] === 100 && Math.abs(fill.f3[1]) > 5 && fill.f2 === 50 && fill.sel === '', JSON.stringify(fill));
+    await page.click('#btnWobble');
+    const routed = await page.evaluate(() => { const st = window.FX.state; const k = [0,1,2,3,4,5].find(k => st[`mD${k}`] === 'tblPos'); return k === undefined ? null : [st[`mS${k}`], st[`mA${k}`], document.getElementById('btnWobble').disabled]; });
+    check('Wobble with LFO 1 routes LFO 1 to Position in a free slot', routed && routed[0] === 'lfo1' && routed[1] === 50 && routed[2] === true, JSON.stringify(routed));
+    const tshot = path.join(SHOTS, 'fx-table.png');
+    await (await page.$('#tablePanel')).screenshot({ path: tshot });
+    console.log('  screenshot ' + path.relative(root, tshot));
+    await page.evaluate(() => { const s = document.getElementById('presetSel'); s.value = '0'; s.dispatchEvent(new Event('change')); });
+  }
+
   console.log('\nPresets');
   const presetProblems = await page.evaluate(() => {
     const bad = [];
-    for (const pr of window.FX.PRESETS) {
+    for (const pr of window.FX.MENU_PRESETS) {
       for (const [k, v] of Object.entries(pr.v)) {
         const d = window.FX.P[k];
         if (!d) { bad.push(`${pr.name}: unknown param ${k}`); continue; }
@@ -579,17 +703,23 @@ async function main() {
     const body = src.slice(src.indexOf('presetCategory('));
     const plugin = Object.fromEntries([...body.matchAll(/\{ "([^"]+)", "([^"]+)" \}/g)].map(m => [m[1], m[2]]));
     const { names, headings, groups } = await page.evaluate(() => ({
-      names: window.FX.PRESETS.map(p => p.name), headings: window.FX.PRESET_HEADINGS,
+      names: window.FX.MENU_PRESETS.map(p => p.name), headings: window.FX.PRESET_HEADINGS,
       groups: [...document.querySelectorAll('#presetSel optgroup')].map(g => g.label),
     }));
     const wrong = names.filter(n => !headings[n] || headings[n] !== plugin[n]).map(n => `${n}: ${headings[n]} vs ${plugin[n]}`);
-    check(`every browser preset sits under the plugin's heading (${names.length})`, wrong.length === 0, wrong.join(' | '));
-    check('the menu shows the headings in order', groups.join(',') === 'Start,Character,By use', groups.join(','));
+    check(`every preset in the menu sits under the plugin's heading (${names.length})`, wrong.length === 0, wrong.join(' | '));
+    check('the menu shows the headings in order', groups.join(',') === 'Start,Character,By use,Harmonic table,Stereo', groups.join(','));
+    // the plugin's own presets, shown here too, must be the plugin's exactly
+    const pluginJson = Object.fromEntries([...src.matchAll(/\{ "([^"]+)",\s*R"JSON\((.*?)\)JSON" \}/gs)].map(m => [m[1], JSON.parse(m[2])]));
+    const ours = await page.evaluate(() => window.FX.PLUGIN_PRESETS);
+    const differ = ours.filter(pr => JSON.stringify(pr.v) !== JSON.stringify(pluginJson[pr.name])).map(pr => pr.name);
+    check(`the plugin's Table and Stereo presets here are the plugin's own (${ours.length})`,
+      ours.length === 5 && differ.length === 0, differ.join(' | '));
   }
 
-  const presetCount = await page.evaluate(() => window.FX.PRESETS.length);
+  const presetCount = await page.evaluate(() => window.FX.MENU_PRESETS.length);
   for (let i = 0; i < presetCount; i++) {
-    const pr = await page.evaluate(i => window.FX.PRESETS[i], i);
+    const pr = await page.evaluate(i => window.FX.MENU_PRESETS[i], i);
     const r = await render(pr.v, 0.35);
     check(`preset "${pr.name}"`, r.bad === 0 && r.peak <= 0.95 && r.rms > 0.002,
       `bad ${r.bad} peak ${r.peak.toFixed(3)} rms ${r.rms.toFixed(4)}`);

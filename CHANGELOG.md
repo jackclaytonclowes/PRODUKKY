@@ -5,8 +5,11 @@ before you try a new version on something that matters.
 
 ## Since 0.2.0
 
-**The browser version** has caught up: Stereo per band (L/R, Mid, Side), the Scope's input
-line and harmonic readout, typed values, and the preset menu under the plugin's headings.
+**The browser version** has caught up: the **harmonic table** (draw four frames of harmonics
+and morph between them, with the plugin's Table presets), Stereo per band (L/R, Mid, Side)
+with the plugin's two Stereo presets, the Scope's input line and harmonic readout, typed
+values, and the preset menu under the plugin's headings. Tuned feedback, the filter rhythm
+and the sidechain are still plugin only.
 It also has a new test sound, a **45 Hz sub sine**, for hearing what a setting does to the
 low end.
 

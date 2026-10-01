@@ -8,7 +8,7 @@ destructive digital modes, feedback, a resonant filter after the drive, and modu
 patched to anything).
 
 ```
-npm run test:fx          # headless smoke test, 98 assertions
+npm run test:fx          # headless smoke test, 121 assertions
 npm run test:fx:head     # same, in a visible browser
 open fx/fracture.html    # or just double-click it
 ```
@@ -163,6 +163,27 @@ move under modulation.
   up is a change of character rather than just a change of level. It is a knob, not a
   law — turn it off to hear what the drive is really doing.
 
+## The harmonic table
+
+**Table** is a drive mode you draw, the plugin's own (`plugin/core/HarmonicTable.h`)
+ported: four frames of sixteen bars, one per harmonic, and a **Position** that morphs
+from frame 1 at 0% to frame 4 at 100%. Choose it as Mode A or B in a band and the panel
+opens under Drive (or press **Harmonic table**). The curve is a sum of Chebyshev
+polynomials, so a sine that fills it comes out with exactly the harmonics drawn; it is
+normalised by the sum of the bars, shifted so silence stays silent, and anti-aliased from
+its antiderivative like the other modes. **Start from…** fills a frame with another mode's
+harmonics, or all four at rising drive; **Wobble with LFO 1** routes an LFO to Position.
+
+It is not in `MODES`. That list is the fourteen curves the plugin is checked against
+point by point, and Table is drawn rather than computed, so it sits beside them as mode
+14, which is its number in the plugin too. The worklet gets the frames by message and
+Position as an AudioParam, and rebuilds the curve every sixteen samples while Position
+moves. The ids (`tblPos`, `tb1h1` … `tb4h16`) are the plugin's, so a table copied out of
+one pastes into the other. The plugin's three Table presets and its two Stereo presets
+are shown here too, from a list of their own (`PLUGIN_PRESETS`) so they do not flow back
+into the presets the plugin is generated from; the test requires each to equal the
+plugin's copy.
+
 ## The Scope, and the test sounds
 
 The spectrum draws the input as a grey line over the output's bars, so the gap between
@@ -195,7 +216,11 @@ known mid and side signals: Mid on a mono signal is L/R, Mid leaves a side-only 
 clean, Side leaves a mono one clean, all to under −60 dB. The harmonic reader is checked
 on synthetic spectra (a 2nd at −20 dB reads as −20), against a chord and a note below its
 range, and through the engine's own analysers; typed values, the preset headings (against
-the plugin's table) and the sub sine are checked too. It
+the plugin's table) and the sub sine are checked too. The harmonic table is checked on the
+curve (a full sine comes out as the bars, silence stays silent, F is its antiderivative,
+nothing exceeds full scale), through the engine (a 2nd drawn at 50% comes out at −6.0 dB,
+Position at 50% blends two frames bar by bar, two stages at +32 dB stay bounded), and in
+the panel (drawing, double-click, Start from, Wobble). It
 also checks every preset only references real parameters with in-range values, and takes a
 screenshot to `tests/screenshots/fx-fracture.png`, because layout regressions do not fail
 assertions.

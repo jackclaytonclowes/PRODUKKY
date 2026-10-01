@@ -181,7 +181,7 @@ canvas{display:block;width:100%;border-radius:0;background:var(--face);
 
 /* ---------- source strip ---------- */
 .src{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;padding:14px}
-.src .grp{display:flex;gap:8px;align-items:flex-end}
+.src .grp{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 input[type=file]{display:none}
 .filelab{font:600 10px/1.2 var(--grot);letter-spacing:.14em;text-transform:uppercase;
   padding:8px 11px;border:1.5px solid var(--ink);background:var(--face);cursor:pointer}
@@ -194,6 +194,15 @@ footer .claim{font:600 9px/1.7 var(--grot);letter-spacing:.18em;text-transform:u
 kbd{background:var(--face);border:1.5px solid var(--ink);border-radius:0;
   padding:0 4px;font:11px/1.5 var(--mono)}
 .hidden{display:none}
+.tblbar{display:flex;gap:12px;align-items:center;margin-top:12px}
+.tframes{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:10px}
+.tframes canvas{cursor:crosshair;touch-action:none}
+.tlow{display:grid;grid-template-columns:210px repeat(3,1fr);gap:18px;margin-top:16px;align-items:start}
+.tctl{display:flex;flex-direction:column;gap:10px;align-items:stretch}
+.tctl .knob{align-self:center}
+.tctl .note.warn{color:var(--red)}
+@media (max-width:900px){ .tframes{grid-template-columns:repeat(2,1fr)} .tlow{grid-template-columns:1fr 1fr} }
+@media (max-width:560px){ .tframes,.tlow{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
@@ -246,6 +255,27 @@ kbd{background:var(--face);border:1.5px solid var(--ink);border-radius:0;
       <h2 data-no="03">Drive</h2>
       <div class="tabs" id="bandTabs"></div>
       <div id="bandPanes"></div>
+      <div class="tblbar">
+        <button class="sm tgl" id="btnTable" aria-controls="tablePanel" aria-expanded="false">Harmonic table</button>
+        <span class="note">Table is a drive mode you draw yourself: choose it as Mode A or B in a band.</span>
+      </div>
+    </div>
+
+    <div class="panel col-12 hidden" data-hue="drive" id="tablePanel"><h2 data-no="03">Harmonic table</h2>
+      <div class="note" style="max-width:none">Draw the harmonics a full sine should come out with: bar 1 is the note,
+        bar 2 an octave up, and so on. Up is in phase, down is flipped; double-click a bar to zero it. Odd
+        harmonics (red) sound hollow, even ones (blue) warm. Position morphs frame 1 to 4.</div>
+      <div class="tframes" id="tFrames"></div>
+      <div class="tlow">
+        <div class="tctl" id="tCtl">
+          <button class="sm" id="btnWobble" title="Route LFO 1 to Table position in a free matrix slot, so the harmonics move on their own">Wobble with LFO 1</button>
+          <select id="tStart" aria-label="Start a frame from another drive mode"></select>
+          <div class="note" id="tNote"></div>
+        </div>
+        <canvas id="cvTCurve" height="170"></canvas>
+        <canvas id="cvTWave" height="170"></canvas>
+        <canvas id="cvTHarm" height="170"></canvas>
+      </div>
     </div>
 
     <div class="panel col-4" data-hue="crush"><h2 data-no="04">Crush &amp; feedback</h2><div class="row" id="secCrush"></div>
@@ -372,9 +402,131 @@ const MODES = [
 ];
 const MODE_BY_ID = Object.fromEntries(MODES.map(m => [m.id, m]));
 
+/* --------------------------------------------------------- the harmonic table
+   The plugin's Table mode (plugin/core/HarmonicTable.h): a waveshaper drawn as
+   harmonics. T_k(cos t) = cos(k t), so a curve that is a sum of Chebyshev
+   polynomials c_k T_k turns a full-scale sine into exactly harmonic k at level
+   c_k, for every bar drawn. Four frames of sixteen bars, and a Position that
+   morphs across them. Normalised by the sum of the bars so no drawing exceeds
+   full scale, shifted so f(0) = 0 so silence stays silent, and clamped to
+   -1..1 where the polynomials are bounded. Its antiderivative is another
+   Chebyshev series, so it is anti-aliased like the other modes.
+
+   Table is not in MODES: MODES is the fourteen curves the plugin is checked
+   against point by point (plugin/tools/make-reference.mjs), and Table is drawn,
+   not computed. It is mode 14, after them, as in the plugin, so a mode number
+   means the same in both. These functions are copied into the shaper worklet
+   as source, so the page and the audio thread run the same arithmetic. */
+const TABLE_FRAMES = 4, TABLE_HARMONICS = 16, TABLE_INDEX = 14;
+const TABLE_START = [                                      // the plugin's defaults, in %
+  [100],                                                   // 1: the fundamental alone
+  [100, 0, 50, 0, 35],                                     // 2: 1, 3, 5: hollow
+  [100, 60, 0, 30],                                        // 3: 1, 2, 4: warm, an octave up
+  [60, 0, 50, 0, 40, 0, 30, 0, 20],                        // 4: odd to the 9th: buzzy
+];
+// sum of c[k] T_k(x), k = 0..n, by Clenshaw's recurrence
+function clenshaw(c, n, x){
+  let b1 = 0, b2 = 0;
+  for (let k = n; k >= 1; k--){ const b0 = 2*x*b1 - b2 + c[k]; b2 = b1; b1 = b0; }
+  return c[0] + x*b1 - b2;
+}
+// bars[k] is harmonic k+1, in -1..1 (a negative bar flips that harmonic)
+function tableCurve(bars){
+  const H = 16, a = new Float64Array(H + 1), A = new Float64Array(H + 2);
+  let sum = 0;
+  for (let k = 0; k < H; k++) sum += Math.abs(bars[k]);
+  const t = { a, A, fLo:0, fHi:0, FLo:0, FHi:0, silent: sum < 1e-9 };
+  if (t.silent) return t;
+  for (let k = 1; k <= H; k++) a[k] = bars[k - 1]/sum;
+  // T_k(0) = cos(k pi/2): 0 for odd k, +-1 for even
+  let f0 = 0;
+  for (let k = 2; k <= H; k += 2) f0 += ((k/2) % 2 ? -1 : 1)*a[k];
+  a[0] = -f0;
+  // integrate term by term: int T0 = T1, int T1 = (T2 + T0)/4,
+  // int Tk = T(k+1)/(2(k+1)) - T(k-1)/(2(k-1))
+  A[1] += a[0];
+  A[2] += a[1]/4; A[0] += a[1]/4;
+  for (let k = 2; k <= H; k++){ A[k + 1] += a[k]/(2*(k + 1)); A[k - 1] -= a[k]/(2*(k - 1)); }
+  t.fLo = clenshaw(a, H, -1); t.fHi = clenshaw(a, H, 1);
+  t.FLo = clenshaw(A, H + 1, -1); t.FHi = clenshaw(A, H + 1, 1);
+  return t;
+}
+function tableF(t, x){
+  if (t.silent) return 0;
+  if (x >= 1) return t.fHi;
+  if (x <= -1) return t.fLo;
+  return clenshaw(t.a, 16, x);
+}
+// continues in a straight line past the clamp, so it has no corner or jump
+function tableFF(t, x){
+  if (t.silent) return 0;
+  if (x >= 1) return t.FHi + t.fHi*(x - 1);
+  if (x <= -1) return t.FLo + t.fLo*(x + 1);
+  return clenshaw(t.A, 17, x);
+}
+// frames: 64 bars, frame by frame, in -1..1. Position 0..1: frame 1 at 0,
+// frame 4 at 1, linear in between
+function blendFrames(frames, position, out){
+  const p = Math.min(1, Math.max(0, position))*3;
+  const i = Math.min(Math.floor(p), 2), t = p - i;
+  for (let k = 0; k < 16; k++) out[k] = frames[i*16 + k] + (frames[(i + 1)*16 + k] - frames[i*16 + k])*t;
+  return out;
+}
+/* "Start from": the bars that give another mode's sound, which are that mode's
+   Chebyshev coefficients at the given drive, scaled so the largest is 100%
+   (HarmonicTable.h barsFromShaper). Bars under half a percent are left at 0. */
+function barsFromShaper(fn, drive){
+  const n = 4096, c = new Float64Array(TABLE_HARMONICS);
+  for (let j = 0; j < n; j++){
+    const t = Math.PI*(j + 0.5)/n, y = fn(drive*Math.cos(t));
+    for (let k = 0; k < TABLE_HARMONICS; k++) c[k] += y*Math.cos((k + 1)*t);
+  }
+  let peak = 0;
+  for (let k = 0; k < TABLE_HARMONICS; k++){ c[k] *= 2/n; peak = Math.max(peak, Math.abs(c[k])); }
+  return Array.from(c, v => { const b = peak > 0 ? v/peak : 0; return Math.abs(b) < 0.005 ? 0 : b; });
+}
+const START_FROM_DRIVE = 4, START_FROM_DRIVES = [1, 2, 4, 8];
+// how far the drawn version is from the real curve, RMS over -1..1 once
+// scaled to fit best, as a fraction of the real one
+function startFromError(fn, drive){
+  const c = tableCurve(barsFromShaper(fn, drive)), n = 1001;
+  const g = new Float64Array(n), f = new Float64Array(n);
+  let gg = 0, gf = 0, ff = 0, e = 0;
+  for (let i = 0; i < n; i++){
+    const x = -1 + 2*i/(n - 1);
+    g[i] = fn(drive*x); f[i] = tableF(c, x);
+    gg += g[i]*g[i]; gf += g[i]*f[i]; ff += f[i]*f[i];
+  }
+  const a = ff > 0 ? gf/ff : 0;
+  for (let i = 0; i < n; i++) e += (g[i] - a*f[i])**2;
+  return gg > 0 ? Math.sqrt(e/gg) : 1;
+}
+// offered only if every drive it could be filled at comes back within 15%: a
+// frame that does not sound like its name would be a false label
+const START_FROM_MODES = MODES.filter(m => START_FROM_DRIVES.every(d => startFromError(m.fn, d) <= 0.15));
+// the table as the page's controls have it, for the drawings
+// (state is filled in once the parameters exist; tablePosNow follows
+// modulation, set by the live engine's Position)
+let tablePosNow = 0, tableCache = null;
+function tableFramesFromState(){
+  const fr = new Float64Array(64);
+  for (let f = 0; f < TABLE_FRAMES; f++) for (let k = 0; k < TABLE_HARMONICS; k++)
+    fr[f*16 + k] = (state[`tb${f+1}h${k+1}`] ?? (TABLE_START[f][k] || 0))/100;
+  return fr;
+}
+function tableCurveNow(){
+  const fr = tableFramesFromState(), key = tablePosNow + '|' + fr.join(',');
+  if (!tableCache || tableCache.key !== key)
+    tableCache = { key, curve: tableCurve(blendFrames(fr, tablePosNow, new Float64Array(16))) };
+  return tableCache.curve;
+}
+const TABLE_MODE = { id:'table', name:'Table', fn: x => tableF(tableCurveNow(), x) };
+MODE_BY_ID.table = TABLE_MODE;
+const DRIVE_MODES = [...MODES.map(m => [m.id, m.name]), ['table', 'Table']];
+
 const curveCache = new Map();
 function curveFor(id){
-  let c = curveCache.get(id);
+  let c = id === 'table' ? null : curveCache.get(id);
   if (c) return c;
   const fn = MODE_BY_ID[id].fn;
   c = new Float32Array(CURVE_N);
@@ -382,7 +534,7 @@ function curveFor(id){
     const x = (i/(CURVE_N-1))*2 - 1;
     c[i] = clamp(fn(x*D_MAX), -1, 1);
   }
-  curveCache.set(id, c);
+  if (id !== 'table') curveCache.set(id, c);
   return c;
 }
 // Gentle limiter, used for the safety clip and inside the feedback loop.
@@ -614,6 +766,8 @@ const SHAPER_WORKLET = `
 const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
 const FN = [${MODES.map(m => m.fn.toString()).join(',\n')}];
 const FA = [${MODES.map(m => m.F ? m.F.toString() : 'null').join(',\n')}];
+const TABLE_INDEX = ${TABLE_INDEX};
+${[clenshaw, tableCurve, tableF, tableFF, blendFrames].map(f => f.toString()).join('\n')}
 const D_MAX = ${D_MAX};
 const TAPS = 65, M = 32;
 const H = (() => {
@@ -651,16 +805,46 @@ class Stage {                        // one 2x stage, up and down, one channel
   }
 }
 class Chan {
-  constructor(){ this.s1 = new Stage(); this.s2 = new Stage(); this.x1 = 0; this.F1 = 0; this.m = -1; this.t = new Float64Array(4); }
+  constructor(){ this.s1 = new Stage(); this.s2 = new Stage(); this.x1 = 0; this.F1 = 0; this.m = -1; this.ver = -1; this.t = new Float64Array(4); }
 }
 class Shaper extends AudioWorkletProcessor {
+  // Position, for the Table mode: 0..1 across the four frames
+  static get parameterDescriptors(){ return [{ name:'pos', defaultValue:0, minValue:0, maxValue:1, automationRate:'a-rate' }]; }
   constructor(){
     super();
     this.mode = 0; this.ch = []; this.quiet = 1e9;
-    this.port.onmessage = e => { this.mode = e.data.mode; };
+    // the Table: its frames, and the curve for each run of sixteen samples.
+    // The curve is rebuilt only when Position or a bar has moved; its version
+    // number tells each channel to re-take the previous sample's
+    // antiderivative on the new curve, so a difference is always taken on
+    // one curve (HarmonicTable.h TableShaper)
+    this.frames = new Float64Array(64); this.dirty = true; this.pos = -1; this.ver = 0;
+    this.curve = tableCurve(new Float64Array(16)); this.seg = []; this.blend = new Float64Array(16);
+    this.port.onmessage = e => {
+      if ('mode' in e.data) this.mode = e.data.mode;
+      if (e.data.frames){ this.frames.set(e.data.frames); this.dirty = true; }
+    };
+  }
+  tableAt(p){
+    if (this.dirty || Math.abs(p - this.pos) > 1e-6){
+      this.dirty = false; this.pos = p;
+      this.curve = tableCurve(blendFrames(this.frames, p, this.blend));
+      this.curve.ver = ++this.ver;
+    }
+    return this.curve;
+  }
+  shapeTable(c, u, t){
+    const v = D_MAX*clamp(u, -1, 1);
+    if (c.m !== TABLE_INDEX || c.ver !== t.ver){ c.m = TABLE_INDEX; c.ver = t.ver; c.F1 = tableFF(t, c.x1); }
+    const Fv = tableFF(t, v), dx = v - c.x1;
+    const y = Math.abs(dx) > 1e-5 ? (Fv - c.F1)/dx : tableF(t, 0.5*(v + c.x1));
+    c.x1 = v; c.F1 = Fv;
+    return y;
   }
   shape(c, u){
-    const m = this.mode, v = D_MAX*clamp(u, -1, 1), F = FA[m];
+    const m = this.mode;
+    if (m === TABLE_INDEX) return this.shapeTable(c, u, this.seg[this.si]);
+    const v = D_MAX*clamp(u, -1, 1), F = FA[m];
     if (!F){ c.x1 = v; c.m = -1; return FN[m](v); }
     if (c.m !== m){ c.m = m; c.F1 = F(c.x1); }
     const Fv = F(v), dx = v - c.x1;
@@ -668,17 +852,22 @@ class Shaper extends AudioWorkletProcessor {
     c.x1 = v; c.F1 = Fv;
     return y;
   }
-  process(inputs, outputs){
+  process(inputs, outputs, params){
     const inp = inputs[0], out = outputs[0];
     if (!inp || inp.length === 0){ for (const o of out) o.fill(0); this.quiet = 1e9; return true; }
     let silent = true;
     for (const d of inp){ for (let i = 0; i < d.length; i++) if (d[i] !== 0){ silent = false; break; } if (!silent) break; }
     this.quiet = silent ? this.quiet + inp[0].length : 0;
     if (this.quiet > 512){ for (const o of out) o.fill(0); return true; }
+    if (this.mode === TABLE_INDEX){
+      const pos = params.pos;
+      for (let j = 0; j*16 < inp[0].length; j++) this.seg[j] = this.tableAt(pos.length > 1 ? pos[j*16] : pos[0]);
+    }
     for (let c = 0; c < out.length; c++){
       const d = inp[Math.min(c, inp.length - 1)], o = out[c];
       const st = this.ch[c] || (this.ch[c] = new Chan()), t = st.t;
       for (let i = 0; i < d.length; i++){
+        this.si = i >> 4;
         st.s1.up(d[i], t, 0);
         const a = t[0], b = t[1];
         st.s2.up(a, t, 2);
@@ -698,6 +887,7 @@ class Shaper extends AudioWorkletProcessor {
 registerProcessor('shaper', Shaper);
 `;
 const MODE_INDEX = Object.fromEntries(MODES.map((m, i) => [m.id, i]));
+MODE_INDEX.table = TABLE_INDEX;
 
 const WORKLET_SRC = CRUSH_WORKLET + LADDER_WORKLET + TREM_WORKLET + SHAPER_WORKLET;
 
@@ -901,12 +1091,39 @@ function createEngine(ctx){
     e.set(s.pre.gain, drive/D_MAX);
     e.set(s.post.gain, e.autoGain ? Math.pow(drive, -0.55) : 1);
   };
+  // the Table's frames and Position, shared by every stage that uses it
+  e.tblFrames = new Float64Array(64);
+  for (let f = 0; f < TABLE_FRAMES; f++) for (let k = 0; k < TABLE_HARMONICS; k++) e.tblFrames[f*16 + k] = (TABLE_START[f][k] || 0)/100;
+  e.tblPos = 0;
+  let framesQueued = false;
+  e.sendFrames = () => {
+    framesQueued = false;
+    for (const b of e.bands) for (const s of b.stage){
+      if (s.node) s.node.port.postMessage({ frames: Array.from(e.tblFrames) });
+      else if (b.mode.includes('table')) s.shp.curve = e.tableCurveFallback();
+    }
+  };
+  e.setTableBar = (f, k, v) => {
+    e.tblFrames[f*16 + k] = v/100;
+    // a preset or a stroke sets many bars at once: send them together
+    if (!framesQueued){ framesQueued = true; queueMicrotask(e.sendFrames); }
+  };
+  e.setTablePos = v => {
+    e.tblPos = v/100;
+    for (const b of e.bands) for (const s of b.stage) if (s.node) e.set(s.node.parameters.get('pos'), v/100);
+  };
+  // with no worklet, a WaveShaperNode holds the curve at the current Position
+  e.tableCurveFallback = () => {
+    const t = tableCurve(blendFrames(e.tblFrames, e.tblPos, new Float64Array(16))), c = new Float32Array(CURVE_N);
+    for (let i = 0; i < CURVE_N; i++) c[i] = tableF(t, ((i/(CURVE_N-1))*2 - 1)*D_MAX);
+    return c;
+  };
   e.setMode = (bi, si, id) => {
     const b = e.bands[bi];
     b.mode[si] = id;
     const s = b.stage[si];
     if (s.node) s.node.port.postMessage({ mode: MODE_INDEX[id] });
-    else s.shp.curve = curveFor(id);
+    else s.shp.curve = id === 'table' ? e.tableCurveFallback() : curveFor(id);
   };
   // the three matrices for one band's Stereo choice
   const STEREO = {
@@ -1023,7 +1240,8 @@ function createEngine(ctx){
         for (const b of e.bands) for (let si = 0; si < 2; si++){
           const s = b.stage[si];
           const node = new AudioWorkletNode(ctx, 'shaper', { numberOfInputs:1, numberOfOutputs:1 });
-          node.port.postMessage({ mode: MODE_INDEX[b.mode[si]] });
+          node.port.postMessage({ mode: MODE_INDEX[b.mode[si]], frames: Array.from(e.tblFrames) });
+          node.parameters.get('pos').value = e.tblPos;
           s.pre.disconnect(s.shp); s.shp.disconnect();
           s.pre.connect(node); node.connect(s.post);
           s.node = node;
@@ -1107,13 +1325,13 @@ for (let i = 0; i < 3; i++){
   p({ id:`d${i}a`, label:'Drive A', min:1, max:D_MAX, def:4, taper:'log', fmt:fmtDrv, unit:'dB', mod:true,
       band:i, apply:(e,v) => e.setDrive(i, 0, v) });
   p({ id:`m${i}a`, label:'Mode A', type:'sel', def:'soft', band:i,
-      opts:MODES.map(m => [m.id, m.name]), apply:(e,v) => e.setMode(i, 0, v) });
+      opts:DRIVE_MODES, apply:(e,v) => e.setMode(i, 0, v) });
   p({ id:`sb${i}`, label:'Stage B', type:'tgl', def:false, band:i,
       apply:(e,v) => { e.set(e.bands[i].bOn.gain, v?1:0); e.set(e.bands[i].bOff.gain, v?0:1); } });
   p({ id:`d${i}b`, label:'Drive B', min:1, max:D_MAX, def:2.5, taper:'log', fmt:fmtDrv, unit:'dB', mod:true,
       band:i, apply:(e,v) => e.setDrive(i, 1, v) });
   p({ id:`m${i}b`, label:'Mode B', type:'sel', def:'hard', band:i,
-      opts:MODES.map(m => [m.id, m.name]), apply:(e,v) => e.setMode(i, 1, v) });
+      opts:DRIVE_MODES, apply:(e,v) => e.setMode(i, 1, v) });
   p({ id:`t${i}`, label:'Tone', min:-12, max:12, def:0, fmt:fmtDb, bip:true, mod:true, band:i,
       apply:(e,v) => { e.set(e.bands[i].tiltLo.gain, -v); e.set(e.bands[i].tiltHi.gain, v); } });
   p({ id:`mx${i}`, label:'Mix', min:0, max:100, def:100, fmt:fmtPc, mod:true, band:i,
@@ -1206,6 +1424,15 @@ p({ id:'envAtk',  label:'Attack', min:1, max:300, def:12, taper:'log', fmt:fmtMs
 p({ id:'envRel',  label:'Release', min:20, max:1200, def:220, taper:'log', fmt:fmtMs, apply:()=>{} });
 p({ id:'envSens', label:'Sens', min:0, max:100, def:60, fmt:fmtPc, apply:()=>{} });
 
+/* the harmonic table: Position, a matrix target, and the sixty-four bars,
+   with the plugin's ids so patches move between the two. The bars are
+   parameters so a patch, copy and paste carry them; they have no knob */
+p({ id:'tblPos', label:'Table position', short:'Position', min:0, max:100, def:0, fmt:fmtPc, mod:true,
+    apply:(e,v) => { e.setTablePos(v); if (e === engine) tablePosNow = v/100; } });
+for (let f = 0; f < TABLE_FRAMES; f++) for (let k = 0; k < TABLE_HARMONICS; k++)
+  p({ id:`tb${f+1}h${k+1}`, label:`Table ${f+1} harmonic ${k+1}`, min:-100, max:100, def:TABLE_START[f][k] || 0,
+      fmt:fmtPc, bar:true, apply:(e,v) => e.setTableBar(f, k, v) });
+
 /* mod matrix */
 const MOD_SOURCES = [['','—'],['lfo1','LFO 1'],['lfo2','LFO 2'],['env','Envelope'],
                     ['env-','Envelope inv'],['trem','Tremolo']];
@@ -1291,6 +1518,23 @@ const PRESETS = [
   { name:'Radio — the AM band',
     v:{ bands:'1', preHP:400, preLP:3200, d0a:6, m0a:'diode', bits:10, crMix:30, outGain:10 } }
 ];
+/* The plugin's own presets for what this page now has too: the harmonic table
+   and per-band stereo. They are the plugin's (plugin/core/FactoryPresets.h),
+   kept in their own list so they stay out of the browser presets the plugin
+   is generated from; tests/fx.mjs requires each to equal the plugin's copy. */
+const PLUGIN_PRESETS = [
+  { name:'Table — harmonic wobble, an LFO across the frames',
+    v:{ bands:'1', d0a:2, m0a:'table', tblPos:50, mS0:'lfo1', mD0:'tblPos', mA0:50, l1Rate:0.4, l1Shape:'tri', outGain:2 } },
+  { name:'Table — an octave up, the 2nd and 4th drawn in',
+    v:{ bands:'2', x1:150, d1a:2, m1a:'table', tblPos:66.67, mx1:70 } },
+  { name:'Table — the harder you play, the more harmonics',
+    v:{ bands:'1', d0a:2.5, m0a:'table', tblPos:0, mS0:'env', mD0:'tblPos', mA0:90, envSens:70 } },
+  { name:'Mid only — the centre driven, the sides left clean',
+    v:{ bands:'2', x1:180, d1a:8, m1a:'tape', sb1:true, m1b:'soft', d1b:2, t1:2, st1:'mid', outGain:-4 } },
+  { name:'Wider — the sides driven, the centre clean',
+    v:{ bands:'1', d0a:6, m0a:'warm', mx0:60, st0:'side' } }
+];
+const MENU_PRESETS = [...PRESETS, ...PLUGIN_PRESETS];
 
 /* -------------------------------------------------------------------- state */
 const state = {};
@@ -1305,6 +1549,7 @@ function applyAll(instant){
   if (!engine) return;
   if (instant) engine.instant = true;
   for (const d of PLIST) d.apply(engine, state[d.id]);
+  engine.sendFrames();                              // the bars at once, not a moment later
   engine.instant = false;
 }
 
@@ -1549,8 +1794,160 @@ function refreshBandTabs(){
   document.querySelectorAll('.bandpane').forEach((pn, i) => pn.classList.toggle('on', i === curBand));
   els.x2 && els.x2.classList.toggle('dis', n < 3);
   els.x1 && els.x1.classList.toggle('dis', n < 2);
+  refreshTablePanel();
 }
 function selectBand(i){ curBand = i; refreshBandTabs(); }
+
+/* ------------------------------------------------- UI: the harmonic table */
+const tablePanel = document.getElementById('tablePanel'), btnTable = document.getElementById('btnTable');
+const tFrameCv = [];
+const cvTCurve = document.getElementById('cvTCurve'), cvTWave = document.getElementById('cvTWave'), cvTHarm = document.getElementById('cvTHarm');
+let tableOpen = false, tableUsersWas = 0;
+function tableUsers(){
+  let n = 0;
+  for (let i = 0; i < +state.bands; i++)
+    if (state[`m${i}a`] === 'table' || (state[`sb${i}`] && state[`m${i}b`] === 'table')) n++;
+  return n;
+}
+function showTable(on){
+  tableOpen = on;
+  tablePanel.classList.toggle('hidden', !on);
+  btnTable.classList.toggle('on', on);
+  btnTable.setAttribute('aria-expanded', String(on));
+}
+// it opens by itself the moment a band starts using Table
+function refreshTablePanel(){
+  const n = tableUsers();
+  if (n > 0 && tableUsersWas === 0) showTable(true);
+  tableUsersWas = n;
+  const note = document.getElementById('tNote');
+  note.textContent = n ? 'Drive sets how fully the recipe comes through: it is exact where the input fills the curve.'
+                       : 'Not heard yet: choose Table as Mode A or B in a band.';
+  note.classList.toggle('warn', !n);
+  const routed = [...Array(MSLOTS).keys()].some(k => state[`mD${k}`] === 'tblPos' && state[`mS${k}`]);
+  const free = [...Array(MSLOTS).keys()].some(k => !state[`mS${k}`]);
+  const w = document.getElementById('btnWobble');
+  w.textContent = routed ? 'Position is modulated' : 'Wobble with LFO 1';
+  w.disabled = routed || !free;
+}
+const barId = (f, k) => `tb${f+1}h${k+1}`;
+const harmonicHue = k => k === 1 ? C.ink : (k % 2 ? C.red : C.blue);
+function frameLane(cv){ const r = cv.getBoundingClientRect(); return { x:8, y:26, w:r.width - 16, h:r.height - 26 - 18 }; }
+function buildTable(){
+  const host = document.getElementById('tFrames');
+  for (let f = 0; f < TABLE_FRAMES; f++){
+    const cv = document.createElement('canvas');
+    cv.height = 170; cv.setAttribute('aria-label', `Frame ${f+1}: sixteen harmonic bars`);
+    host.appendChild(cv); tFrameCv.push(cv);
+    let drawing = false, last = null;
+    const at = ev => { const r = cv.getBoundingClientRect(); return { x: ev.clientX - r.left, y: ev.clientY - r.top }; };
+    const barOf = q => { const L = frameLane(cv); return clamp(Math.floor((q.x - L.x)*TABLE_HARMONICS/Math.max(1, L.w)), 0, TABLE_HARMONICS - 1); };
+    const valueOf = q => { const L = frameLane(cv); return clamp((L.y + L.h/2 - q.y)/(L.h/2)*100, -100, 100); };
+    // a stroke fills every bar it crosses, so a fast drag leaves no gaps
+    const drawTo = q => {
+      const k0 = last ? barOf(last) : barOf(q), k1 = barOf(q);
+      const v0 = last ? valueOf(last) : valueOf(q), v1 = valueOf(q), step = k1 >= k0 ? 1 : -1;
+      for (let k = k0;; k += step){
+        const t = k1 === k0 ? 1 : (k - k0)/(k1 - k0);
+        setParam(barId(f, k), Math.round((v0 + (v1 - v0)*t)*10)/10, true);
+        if (k === k1) break;
+      }
+      last = q;
+    };
+    cv.addEventListener('pointerdown', ev => { drawing = true; last = null; cv.setPointerCapture(ev.pointerId); drawTo(at(ev)); ev.preventDefault(); });
+    cv.addEventListener('pointermove', ev => { if (drawing) drawTo(at(ev)); });
+    const end = () => { drawing = false; last = null; };
+    cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+    cv.addEventListener('dblclick', ev => setParam(barId(f, barOf(at(ev))), 0, true));
+  }
+  mount(document.getElementById('tCtl'), ['tblPos']);
+  const ctl = document.getElementById('tCtl');
+  ctl.insertBefore(els.tblPos, ctl.firstChild);
+  // Start from: a frame, or all four at rising drive, from a mode sixteen
+  // harmonics can draw (START_FROM_MODES)
+  const sel = document.getElementById('tStart');
+  sel.innerHTML = '<option value="">Start from…</option>';
+  const group = (label, code) => {
+    const g = document.createElement('optgroup'); g.label = label;
+    for (const m of START_FROM_MODES){ const o = document.createElement('option'); o.value = code + ':' + m.id; o.textContent = m.name; g.appendChild(o); }
+    sel.appendChild(g);
+  };
+  for (let f = 0; f < TABLE_FRAMES; f++) group(`Frame ${f+1}`, f);
+  group('All four frames, gentle to hard', 'all');
+  sel.addEventListener('change', () => {
+    if (!sel.value) return;
+    const [code, id] = sel.value.split(':'), fn = MODE_BY_ID[id].fn;
+    for (let f = 0; f < TABLE_FRAMES; f++){
+      if (code !== 'all' && +code !== f) continue;
+      const bars = barsFromShaper(fn, code === 'all' ? START_FROM_DRIVES[f] : START_FROM_DRIVE);
+      for (let k = 0; k < TABLE_HARMONICS; k++) setParam(barId(f, k), Math.round(bars[k]*1000)/10, true);
+    }
+    sel.value = '';
+  });
+  document.getElementById('btnWobble').addEventListener('click', () => {
+    const slot = [...Array(MSLOTS).keys()].find(k => !state[`mS${k}`]);
+    if (slot === undefined) return;
+    setParam(`mS${slot}`, 'lfo1', true); setParam(`mD${slot}`, 'tblPos', true); setParam(`mA${slot}`, 50);
+  });
+  btnTable.addEventListener('click', () => showTable(!tableOpen));
+}
+function drawTable(){
+  if (!tableOpen) return;
+  const pos = tablePosNow*(TABLE_FRAMES - 1);
+  for (let f = 0; f < TABLE_FRAMES; f++){
+    const cv = tFrameCv[f], { w, h, dpr } = fit(cv), g = cv.getContext('2d');
+    const weight = Math.max(0, 1 - Math.abs(pos - f));
+    g.fillStyle = C.face; g.fillRect(0, 0, w, h);
+    g.globalAlpha = 0.12 + 0.5*weight; g.fillStyle = C.yellow; g.fillRect(2*dpr, 2*dpr, w - 4*dpr, 20*dpr); g.globalAlpha = 1;
+    g.strokeStyle = C.ink; g.lineWidth = (weight > 0 ? 3 : 2)*dpr; g.strokeRect(0, 0, w, h);
+    g.fillStyle = C.ink; g.font = `${Math.round(9*dpr)}px ui-monospace,Menlo,monospace`;
+    g.fillText(`FRAME ${f+1}` + (weight > 0 ? `  ·  ${Math.round(weight*100)}% HEARD` : ''), 8*dpr, 15*dpr);
+    const L = frameLane(cv), bw = L.w/TABLE_HARMONICS, mid = (L.y + L.h/2)*dpr;
+    g.fillStyle = C.track; g.fillRect(L.x*dpr, mid, L.w*dpr, Math.max(1, dpr));
+    g.textAlign = 'center';
+    for (let k = 0; k < TABLE_HARMONICS; k++){
+      const v = state[barId(f, k)]/100, bh = Math.abs(v)*L.h/2*dpr, x = (L.x + k*bw + 2)*dpr;
+      g.fillStyle = harmonicHue(k + 1);
+      g.fillRect(x, v >= 0 ? mid - bh : mid, (bw - 4)*dpr, bh);
+      g.fillStyle = C.dim; g.fillText(String(k + 1), (L.x + (k + 0.5)*bw)*dpr, (L.y + L.h + 13)*dpr);
+    }
+    g.textAlign = 'start';
+  }
+  const curve = tableCurveNow();
+  const box = (cv, caption) => {
+    const { w, h, dpr } = fit(cv), g = cv.getContext('2d');
+    g.fillStyle = C.face; g.fillRect(0, 0, w, h);
+    g.strokeStyle = C.ink; g.lineWidth = 2*dpr; g.strokeRect(0, 0, w, h);
+    g.fillStyle = C.dim; g.font = `${Math.round(9*dpr)}px ui-monospace,Menlo,monospace`; g.fillText(caption, 9*dpr, 16*dpr);
+    return { g, x: 12*dpr, y: 26*dpr, w: w - 24*dpr, h: h - 38*dpr, dpr };
+  };
+  { // the curve itself, input across, output up
+    const a = box(cvTCurve, `the curve at ${Math.round(tablePosNow*100)}%`), g = a.g, cy = a.y + a.h/2;
+    g.fillStyle = C.track; g.fillRect(a.x, cy, a.w, a.dpr); g.fillRect(a.x + a.w/2, a.y, a.dpr, a.h);
+    g.strokeStyle = C.yellow; g.lineWidth = 3*a.dpr; g.lineJoin = 'round'; g.beginPath();
+    for (let px = 0; px <= a.w; px++){ const y = cy - clamp(tableF(curve, px/a.w*2 - 1), -1.6, 1.6)/1.6*a.h/2; px ? g.lineTo(a.x + px, y) : g.moveTo(a.x, y); }
+    g.stroke();
+  }
+  { // one cycle of a full sine through it, with the DC the audio loses taken out
+    const a = box(cvTWave, 'a sine through it'), g = a.g, cy = a.y + a.h/2, n = Math.max(2, Math.round(a.w));
+    const y = Array.from({ length: n + 1 }, (_, i) => tableF(curve, Math.sin(2*Math.PI*i/n)));
+    const mean = y.reduce((p, q) => p + q, 0)/y.length, peak = Math.max(1e-9, ...y.map(v => Math.abs(v - mean)));
+    const line = (fnY, colour, wd) => { g.strokeStyle = colour; g.lineWidth = wd*a.dpr; g.beginPath(); for (let i = 0; i <= n; i++){ const yy = cy - fnY(i)*a.h*0.42; i ? g.lineTo(a.x + i, yy) : g.moveTo(a.x, yy); } g.stroke(); };
+    line(i => Math.sin(2*Math.PI*i/n), C.track, 1.5);
+    line(i => (y[i] - mean)/peak, C.blue, 3);
+  }
+  { // what comes out of a full sine, harmonic by harmonic
+    const a = box(cvTHarm, 'what a full sine comes out as'), g = a.g, top = Math.max(1e-9, ...Array.from({ length: 16 }, (_, k) => Math.abs(curve.a[k + 1])));
+    const bw = a.w/TABLE_HARMONICS, base = a.y + a.h - 12*a.dpr, hh = a.h - 12*a.dpr;
+    g.textAlign = 'center';
+    for (let k = 1; k <= TABLE_HARMONICS; k++){
+      const bh = Math.abs(curve.a[k])/top*hh;
+      g.fillStyle = harmonicHue(k); g.fillRect(a.x + (k - 1)*bw + 2*a.dpr, base - bh, bw - 4*a.dpr, bh);
+      g.fillStyle = C.dim; g.fillText(String(k), a.x + (k - 0.5)*bw, base + 11*a.dpr);
+    }
+    g.textAlign = 'start';
+  }
+}
 
 function buildBands(){
   const tabs = document.getElementById('bandTabs'), panes = document.getElementById('bandPanes');
@@ -1909,7 +2306,8 @@ function frame(){
     }
   }
   prevMod = new Set(off.keys());
-  drawSpec(); drawCurve(); drawTrem(); drawMeters();
+  if (!engine) tablePosNow = state.tblPos/100;     // before the first Play, the knob is the position
+  drawSpec(); drawCurve(); drawTrem(); drawMeters(); drawTable();
   requestAnimationFrame(frame);
 }
 
@@ -2065,6 +2463,7 @@ group('secMod', 'LFO 1', ['l1Rate','l1Div','l1Shape','l1Depth']);
 group('secMod', 'LFO 2', ['l2Rate','l2Div','l2Shape','l2Depth']);
 group('secMod', 'Envelope follower', ['envAtk','envRel','envSens']);
 buildBands();
+buildTable();
 buildMatrix();
 buildMeters();
 
@@ -2092,14 +2491,19 @@ const PRESET_HEADINGS = {
   'Amp — crunchy rhythm': 'By use',
   'Fuzz — gated and square': 'By use',
   'Mix bus — a touch of tape': 'By use',
-  'Radio — the AM band': 'By use'
+  'Radio — the AM band': 'By use',
+  'Table — harmonic wobble, an LFO across the frames': 'Harmonic table',
+  'Table — an octave up, the 2nd and 4th drawn in': 'Harmonic table',
+  'Table — the harder you play, the more harmonics': 'Harmonic table',
+  'Mid only — the centre driven, the sides left clean': 'Stereo',
+  'Wider — the sides driven, the centre clean': 'Stereo'
 };
 
 const presetSel = document.getElementById('presetSel');
 {
   // under their headings, in the order the headings first appear
   const groups = new Map();
-  PRESETS.forEach((pr, i) => {
+  MENU_PRESETS.forEach((pr, i) => {
     const h = PRESET_HEADINGS[pr.name] || 'Other';
     if (!groups.has(h)){ const g = document.createElement('optgroup'); g.label = h; groups.set(h, g); presetSel.appendChild(g); }
     const o = document.createElement('option');
@@ -2107,7 +2511,7 @@ const presetSel = document.getElementById('presetSel');
     groups.get(h).appendChild(o);
   });
 }
-presetSel.addEventListener('change', () => applyPatch(PRESETS[+presetSel.value].v));
+presetSel.addEventListener('change', () => applyPatch(MENU_PRESETS[+presetSel.value].v));
 
 document.getElementById('btnPlay').addEventListener('click', togglePlay);
 document.getElementById('btnRandom').addEventListener('click', randomise);
@@ -2183,11 +2587,13 @@ requestAnimationFrame(frame);
    OfflineAudioContext and renders it, which is the only way to prove the whole
    chain (including the feedback loop) stays finite and audible. */
 window.FX = {
-  createEngine, MODES, PRESETS, PRESET_HEADINGS, PLIST, P, state, readHarmonics, readoutText, parseTyped, typedValue,
+  createEngine, MODES, PRESETS, PLUGIN_PRESETS, MENU_PRESETS, PRESET_HEADINGS,
+  tableCurve, tableF, tableFF, blendFrames, barsFromShaper, startFromError, START_FROM_MODES, TABLE_START, PLIST, P, state, readHarmonics, readoutText, parseTyped, typedValue,
   defaults: () => Object.fromEntries(PLIST.map(d => [d.id, d.def])),
   applyValues: (eng, vals) => {
     eng.instant = true;
     for (const d of PLIST) d.apply(eng, vals && d.id in vals ? vals[d.id] : d.def);
+    eng.sendFrames();
     eng.instant = false;
   }
 };

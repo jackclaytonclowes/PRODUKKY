@@ -273,7 +273,8 @@ antiderivative of a Chebyshev series is another one, evaluated the same way (Cle
 recurrence). Position glides across each block rather than stepping when an LFO moves it.
 
 The bars are 64 parameters, not offered for automation: undo, A/B, presets, Copy patch and
-sessions all carry them with no extra machinery. The browser version has no Table mode.
+sessions all carry them with no extra machinery. The browser version has the same Table, with
+the same ids and the same arithmetic, so a drawn table moves between the two by copy and paste.
 
 **Start from...** fills a frame with another mode's harmonics: its Chebyshev coefficients at
 drive 4, which are exactly what it makes of a full-scale sine (`barsFromShaper`), scaled so
