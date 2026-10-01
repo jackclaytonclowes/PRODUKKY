@@ -8,7 +8,7 @@
 # The DSP in core/ has no dependency on JUCE and is tested on its own; this file
 # only builds the wrapper around it.
 cmake_minimum_required(VERSION 3.22)
-project(CRATE VERSION 0.1.1 LANGUAGES C CXX)
+project(CRATE VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

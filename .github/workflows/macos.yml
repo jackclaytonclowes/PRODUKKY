@@ -74,7 +74,9 @@ jobs:
 
           Open the disk image, right-click 'Install both plugins.command' and choose Open. macOS warns that it is from an unidentified developer because the build is not signed; that is expected.
 
-          Tested by machine, not yet by ear: save your project first."
+          Tested by machine, not yet by ear: save your project first.
+
+          What changed: https://github.com/jackclaytonclowes/PRODUKKY/blob/main/CHANGELOG.md"
           gh release create "$tag" dist/*.dmg --target "$GITHUB_SHA" \
             --title "FRACTURE and CRATE $tag" --notes "$notes" \
             || gh release upload "$tag" dist/*.dmg --clobber

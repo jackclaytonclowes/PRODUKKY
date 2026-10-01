@@ -55,6 +55,7 @@ test measures, what has not been verified, and why.
 ## Layout
 
 ```
+CHANGELOG.md     what changed in each version
 ROADMAP.md       what is next, and what could sit alongside these two
 plugin/          FRACTURE: core/ (JUCE-free DSP), Source/ (wrapper and editor), tests/, packaging/
 crate/           CRATE, laid out the same way
