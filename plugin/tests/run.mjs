@@ -29,7 +29,12 @@ for (const f of ['shaper_reference.csv', 'presets.json']) {
 }
 
 console.log(`compiling with ${compiler}`);
-execFileSync(compiler, ['-std=c++17', '-O2', '-Wall', '-Wextra',
+// SANITIZE=1 (npm run test:sanitize) builds with AddressSanitizer and UBSan,
+// which fail the run on any read past a buffer or undefined arithmetic. A read
+// one float past CRATE's swing delay went unnoticed until this found it.
+const sanitize = process.env.SANITIZE ? ['-O1', '-g', '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                                         '-fno-sanitize-recover=all'] : ['-O2'];
+execFileSync(compiler, ['-std=c++17', ...sanitize, '-Wall', '-Wextra',
                         '-I', path.join(root, 'plugin', 'core'),
                         '-o', out, path.join(here, 'test_core.cpp')],
             { stdio: 'inherit' });

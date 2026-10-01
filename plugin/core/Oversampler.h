@@ -178,8 +178,11 @@ public:
         const int n = static_cast<int>(buf_.size());
         double rp = static_cast<double>(pos_) - delaySamples_;
         while (rp < 0) rp += n;
-        const int i0 = static_cast<int>(rp);
+        // a position a hair under zero, plus n, rounds to exactly n: one past
+        // the end (the same flaw CRATE's swing delay had)
+        int i0 = static_cast<int>(rp);
         const double fr = rp - i0;
+        if (i0 >= n) i0 -= n;
         const int i1 = (i0 + 1) % n;
         return buf_[static_cast<size_t>(i0)] * (1.0 - fr) + buf_[static_cast<size_t>(i1)] * fr;
     }

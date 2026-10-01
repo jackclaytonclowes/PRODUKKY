@@ -252,7 +252,7 @@ int main(){
     const Params& P = Params::get();
 
     std::printf("\nParameters\n");
-    check("the table is complete", P.count() == 41, std::to_string(P.count()) + " parameters");
+    check("the table is complete", P.count() == 42, std::to_string(P.count()) + " parameters");
     check("the clock defaults to the rate the hardware ran at",
           std::fabs(P[P.index("clock")].def - 26040.0f) < 1.0f);
     check("twelve bits by default", std::fabs(P[P.index("bits")].def - 12.0f) < 0.01f);
@@ -896,6 +896,66 @@ int main(){
               f2s(quiet, 2) + ", " + f2s(full, 2) + ", " + f2s(pushed, 2));
     }
 
+    std::printf("\nLookahead\n");
+    {
+        const double sr = 48000.0;
+        // an impulse comes out at exactly the latency reported, dry and wet
+        std::vector<float> imp(static_cast<size_t>(sr * 0.2), 0.0f); imp[2000] = 0.5f;
+        std::string off;
+        for (float mixv : { 0.0f, 100.0f }){
+            Patch p = { {"look", 1}, {"mix", mixv}, {"bits", 16}, {"clock", 48000}, {"aa", 0} };
+            Engine e; e.prepare(sr, 128); applyPatch(e, p);
+            const auto r = run(p, imp, sr);
+            int at = 0; float best = 0.0f;
+            for (size_t i = 0; i < r.l.size(); ++i) if (std::fabs(r.l[i]) > best){ best = std::fabs(r.l[i]); at = static_cast<int>(i); }
+            if (std::abs(at - 2000 - e.latencySamples()) > 1)
+                off += " [mix " + f2s(mixv, 0) + ": at +" + std::to_string(at - 2000) + ", reported " + std::to_string(e.latencySamples()) + "]";
+        }
+        check("with Lookahead on, an impulse comes out at the reported latency, dry and wet", off.empty(), off);
+
+        // the hits the envelope test uses, and how much brighter the very
+        // first millisecond of each comes through: without lookahead the
+        // detector hears a hit only as it arrives
+        const int spacing = static_cast<int>(0.5 * sr);
+        std::vector<float> hits(static_cast<size_t>(spacing * 8 + spacing / 2), 0.0f);
+        std::mt19937 rng(7);
+        std::uniform_real_distribution<float> d(-1.0f, 1.0f);
+        for (int h = 0; h < 8; ++h)
+            for (int i = 0; i < spacing; ++i)
+                hits[static_cast<size_t>(h * spacing + i)] = static_cast<float>(0.5 * std::exp(-i / (0.060 * sr))) * d(rng);
+        const Patch shut = { {"fltFreq", 250}, {"fltReso", 0}, {"clock", 48000}, {"aa", 100}, {"bits", 16} };
+        Patch open = shut; open["fltEnv"] = 5; open["fltDecay"] = 30;
+        auto gainIn = [&](const Patch& base, bool look, double fromMs, double toMs){
+            Patch a = base, b = base; a["look"] = look; b["look"] = look;
+            Patch o = base; o["fltEnv"] = 5; o["fltDecay"] = 30; o["look"] = look;
+            Engine pe; pe.prepare(sr, 128); applyPatch(pe, o);
+            const int lat = pe.latencySamples();
+            const auto ra = run(a, hits, sr), rb = run(o, hits, sr);
+            auto power = [&](const std::vector<float>& x){
+                double p = 0.0; int n = 0;
+                for (int h = 1; h < 8; ++h)
+                    for (int i = h * spacing + lat + static_cast<int>(fromMs * sr / 1000.0);
+                         i < h * spacing + lat + static_cast<int>(toMs * sr / 1000.0); ++i){ p += x[static_cast<size_t>(i)] * x[static_cast<size_t>(i)]; ++n; }
+                return 10.0 * std::log10(std::max(1e-20, p / std::max(1, n)));
+            };
+            return power(rb.l) - power(ra.l);
+        };
+        // Measured: the detector without lookahead already opens the filter
+        // within a fraction of a millisecond, so what lookahead adds is in the
+        // first quarter of one, the snap of the transient: about 7 dB in the
+        // first 0.1 ms, 3 dB in the first 0.25, and nothing from 0.5 ms on
+        const double snapWithout = gainIn(shut, false, 0, 0.1), snapWith = gainIn(shut, true, 0, 0.1);
+        const double qWithout = gainIn(shut, false, 0, 0.25), qWith = gainIn(shut, true, 0, 0.25);
+        const double laterWithout = gainIn(shut, false, 0.5, 3.0), laterWith = gainIn(shut, true, 0.5, 3.0);
+        const double tailWith = gainIn(shut, true, 250, 400);
+        check("Lookahead brings the first 0.1 ms of each hit through brighter, and the first quarter-millisecond",
+              snapWith > snapWithout + 4.0 && qWith > qWithout + 1.5,
+              "+" + f2s(snapWith - snapWithout, 1) + " dB in 0.1 ms, +" + f2s(qWith - qWithout, 1) + " dB in 0.25 ms");
+        check("  ... and changes nothing after the first half millisecond",
+              std::fabs(laterWith - laterWithout) < 1.0, f2s(laterWith - laterWithout, 2) + " dB from 0.5 to 3 ms");
+        check("  ... and the tail still closes to the resting filter", std::fabs(tailWith) < 1.0, f2s(tailWith, 2) + " dB");
+    }
+
     std::printf("\nDimmed controls\n");
     {
         // every control the panel dims is moved end to end, in each of these
@@ -1074,6 +1134,21 @@ int main(){
         // place; when it is wrong every hit comes out twice, so count them
         check("and nothing is played twice on the way",
               p1.size() == 16, std::to_string(p1.size()) + " hits from 16 inputs");
+        // with Lookahead on, the swing lands on the same beats: 5 ms later as a
+        // whole, and that 5 ms is in the reported latency
+        {
+            Patch swungLook = swung; swungLook["look"] = 1;
+            Engine pl; pl.prepare(sr, 128); applyPatch(pl, swungLook);
+            const int baseL = pl.latencySamples();
+            const auto p1l = peaks(run(swungLook, in, sr, 128, true, bpm).l, 0.2);
+            double worstL = 0.0;
+            for (size_t i = 0; i < p1l.size(); ++i)
+                worstL = std::max(worstL, std::fabs(p1l[i] - (i * step + baseL + (i % 2 ? expectedOffset : 0.0))));
+            check("with Lookahead on, the swing lands the same, 5 ms later and reported as such",
+                  p1l.size() == 16 && worstL < 0.002 * sr && baseL - base == static_cast<int>(std::lround(0.005 * sr)),
+                  std::to_string(p1l.size()) + " hits, worst " + f2s(worstL / sr * 1000.0) + " ms, latency +"
+                  + f2s((baseL - base) / sr * 1000.0) + " ms");
+        }
 
         Patch pushed = { {"mix", 0}, {"swing", 50}, {"push", 10} };
         const auto s2 = run(pushed, in, sr, 128, true, bpm);

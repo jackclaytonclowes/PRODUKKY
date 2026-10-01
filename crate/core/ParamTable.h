@@ -115,6 +115,9 @@ private:
         // 0.2, appended so saved sessions keep their meaning: the low end
         // around the converter and the four-pole. 20 Hz is off
         f("subHz",   "Keep sub", 20, 300, 20, true, "Hz");
+        // hold the audio back 5 ms so the hit envelope knows each hit before
+        // it arrives, as the hardware's note did; reported as latency
+        b("look",    "Lookahead", false);
     }
     std::vector<ParamInfo> info_;
 };
@@ -124,7 +127,7 @@ struct Ids {
     int inGain, mono, machine, tune, trick, clock, bits, compand, aa;
     int fltFreq, fltReso, fltDrive, fltEnv, fltDecay, fltShape, fltPoles, fltMix;
     int rhDepth, rhDiv, rhRate, rhShape, rhGroove, rhPhase, rhGlide, rhStep[8];
-    int swing, grid, push, dust, dustTone, mix, outGain, safety, subHz;
+    int swing, grid, push, dust, dustTone, mix, outGain, safety, subHz, look;
 private:
     Ids(){
         const Params& p = Params::get();
@@ -140,7 +143,7 @@ private:
         swing = I("swing"); grid = I("grid"); push = I("push");
         dust = I("dust"); dustTone = I("dustTone");
         mix = I("mix"); outGain = I("outGain"); safety = I("safety");
-        subHz = I("subHz");
+        subHz = I("subHz"); look = I("look");
     }
 };
 

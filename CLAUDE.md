@@ -10,6 +10,7 @@ the overview; each product's README says what is verified and what is not.
 npm test                   # all suites that need no JUCE
 npm run test:core          # FRACTURE DSP, bare compiler
 npm run test:crate         # CRATE DSP, bare compiler
+npm run test:sanitize      # both, under AddressSanitizer and UBSan (slow; run before a release)
 npm run test:fx            # browser version, headless Chromium
 npm run test:plugins-site  # the download site
 npm run reference          # after changing shapers or presets in fx/fracture.html

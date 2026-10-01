@@ -175,7 +175,7 @@ a file leaves out loads at its default.
 
 ## What is verified, and how
 
-`npm run test:crate` — 97 assertions, no JUCE needed (`VERBOSE=1` prints the measured
+`npm run test:crate` — 102 assertions, no JUCE needed (`VERBOSE=1` prints the measured
 value behind every one). These are measurements, not smoke
 tests, because nobody involved in building this has heard it:
 
@@ -240,11 +240,20 @@ tests, because nobody involved in building this has heard it:
 - **bits in use**: a tone 12 dB under full scale into twelve bits reads 10.00, full scale
   12.00, and the same tone with Input at +12 reads 11.99; in the host test the panel's meter
   reads what the converter is given, Input included
+- **Lookahead**: an impulse comes out at exactly the reported latency, dry and wet; the
+  first 0.1 ms of each hit is 7.2 dB brighter, the first 0.25 ms 3.0 dB, and from 0.5 ms on it
+  changes nothing (-0.3 dB); the tail still closes; swung sixteenths land the same, 5 ms later
+  and reported as such; and the host is told the new latency when it is switched (host test)
+- **no reads past a buffer**: `npm run test:sanitize` runs this suite under AddressSanitizer
+  and UBSan. It found the swing delay reading one float past its buffer whenever the read
+  position came out a hair under zero (adding the length rounded it to exactly the length),
+  so a swung preset's output depended on whatever sat in memory there. Fixed in 0.2, in both
+  plugins: FRACTURE's feedback delay had the same wrap
 - dust is bit-identical across two renders of the same bar, and silent at zero
 - 44.1 / 48 / 96 kHz, block sizes 16 to 1024, and everything at once: finite and bounded
 - undo, redo and A/B: the same seventeen checks as FRACTURE's, on the same file
 
-`host_smoke` adds 74 more at the host level, including a synthetic transport: the plugin
+`host_smoke` adds 75 more at the host level, including a synthetic transport: the plugin
 sees the tempo, notices when playback stops, re-declares its latency when the grid changes,
 recalls all twenty-seven presets, round-trips its state, and paints its editor to a PNG — twice,
 the second time at half size, checking the corner panels are scaled rather than cropped. It
@@ -276,11 +285,11 @@ default went linear (it is now "Twelve bit, companded", the old default's sound)
   sample on the fixed clock. The two produce the same kind of irregular repeat and the
   same drop in effective rate; whether they are indistinguishable has not been listened
   for.
-- The hit envelope has only a little lookahead: the detector hears the input before the
-  oversampler's filters do, which gives it about half a millisecond, enough to bring the
-  first millisecond of each hit through 2.5 dB brighter than a detector with none. The
-  hardware knew about the note before the sound did; matching that fully needs real
-  lookahead, and so more latency. Flams now trigger twice, but a roll of equal hits 20 or
+- Without Lookahead the detector hears the input before the oversampler's filters do,
+  about half a millisecond of warning, and that already opens the filter within a fraction
+  of a millisecond of each hit. **Lookahead** (5 ms, reported as latency) adds what is left:
+  7 dB more brightness in the first 0.1 ms of a hit, 3 dB in the first 0.25, and nothing
+  from 0.5 ms on. Whether that snap is audible is for ears to say. Flams now trigger twice, but a roll of equal hits 20 or
   30 ms apart still reads as one or two, because each lands on the tails of the last;
   separating those needs a detector that looks at the spectrum.
 - The oversampler removes the audible aliases of the four-pole's drive but not a

@@ -15,6 +15,14 @@
 // altogether, so a session saved before it existed renders bit for bit as it
 // did.
 //
+// Lookahead holds all of the audio back 5 ms while the hit detector hears it
+// as it comes, so the envelope knows each hit before the sound reaches the
+// filter, as the hardware did (the note came first there). The envelope is
+// itself delayed by 4 ms of that, so it opens about a millisecond before the
+// hit arrives rather than spending its decay waiting. The rhythm and the feel
+// are given the song position 5 ms earlier, so they stay on the audio they
+// act on. Off, none of it is in the path.
+//
 // Two ordering decisions worth knowing:
 //
 //   Dust goes in BEFORE the converter, because that is the order it happened in
@@ -79,6 +87,10 @@ public:
         ladder_.prepare(sampleRate * osFactor_);
         for (auto& d : dryDelay_){ d.prepare(64); d.setDelay(os_[0].latencySamples()); }
         for (auto& d : subDelay_){ d.prepare(64); d.setDelay(os_[0].latencySamples()); }
+        lookMax_ = static_cast<int>(std::lround(0.005 * sampleRate));
+        lookLead_ = static_cast<int>(std::lround(0.001 * sampleRate));
+        for (auto& d : lookAudio_){ d.prepare(lookMax_ + 2); d.setDelay(lookMax_); }
+        lookEnv_.prepare(lookMax_ + 2); lookEnv_.setDelay(lookMax_ - lookLead_);
         dust_.prepare(sampleRate);
         hit_.prepare(sampleRate);
         rhythm_.prepare(sampleRate);
@@ -91,6 +103,8 @@ public:
         for (auto& o : os_) o.reset();
         for (auto& d : dryDelay_) d.reset();
         for (auto& d : subDelay_) d.reset();
+        for (auto& d : lookAudio_) d.reset();
+        lookEnv_.reset();
         for (int ch = 0; ch < maxChannels; ++ch) for (auto& f : xo_[ch]) f.reset();
         subWas_ = 0.0;
         first_ = true;
@@ -100,7 +114,9 @@ public:
     void setParam(int i, float value){ if (i >= 0 && i < static_cast<int>(v_.size())) v_[static_cast<size_t>(i)] = value; }
     float getParam(int i) const { return v_[static_cast<size_t>(i)]; }
     // the feel section's fixed delay, plus the four-pole's oversampling
-    int latencySamples() const { return feel_.latencySamples() + os_[0].latencySamples(); }
+    int latencySamples() const { return feel_.latencySamples() + os_[0].latencySamples() + lookSamples(); }
+    // the samples Lookahead holds the audio back (0 when it is off)
+    int lookSamples() const { return v_.empty() || v_[static_cast<size_t>(Ids::get().look)] < 0.5f ? 0 : lookMax_; }
     // 1, 2 or 4. Takes effect at the next prepare(); the tests use it to
     // measure what the oversampling is buying
     void setOversampling(int factor){ osFactor_ = factor == 1 ? 1 : (factor == 2 ? 2 : 4); }
@@ -125,6 +141,10 @@ public:
         const int nch = std::clamp(numChannels, 1, maxChannels);
         const Ids& id = Ids::get();
 
+        // Lookahead: the audio is this many samples behind the song position
+        const int look = lookSamples();
+        if (look != lookWas_){ for (auto& d : lookAudio_) d.reset(); lookEnv_.reset(); lookWas_ = look; }
+        const double lookBeats = look > 0 ? look / sr_ * bpm_ / 60.0 : 0.0;
         const double tune = v_[static_cast<size_t>(id.tune)];
         conv_.configure(v_[static_cast<size_t>(id.clock)] * std::pow(2.0, tune / 12.0),
                         v_[static_cast<size_t>(id.aa)] / 100.0,
@@ -149,7 +169,7 @@ public:
                               v_[static_cast<size_t>(id.rhGroove)],
                               v_[static_cast<size_t>(id.rhPhase)],
                               v_[static_cast<size_t>(id.rhGlide)] / 100.0, steps);
-            rhythm_.beginBlock(playing_, ppq_, bpm_);
+            rhythm_.beginBlock(playing_, ppq_ - lookBeats, bpm_);
         }
         const double envOct = v_[static_cast<size_t>(id.fltEnv)];
         hit_.setDecay(v_[static_cast<size_t>(id.fltDecay)]);
@@ -158,7 +178,7 @@ public:
         feel_.setGrid(gridSteps(static_cast<int>(v_[static_cast<size_t>(id.grid)])));
         feel_.setSwing(v_[static_cast<size_t>(id.swing)]);
         feel_.setPush(v_[static_cast<size_t>(id.push)]);
-        feel_.beginBlock(playing_, ppq_, bpm_);
+        feel_.beginBlock(playing_, ppq_ - lookBeats, bpm_);
 
         const bool wasFirst = first_;
         auto setR = [&](Ramp& r, double t){ if (first_) r.snap(t); else r.target(t, n); };
@@ -193,7 +213,11 @@ public:
             }
             // one envelope for both channels, so a hit opens both sides together.
             // It always runs, so turning Env up mid-bar lands on the right phase
-            const double e = hit_.process(nch == 2 ? (dryIn[0] + dryIn[1]) * 0.5 : dryIn[0]);
+            double e = hit_.process(nch == 2 ? (dryIn[0] + dryIn[1]) * 0.5 : dryIn[0]);
+            if (look > 0){                                 // the detector heard it; now hold it back
+                e = lookEnv_.process(e);
+                for (int ch = 0; ch < nch; ++ch) dryIn[ch] = lookAudio_[ch].process(dryIn[ch]);
+            }
             rhythm_.step();                                // runs even at zero depth, to stay in phase
             if (envOct > 0.0 || rhDepth != 0.0){
                 for (int ch = 0; ch < nch; ++ch)
@@ -248,6 +272,8 @@ private:
             xo_[ch][2].set(Biquad::HighPass, hz, sr_); xo_[ch][3].copyCoeffs(xo_[ch][2]);
         }
     }
+    DelayLine lookAudio_[maxChannels], lookEnv_;
+    int lookMax_ = 240, lookLead_ = 48, lookWas_ = 0;
     Biquad xo_[maxChannels][4];
     DelayLine subDelay_[maxChannels];
     double subWas_ = 0.0;

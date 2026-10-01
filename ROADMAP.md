@@ -88,7 +88,7 @@ Mac only; nobody has judged the sound against references yet.
 - [x] **S** A "bits in use" meter by the converter
 - [x] **S** Flams: the detector now looks for a rise, with a 10 ms hold. It also finds all eleven
   drums in the audition loop (it found nine). Equal-level rolls still merge: needs spectral onsets
-- [ ] **M** Optional 5 ms lookahead for the hit envelope
+- [x] **M** Optional 5 ms lookahead for the hit envelope (measured: the gain is in the first 0.25 ms)
 - [ ] **M** More machines: S950, MPC60, SP-12
 - [ ] **M** Dust in time with the song
 - [ ] **L** Per-hit swing (probably belongs in CHOP)

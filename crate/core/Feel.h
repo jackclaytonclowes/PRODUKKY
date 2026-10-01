@@ -115,8 +115,12 @@ private:
     inline double tap(int ch, double delay) const {
         double rp = static_cast<double>(write_) - delay;
         while (rp < 0) rp += cap_;
-        const int i0 = static_cast<int>(rp);
+        // a position a hair under zero, plus cap_, rounds to exactly cap_: one
+        // past the end. That read one float beyond the buffer, whatever was in
+        // memory there (AddressSanitizer found it; npm run test:sanitize)
+        int i0 = static_cast<int>(rp);
         const double fr = rp - i0;
+        if (i0 >= cap_) i0 -= cap_;
         const int i1 = (i0 + 1) % cap_;
         const auto& b = buf_[ch & 1];
         return b[static_cast<size_t>(i0)] * (1.0 - fr) + b[static_cast<size_t>(i1)] * fr;

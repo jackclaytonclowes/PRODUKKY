@@ -49,6 +49,7 @@ Everything runs left to right and top to bottom on the panel, which is also the 
 - **Cutoff** is where the filter acts, and **Reso** makes it ring at that point.
 - **Drive** pushes the filter into saturation.
 - **Env** opens the filter on every drum hit and lets it close again: bright attack, dark body. That is the sound of the SP's first two outputs on kicks. **Decay** is how fast it closes.
+- **Lookahead** holds the sound back 5 ms so Env knows each hit before it arrives, and the very first snap of the attack comes through with the filter already open. Your DAW compensates for the 5 ms. The difference is in the first quarter of a millisecond, so try it on and off on a kick and keep it if you can hear it.
 - **Filter mix** blends the filtered sound with the unfiltered one.
 
 ## 04 Dust

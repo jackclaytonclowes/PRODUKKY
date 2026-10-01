@@ -20,6 +20,7 @@ static juce::String helpFor(const std::string& id){
         { "bits", "Converter resolution. Six decibels of noise floor per bit" },
         { "compand", "Mu-law companding. Off is linear, which is what both machines stored" },
         { "aa", "How much the anti-alias filter removes. Lower lets more fold back" },
+        { "look", "Holds the audio back 5 ms so Env knows each hit before it arrives and the first snap comes through open. Adds 5 ms of latency, which your DAW compensates" },
         { "subHz", "Everything below this goes around the converter and the four-pole, clean. Off at the bottom" },
         { "fltFreq", "Cutoff. For low and high pass this is the -3 dB point; for band pass and reject, the centre" },
         { "fltReso", "Resonance. Sings at the pole" },
@@ -433,7 +434,8 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     filterRow = { choice(pFilter, "fltShape", "Shape", 76), choice(pFilter, "fltPoles", "Poles", 60),
                   knob(pFilter, "fltFreq", blue), knob(pFilter, "fltReso", blue),
                   knob(pFilter, "fltDrive", blue), knob(pFilter, "fltEnv", blue),
-                  knob(pFilter, "fltDecay", blue), knob(pFilter, "fltMix", blue) };
+                  knob(pFilter, "fltDecay", blue), knob(pFilter, "fltMix", blue),
+                  toggle(pFilter, "look", blue, 96) };
     rhythmRow = { knob(pRhythm, "rhDepth", blue), choice(pRhythm, "rhDiv", "Rhythm", 96),
                   knob(pRhythm, "rhRate", blue), choice(pRhythm, "rhShape", "Shape", 100),
                   knob(pRhythm, "rhGroove", blue), knob(pRhythm, "rhPhase", blue),

@@ -116,6 +116,19 @@ int main(int argc, char** argv){
         if (auto* g = proc.apvts.getParameter("grid")) g->setValueNotifyingHost(0.5f);   // back to 1/16
         runBlocks(proc, ph, 2, 256, peak, bad);
     }
+    {
+        // so does Lookahead, by exactly 5 ms, and back again
+        const int before = proc.getLatencySamples();
+        auto* lk = proc.apvts.getParameter("look");
+        if (lk) lk->setValueNotifyingHost(1.0f);
+        runBlocks(proc, ph, 2, 256, peak, bad);
+        const int on = proc.getLatencySamples();
+        if (lk) lk->setValueNotifyingHost(0.0f);
+        runBlocks(proc, ph, 2, 256, peak, bad);
+        check("Lookahead re-declares the latency: 5 ms more while it is on",
+              on - before == 240 && proc.getLatencySamples() == before,
+              juce::String(before) + " → " + juce::String(on) + " → " + juce::String(proc.getLatencySamples()) + " samples");
+    }
 
     std::printf("\nPresets\n");
     check("the host sees every preset", proc.getNumPrograms() == static_cast<int>(crate::presets().size()),

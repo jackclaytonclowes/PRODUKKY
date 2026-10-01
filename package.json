@@ -8,6 +8,7 @@
     "test": "npm run test:core && npm run test:crate && npm run test:fx && npm run test:plugins-site",
     "test:core": "node plugin/tests/run.mjs",
     "test:crate": "node crate/tests/run.mjs",
+    "test:sanitize": "SANITIZE=1 node plugin/tests/run.mjs && SANITIZE=1 node crate/tests/run.mjs",
     "test:fx": "node tests/fx.mjs",
     "test:fx:head": "node tests/fx.mjs --head",
     "test:plugins-site": "node tests/plugins-site.mjs",
