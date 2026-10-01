@@ -42,6 +42,9 @@ inline HarmonicReading readHarmonics(const float* inMag, const float* outMag, in
     const int hi = std::min(bins - 3, static_cast<int>(4000.0 / binHz));
     int peak = lo;
     for (int k = lo; k <= hi; ++k) if (inMag[k] > inMag[peak]) peak = k;
+    // the shoulder of a note below the range is not a note: the strongest bin
+    // in range has to be a peak in its own right, or a 60 Hz tone reads as 94
+    if (inMag[peak - 1] > inMag[peak] || inMag[peak + 1] > inMag[peak]) return r;
     double total = 0.0;
     for (int k = 1; k < bins; ++k) total += static_cast<double>(inMag[k]) * inMag[k];
     // the window's main lobe is two bins either side; a tone puts most of its

@@ -8,7 +8,7 @@ destructive digital modes, feedback, a resonant filter after the drive, and modu
 patched to anything).
 
 ```
-npm run test:fx          # headless smoke test, 74 assertions
+npm run test:fx          # headless smoke test, 98 assertions
 npm run test:fx:head     # same, in a visible browser
 open fx/fracture.html    # or just double-click it
 ```
@@ -26,7 +26,11 @@ in ─ input gain ─┬─ dry ────────────────
 ```
 
 Per band: two serial drive stages, each with its own mode and drive, a post-drive tilt
-tone control, band dry/wet, level, mute and solo. Crossovers are 4th-order
+tone control, band dry/wet, level, mute and solo, and **Stereo**: L/R drives the whole
+image, Mid drives only what the two channels share and passes the sides through clean,
+Side the reverse. It is done with gain matrices around the band (encode, a clean path for
+the half that is not driven, decode), delayed to match the shaper so the halves rejoin
+exactly, and it is the plugin's per-band M/S. Crossovers are 4th-order
 Linkwitz-Riley (two cascaded Butterworth sections), so the bands sum without a notch at
 the split frequency.
 
@@ -159,6 +163,22 @@ move under modulation.
   up is a change of character rather than just a change of level. It is a knob, not a
   law — turn it off to hear what the drive is really doing.
 
+## The Scope, and the test sounds
+
+The spectrum draws the input as a grey line over the output's bars, so the gap between
+them is what FRACTURE added. Play one note and the line under it names the note and reads
+out the 2nd to 6th harmonics in the output, in dB under the fundamental: Soft shows a 3rd
+and no 2nd, Tube a 2nd. It is the plugin's reader (`plugin/core/Harmonics.h`) ported, with
+a longer frame (8192 points) so it reaches down to about 41 Hz rather than the plugin's
+90 Hz. Chords, drums and noise are not read, rather than read wrongly.
+
+The sources: pink noise, a 110 Hz sine, a **45 Hz sub sine** (the fundamental a kick or an
+808 sits on, and where a split, a drive or a filter that thins the low end shows first),
+a plucked loop, a loaded file, or the microphone. All are generated in the page.
+
+Click the number under any knob to type a value, in the units shown: `2.2k`, `-6 dB`,
+`50%`, `/4`; drive is typed in dB. Enter applies it, Escape puts it back.
+
 ## What the test actually checks
 
 The failure modes that matter in a distortion box do not show up by reading the code: a
@@ -170,7 +190,12 @@ stages, with feedback at 85%, for every preset, and with the modulation matrix l
 ladder and the tremolo are measured the same way, from the audio: that the ladder is
 audibly not the biquad, that a self-oscillating one stays inside the rails, that full
 depth chops the level and 180° of spread anticorrelates the two channels, and that a
-synced division counts the tempo in the box. It
+synced division counts the tempo in the box. Per-band Stereo is checked by rendering
+known mid and side signals: Mid on a mono signal is L/R, Mid leaves a side-only signal
+clean, Side leaves a mono one clean, all to under −60 dB. The harmonic reader is checked
+on synthetic spectra (a 2nd at −20 dB reads as −20), against a chord and a note below its
+range, and through the engine's own analysers; typed values, the preset headings (against
+the plugin's table) and the sub sine are checked too. It
 also checks every preset only references real parameters with in-range values, and takes a
 screenshot to `tests/screenshots/fx-fracture.png`, because layout regressions do not fail
 assertions.

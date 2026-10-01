@@ -122,7 +122,10 @@ input[type=number]{font:500 12px/1.2 var(--grot);color:var(--ink);background:var
 .knob.mod .dial .mod{display:block}
 .klab{font-size:9px;letter-spacing:.13em;color:var(--ink);text-align:center;
   min-height:11px;line-height:1.15;overflow-wrap:anywhere}
-.kval{font:11px/1 var(--mono);color:var(--dim)}
+.kval{font:11px/1 var(--mono);color:var(--dim);cursor:text;min-height:11px}
+.kval input{font:11px/1 var(--mono);width:56px;text-align:center;padding:1px 2px;
+  border:1px solid var(--ink);background:var(--face);color:var(--ink)}
+.readout{font:10px/1.4 var(--mono);color:var(--dim);margin-top:4px;min-height:14px;white-space:pre}
 .knob.sml{width:54px}
 .knob.sml .dial{width:34px;height:34px}
 .knob.sml .dial:after{inset:5px}
@@ -221,6 +224,7 @@ kbd{background:var(--face);border:1.5px solid var(--ink);border-radius:0;
           <option value="file">Loaded file</option>
           <option value="noise">Pink noise</option>
           <option value="tone">Tone 110 Hz</option>
+          <option value="sub">Sub sine 45 Hz</option>
           <option value="pluck">Pluck loop</option>
           <option value="mic">Microphone / line in</option>
         </select></div>
@@ -229,7 +233,7 @@ kbd{background:var(--face);border:1.5px solid var(--ink);border-radius:0;
       <div class="field"><label for="bpmBox">Tempo</label>
         <input type="number" id="bpmBox" min="40" max="240" step="0.5" value="120"></div>
     </div>
-    <div class="note" id="srcNote">No file loaded — pink noise, tone and pluck loop are generated locally.</div>
+    <div class="note" id="srcNote">No file loaded — pink noise, the tones and the pluck loop are generated locally.</div>
     <div class="note">Tempo is set here because a web page has no transport to ask; in the plugin the
       synced divisions come from the host.</div>
   </div>
@@ -261,6 +265,7 @@ kbd{background:var(--face);border:1.5px solid var(--ink);border-radius:0;
       <div class="viz">
         <div>
           <canvas id="cvSpec" height="230"></canvas>
+          <div class="readout" id="specRead">play one note to read the harmonics it gains</div>
           <div style="height:8px"></div>
           <canvas id="cvCurve" height="210"></canvas>
         </div>
@@ -712,6 +717,10 @@ function createEngine(ctx){
   e.input   = g(1);
   e.inGain  = g(1);
   e.inAn    = ctx.createAnalyser(); e.inAn.fftSize = 2048; e.inAn.smoothingTimeConstant = 0.5;
+  // the harmonic readout's own pair: a longer frame than the bars need, and
+  // unsmoothed, so a 45 Hz note's harmonics land clear of each other
+  e.hIn     = ctx.createAnalyser(); e.hIn.fftSize = 8192; e.hIn.smoothingTimeConstant = 0;
+  e.hOut    = ctx.createAnalyser(); e.hOut.fftSize = 8192; e.hOut.smoothingTimeConstant = 0;
   e.dry     = g(0);
   e.preHP   = bq('highpass', 20);
   e.preLP   = bq('lowpass', 20000);
@@ -744,15 +753,37 @@ function createEngine(ctx){
     // the band's dry share waits for both shapers, 96 samples (set once they load)
     b.dryDly = ctx.createDelay(0.01); b.dryDly.delayTime.value = 0;
     b.in.connect(b.dryDly); b.dryDly.connect(b.dryG); b.dryG.connect(b.out);
-    b.in.connect(A.pre); A.pre.connect(A.shp); A.shp.connect(A.post); A.post.connect(A.dc);
+    // Stereo (L/R, Mid, Side), as the plugin has it: three small matrices of
+    // gains. The encoder makes what the stages drive (the two channels, or
+    // the mid, or the side, on both); the clean path carries the half that is
+    // not driven around the stages, delayed as they are and scaled by the
+    // band's mix like the driven half; the decoder puts the driven half back
+    // into left and right. L/R is the identity, so it sounds as before. A mono
+    // input is spread to both channels first
+    b.in.channelCount = 2; b.in.channelCountMode = 'explicit'; b.in.channelInterpretation = 'speakers';
+    const mat = (from, to) => {           // 2 x 2 gains, from a splitter into a merger
+      const split = ctx.createChannelSplitter(2), merge = ctx.createChannelMerger(2), gs = [];
+      from.connect(split);
+      for (let o = 0; o < 2; o++) for (let k = 0; k < 2; k++){
+        const gn = g(0); split.connect(gn, k); gn.connect(merge, 0, o); gs.push(gn);   // gs[o*2+k]: input k into output o
+      }
+      merge.connect(to);
+      return gs;
+    };
+    b.decIn = g(1); b.drive = g(1);
+    b.clean = ctx.createDelay(0.01); b.clean.delayTime.value = 0;
+    b.enc = mat(b.in, b.drive);
+    b.cl  = mat(b.in, b.clean); b.clean.connect(b.wet);
+    b.dec = mat(b.decIn, b.wet);
+    b.drive.connect(A.pre); A.pre.connect(A.shp); A.shp.connect(A.post); A.post.connect(A.dc);
     A.dc.connect(b.tiltLo); b.tiltLo.connect(b.tiltHi);
     // stage B's own shaper is 48 samples late; so is the path around it, so a
     // band is equally late with B on or off and the bands still sum in step
     b.offDly = ctx.createDelay(0.01); b.offDly.delayTime.value = 0;
-    b.tiltHi.connect(b.bOff); b.bOff.connect(b.offDly); b.offDly.connect(b.wet);
+    b.tiltHi.connect(b.bOff); b.bOff.connect(b.offDly); b.offDly.connect(b.decIn);
     b.tiltHi.connect(b.bOn);
     b.bOn.connect(B.pre); B.pre.connect(B.shp); B.shp.connect(B.post); B.post.connect(B.dc);
-    B.dc.connect(b.wet);
+    B.dc.connect(b.decIn);
     b.wet.connect(b.out); b.out.connect(e.sum);
     return b;
   }
@@ -818,9 +849,10 @@ function createEngine(ctx){
   e.outGain.connect(e.safeOff); e.safeOff.connect(e.final);
   e.input.connect(e.byp); e.byp.connect(e.final);
   e.final.connect(e.outAn); e.outAn.connect(ctx.destination);
+  e.final.connect(e.hOut);
 
   e.input.connect(e.inGain);
-  e.inGain.connect(e.inAn);
+  e.inGain.connect(e.inAn); e.inGain.connect(e.hIn);
   // so does the whole dry path, or a half mix would comb-filter
   e.dryDly = ctx.createDelay(0.01); e.dryDly.delayTime.value = 0;
   e.inGain.connect(e.dryDly); e.dryDly.connect(e.dry); e.dry.connect(e.mixBus);
@@ -876,6 +908,21 @@ function createEngine(ctx){
     if (s.node) s.node.port.postMessage({ mode: MODE_INDEX[id] });
     else s.shp.curve = curveFor(id);
   };
+  // the three matrices for one band's Stereo choice
+  const STEREO = {
+    //        encoder (into the stages)   clean (around them)          decoder (back to L, R)
+    lr:   { enc:[1,0, 0,1],          cl:[0,0, 0,0],              dec:[1,0, 0,1] },
+    mid:  { enc:[.5,.5, .5,.5],      cl:[.5,-.5, -.5,.5],        dec:[1,0, 1,0] },
+    side: { enc:[.5,-.5, .5,-.5],    cl:[.5,.5, .5,.5],          dec:[1,0, -1,0] }
+  };
+  e.setStereo = (bi, id) => {
+    const b = e.bands[bi], m = STEREO[id] || STEREO.lr;
+    b.stereo = id;
+    for (let k = 0; k < 4; k++){
+      b.enc[k].gain.value = m.enc[k]; b.cl[k].gain.value = m.cl[k]; b.dec[k].gain.value = m.dec[k];
+    }
+  };
+  for (let i = 0; i < 3; i++) e.setStereo(i, 'lr');
   e.applyBandGains = () => {
     for (let i = 0; i < 3; i++){
       const b = e.bands[i];
@@ -983,7 +1030,7 @@ function createEngine(ctx){
         }
         const lat = SHAPER_LATENCY/ctx.sampleRate;
         e.dryDly.delayTime.value = 2*lat;
-        for (const b of e.bands){ b.dryDly.delayTime.value = 2*lat; b.offDly.delayTime.value = lat; }
+        for (const b of e.bands){ b.dryDly.delayTime.value = 2*lat; b.clean.delayTime.value = 2*lat; b.offDly.delayTime.value = lat; }
         e.shaperAvailable = true;
         e.crushAvailable = true;
         return true;
@@ -1077,6 +1124,9 @@ for (let i = 0; i < 3; i++){
       apply:(e,v) => { e.bands[i].mute = v; e.applyBandGains(); } });
   p({ id:`so${i}`, label:'Solo', type:'tgl', def:false, band:i,
       apply:(e,v) => { if (v) e.solo = i+1; else if (e.solo === i+1) e.solo = 0; e.applyBandGains(); } });
+  p({ id:`st${i}`, label:'Stereo', type:'sel', def:'lr', band:i,
+      opts:[['lr','L/R'],['mid','Mid'],['side','Side']],
+      apply:(e,v) => e.setStereo(i, v) });
 }
 
 /* crush & feedback */
@@ -1340,7 +1390,8 @@ function paintKnob(d, el, value, modded){
   el.classList.toggle('mod', !!modded);
   if (modded) dial.style.setProperty('--m', norm(d, state[d.id]).toFixed(4));
   const fmt = d.fmt || (v => v.toFixed(2));
-  el.querySelector('.kval').textContent = fmt(value);
+  const kval = el.querySelector('.kval');
+  if (!kval.querySelector('input')) kval.textContent = fmt(value);   // not while one is being typed
 }
 function knobEl(d){
   const el = document.createElement('div');
@@ -1368,8 +1419,52 @@ function knobEl(d){
     const step = (ev.shiftKey ? 0.004 : 0.02) * (ev.deltaY < 0 ? 1 : -1);
     setParam(d.id, denorm(d, norm(d, state[d.id]) + step));
   }, { passive:false });
+  // click the number to type one, in the units it is shown in
+  const kval = el.querySelector('.kval');
+  kval.title = 'Click to type a value';
+  kval.addEventListener('click', () => {
+    if (kval.querySelector('input')) return;
+    const box = document.createElement('input');
+    box.value = kval.textContent; box.setAttribute('aria-label', 'Type a value for ' + d.label);
+    kval.textContent = ''; kval.appendChild(box); box.select();
+    let done = false;
+    const finish = apply => {
+      if (done) return;
+      const v = apply ? typedValue(d, box.value) : null;
+      if (apply && v === null) { box.select(); return; }   // nothing to use: leave it open
+      done = true; box.remove();
+      if (v !== null) setParam(d.id, v); else paint(d.id);
+    };
+    box.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') finish(true);
+      if (ev.key === 'Escape') finish(false);
+    });
+    box.addEventListener('blur', () => finish(false));
+    box.focus();
+  });
   paintKnob(d, el, d.def, false);
   return el;
+}
+// What was typed, read the way the plugin reads it (Session.h parseTyped):
+// "2.2k", "+3", "-6 dB", "50%", "12 ms", "/4", "off". Drive is shown in dB and
+// typed in dB. Null when there is no number to be found.
+function parseTyped(typed){
+  let t = String(typed).trim().toLowerCase();
+  if (!t) return null;
+  if (t === 'off') return 0;
+  if (t[0] === '/') t = t.slice(1).trim();
+  if (t[0] === '+') t = t.slice(1).trim();
+  const m = /^[-0-9.]*/.exec(t)[0];
+  if (!/[0-9]/.test(m)) return null;
+  let v = parseFloat(m);
+  if (!Number.isFinite(v)) return null;
+  if (t.slice(m.length).trim()[0] === 'k') v *= 1000;
+  return v;
+}
+function typedValue(d, typed){
+  const v = parseTyped(typed);
+  if (v === null) return null;
+  return d.fmt === fmtDrv ? Math.pow(10, v/20) : v;
 }
 function selEl(d){
   const f = document.createElement('div'); f.className = 'field';
@@ -1473,7 +1568,7 @@ function buildBands(){
     row.className = 'row';
     pane.appendChild(row);
     panes.appendChild(pane);
-    mount(row, [`m${i}a`, `d${i}a`, `sb${i}`, `m${i}b`, `d${i}b`, `t${i}`, `mx${i}`, `lv${i}`, `mu${i}`, `so${i}`]);
+    mount(row, [`m${i}a`, `d${i}a`, `sb${i}`, `m${i}b`, `d${i}b`, `t${i}`, `mx${i}`, `lv${i}`, `mu${i}`, `so${i}`, `st${i}`]);
   }
 }
 
@@ -1544,6 +1639,81 @@ function fit(cv){
   }
   return { w:W, h:H, dpr };
 }
+/* The harmonic readout, the plugin's (core/Harmonics.h) in JavaScript: is the
+   input one clear tone, where is its fundamental, and how loud is each
+   harmonic of it in the output against the output's own fundamental. Two
+   differences, both from the analyser: magnitudes arrive in dB, and the
+   window is Blackman, whose main lobe is three bins either side rather than
+   Hann's two. The frame is 8192 points, so the lowest note it reads is seven
+   bins (~41 Hz at 48 kHz) instead of the plugin's 90 Hz, which is what lets
+   the 45 Hz sub sine be read. */
+const HARMONIC_MAX = 8;
+function readHarmonics(inDb, outDb, sr, half = 3){
+  const bins = inDb.length, r = { tonal:false, f0:0, level:new Array(HARMONIC_MAX + 1).fill(-120),
+                                  inRange:new Array(HARMONIC_MAX + 1).fill(false) };
+  if (bins < 16) return r;
+  const binHz = sr/(2*bins);
+  const pw = (db, k) => Number.isFinite(db[k]) ? Math.pow(10, db[k]/10) : 0;
+  const power = (db, centre) => {
+    let p = 0;
+    for (let k = Math.max(1, centre - half); k <= Math.min(bins - 1, centre + half); k++) p += pw(db, k);
+    return p;
+  };
+  const lo = Math.max(half + 1, Math.ceil(Math.max(30, (2*half + 1)*binHz)/binHz));
+  const hi = Math.min(bins - half - 1, Math.floor(4000/binHz));
+  let peak = lo;
+  for (let k = lo; k <= hi; k++) if (inDb[k] > inDb[peak]) peak = k;
+  // the shoulder of a note below the range is not a note (Harmonics.h)
+  if (inDb[peak - 1] > inDb[peak] || inDb[peak + 1] > inDb[peak]) return r;
+  let total = 0;
+  for (let k = 1; k < bins; k++) total += pw(inDb, k);
+  if (total <= 1e-24 || power(inDb, peak) < 0.6*total) return r;
+  // parabolic interpolation on the log magnitude, which dB already is
+  const a = Math.max(-240, inDb[peak - 1]), b = Math.max(-240, inDb[peak]), c = Math.max(-240, inDb[peak + 1]);
+  const den = a - 2*b + c;
+  const shift = Math.abs(den) > 1e-12 ? clamp(0.5*(a - c)/den, -0.5, 0.5) : 0;
+  r.f0 = (peak + shift)*binHz;
+  r.tonal = true;
+  let p1 = 0;
+  for (let h = 1; h <= HARMONIC_MAX; h++){
+    const f = h*r.f0;
+    r.inRange[h] = f < 0.95*sr*0.5;
+    if (!r.inRange[h]) continue;
+    const p = power(outDb, Math.round(f/binHz));
+    if (h === 1){ p1 = p; r.level[1] = 0; continue; }
+    r.level[h] = p1 > 0 && p > 0 ? Math.max(-120, 10*Math.log10(p/p1)) : -120;
+  }
+  if (p1 <= 0) r.tonal = false;
+  return r;
+}
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+function readoutText(r){
+  if (!r || !r.tonal) return 'play one note to read the harmonics it gains';
+  const k = Math.round(69 + 12*Math.log2(r.f0/440));
+  let t = NOTE_NAMES[((k % 12) + 12) % 12] + (Math.floor(k/12) - 1) + '  ';
+  const ord = ['', '', '2nd', '3rd', '4th', '5th', '6th'];
+  for (let h = 2; h <= 6; h++){
+    if (!r.inRange[h]) break;
+    t += ord[h] + ' ' + (r.level[h] < -60 ? '-' : Math.round(r.level[h])) + '  ';
+  }
+  return t.trimEnd() + '  dB';
+}
+let hInBuf = new Float32Array(0), hOutBuf = new Float32Array(0), inFreqBuf = new Uint8Array(0);
+let reading = null, readingAge = 99;
+const specRead = document.getElementById('specRead');
+function updateReading(){
+  if (!engine || !engine.hIn) return;
+  if (hInBuf.length !== engine.hIn.frequencyBinCount){
+    hInBuf = new Float32Array(engine.hIn.frequencyBinCount); hOutBuf = new Float32Array(engine.hOut.frequencyBinCount);
+  }
+  engine.hIn.getFloatFrequencyData(hInBuf); engine.hOut.getFloatFrequencyData(hOutBuf);
+  const r = readHarmonics(hInBuf, hOutBuf, ctx.sampleRate);
+  // hold the last reading through a few frames that miss, as the plugin does,
+  // so it does not flicker between a note and the hint
+  if (r.tonal){ reading = r; readingAge = 0; } else readingAge++;
+  const t = readoutText(readingAge > 15 ? null : reading);
+  if (specRead.textContent !== t) specRead.textContent = t;
+}
 function drawSpec(){
   const { w, h, dpr } = fit(cvSpec);
   gSpec.clearRect(0, 0, w, h);
@@ -1574,6 +1744,34 @@ function drawSpec(){
     if (bh < 1) continue;
     gSpec.fillStyle = hueAt(Math.sqrt(f0*f1));
     gSpec.fillRect(i*slot + gap/2, h - bh, slot - gap, bh);
+  }
+  // the input, drawn over the output on the same scale: the gap between the
+  // line and the bars is what FRACTURE added (or took away)
+  if (inFreqBuf.length !== engine.inAn.frequencyBinCount) inFreqBuf = new Uint8Array(engine.inAn.frequencyBinCount);
+  engine.inAn.getByteFrequencyData(inFreqBuf);
+  gSpec.strokeStyle = C.dim; gSpec.lineWidth = 1.5*dpr; gSpec.lineJoin = 'round';
+  gSpec.beginPath();
+  for (let i = 0; i < N; i++){
+    const f0 = 20*Math.pow(1000, i/N), f1 = 20*Math.pow(1000, (i+1)/N);
+    const b0 = clamp(Math.floor(f0/nyq*bins), 0, bins-1);
+    const b1 = clamp(Math.ceil(f1/nyq*bins), b0+1, bins);
+    let v = 0;
+    for (let b = b0; b < b1; b++) if (inFreqBuf[b] > v) v = inFreqBuf[b];
+    const y = h - (v/255)*h*0.97, x = (i + 0.5)*slot;
+    i ? gSpec.lineTo(x, y) : gSpec.moveTo(x, y);
+  }
+  gSpec.stroke();
+  // with a note playing, mark where its first five harmonics fall
+  updateReading();
+  if (reading && readingAge <= 15){
+    gSpec.fillStyle = C.ink; gSpec.font = Math.round(9*dpr)+'px ui-monospace,Menlo,monospace';
+    gSpec.textAlign = 'center';
+    for (let k = 1; k <= 5; k++){
+      const f = k*reading.f0;
+      if (f < 20 || f > 20000) continue;
+      gSpec.fillText(String(k), w*Math.log(f/20)/Math.log(1000), 11*dpr);
+    }
+    gSpec.textAlign = 'start';
   }
 }
 function bandTransfer(x){
@@ -1731,11 +1929,14 @@ function makeNoise(){
   }
   return b;
 }
-function makeTone(){
+// one second holding a whole number of cycles, so it loops without a click.
+// 45 Hz is a sub-bass fundamental: what a kick's body or an 808 sits on, and
+// where a split or a drive that thins the low end shows up first
+function makeTone(freq = 110){
   const len = ctx.sampleRate, b = ctx.createBuffer(2, len, ctx.sampleRate);
   for (let c = 0; c < 2; c++){
     const d = b.getChannelData(c);
-    for (let i = 0; i < len; i++) d[i] = Math.sin(2*Math.PI*110*i/ctx.sampleRate)*0.5;
+    for (let i = 0; i < len; i++) d[i] = Math.sin(2*Math.PI*freq*i/ctx.sampleRate)*0.5;
   }
   return b;
 }
@@ -1810,7 +2011,8 @@ async function startSource(){
       buf = fileBuf;
     }
     else if (kind === 'noise') buf = makeNoise();
-    else if (kind === 'tone')  buf = makeTone();
+    else if (kind === 'tone')  buf = makeTone(110);
+    else if (kind === 'sub')   buf = makeTone(45);
     else                       buf = makePluck();
     srcNode = ctx.createBufferSource();
     srcNode.buffer = buf;
@@ -1866,12 +2068,45 @@ buildBands();
 buildMatrix();
 buildMeters();
 
+// The heading each preset sits under in the menu, the same as the plugin's
+// (plugin/core/FactoryPresets.h, presetCategory); the suite checks they agree
+const PRESET_HEADINGS = {
+  'Init': 'Start',
+  'Thermal-ish — three bands, gentle': 'Character',
+  'Rift-ish — serial fold into filter': 'Character',
+  'Speaker in a bin': 'Character',
+  'Bit rot': 'Character',
+  'Screaming lead': 'Character',
+  'Sub warmer, top untouched': 'Character',
+  'Motion — LFO across the mids': 'Character',
+  'Total collapse': 'Character',
+  'Ladder sweep, on the half note': 'Character',
+  'Squelch — vintage, a turn from singing': 'Character',
+  'Chop — eighths with the edges left on': 'Character',
+  'Harmonic pan — the tremolo across the image': 'Character',
+  'Drum bus — glue and crunch': 'By use',
+  'Kick & snare — grit on the top only': 'By use',
+  'Bass — harmonics driven, sub clean': 'By use',
+  '808 — saturated so it reads on small speakers': 'By use',
+  'Vocal — warm presence': 'By use',
+  'Amp — crunchy rhythm': 'By use',
+  'Fuzz — gated and square': 'By use',
+  'Mix bus — a touch of tape': 'By use',
+  'Radio — the AM band': 'By use'
+};
+
 const presetSel = document.getElementById('presetSel');
-PRESETS.forEach((pr, i) => {
-  const o = document.createElement('option');
-  o.value = String(i); o.textContent = pr.name;
-  presetSel.appendChild(o);
-});
+{
+  // under their headings, in the order the headings first appear
+  const groups = new Map();
+  PRESETS.forEach((pr, i) => {
+    const h = PRESET_HEADINGS[pr.name] || 'Other';
+    if (!groups.has(h)){ const g = document.createElement('optgroup'); g.label = h; groups.set(h, g); presetSel.appendChild(g); }
+    const o = document.createElement('option');
+    o.value = String(i); o.textContent = pr.name;
+    groups.get(h).appendChild(o);
+  });
+}
 presetSel.addEventListener('change', () => applyPatch(PRESETS[+presetSel.value].v));
 
 document.getElementById('btnPlay').addEventListener('click', togglePlay);
@@ -1948,7 +2183,7 @@ requestAnimationFrame(frame);
    OfflineAudioContext and renders it, which is the only way to prove the whole
    chain (including the feedback loop) stays finite and audible. */
 window.FX = {
-  createEngine, MODES, PRESETS, PLIST, P, state,
+  createEngine, MODES, PRESETS, PRESET_HEADINGS, PLIST, P, state, readHarmonics, readoutText, parseTyped, typedValue,
   defaults: () => Object.fromEntries(PLIST.map(d => [d.id, d.def])),
   applyValues: (eng, vals) => {
     eng.instant = true;

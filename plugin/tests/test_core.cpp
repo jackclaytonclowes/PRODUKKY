@@ -729,6 +729,11 @@ static void testHarmonicReadout(){
     std::vector<double> noise(n); for (auto& v : noise) v = g(rng);
     std::vector<double> chord(n);
     for (int i = 0; i < n; ++i) chord[i] = 0.2 * (std::sin(2 * M_PI * 220.0 * i / sr) + std::sin(2 * M_PI * 277.2 * i / sr) + std::sin(2 * M_PI * 329.6 * i / sr));
+    // a note below the range must not be read off its own peak's shoulder
+    const auto sub = tone(60.0, 0.5);
+    const auto rsub = readHarmonics(mags(sub).data(), mags(sub).data(), n / 2, sr);
+    check("  ... and does not read a 60 Hz note, below its range, as a higher one", !rsub.tonal,
+          "read as " + f2s(rsub.f0, 1) + " Hz");
     const bool quietNoise = !readHarmonics(mags(noise).data(), mags(noise).data(), n / 2, sr).tonal;
     const bool quietChord = !readHarmonics(mags(chord).data(), mags(chord).data(), n / 2, sr).tonal;
     check("  ... and gives no reading for noise or a chord", quietNoise && quietChord,

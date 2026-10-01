@@ -131,6 +131,48 @@ const SIGNAL = `async (patch, kind, freq, amp, seconds, fallback) => {
   return { input: Array.from(buf.getChannelData(0)), out: Array.from(r.getChannelData(0)), shaperLoaded };
 }`;
 
+/* Two different channels in, both out: the per-band Stereo checks need a
+   signal whose mid and side are known. 'mono' is the same noise on both,
+   'side' is it on the left and inverted on the right. */
+const STEREO = `async (patch, kind, seconds) => {
+  const sr = 48000, len = Math.round(sr*seconds);
+  const ctx = new OfflineAudioContext(2, len, sr);
+  const buf = ctx.createBuffer(2, len, sr);
+  let seed = 11;
+  const rnd = () => (seed = (seed*16807) % 2147483647)/2147483647*2 - 1;
+  const L = buf.getChannelData(0), R = buf.getChannelData(1);
+  for (let i = 0; i < len; i++){ const v = 0.1*rnd(); L[i] = v; R[i] = kind === 'side' ? -v : v; }
+  const eng = window.FX.createEngine(ctx);
+  await eng.initWorklet();
+  window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+  const s = ctx.createBufferSource(); s.buffer = buf; s.connect(eng.input); s.start();
+  const r = await ctx.startRendering();
+  return { L: Array.from(r.getChannelData(0)), R: Array.from(r.getChannelData(1)) };
+}`;
+
+/* A sine through the whole engine, with the Scope's own analysers read
+   partway through: what the harmonic readout would say about it. */
+const READING = `async (patch, freq, seconds) => {
+  const sr = 48000, len = Math.round(sr*seconds);
+  const ctx = new OfflineAudioContext(2, len, sr);
+  const buf = ctx.createBuffer(2, len, sr);
+  for (let c = 0; c < 2; c++){ const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = 0.5*Math.sin(2*Math.PI*freq*i/sr); }
+  const eng = window.FX.createEngine(ctx);
+  await eng.initWorklet();
+  window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+  const s = ctx.createBufferSource(); s.buffer = buf; s.connect(eng.input); s.start();
+  let reading = null;
+  ctx.suspend(seconds*0.75).then(() => {
+    const a = new Float32Array(eng.hIn.frequencyBinCount), b = new Float32Array(eng.hOut.frequencyBinCount);
+    eng.hIn.getFloatFrequencyData(a); eng.hOut.getFloatFrequencyData(b);
+    reading = window.FX.readHarmonics(a, b, sr);
+    reading.text = window.FX.readoutText(reading);
+    ctx.resume();
+  });
+  await ctx.startRendering();
+  return reading;
+}`;
+
 // energy that is not a harmonic of f0, against the fundamental, below 18 kHz
 function aliasDb(x, f0, sr = 48000){
   const N = 1 << 14, start = x.length - N;
@@ -330,6 +372,97 @@ async function main() {
     }
   }
 
+  console.log('\nPer-band stereo');
+  {
+    const stereo = (patch, kind) => page.evaluate(`(${STEREO})(${JSON.stringify(patch)}, '${kind}', 0.4)`);
+    // a band driven hard, so that driving it or not is a large difference
+    const hot = { bands: '1', m0a: 'hard', d0a: 30, autoGain: false, safety: false, mix: 100 };
+    const skip = 4800;
+    const diffDb = (a, b) => {
+      let d = 0, e = 0;
+      for (const ch of ['L', 'R']) for (let i = skip; i < a[ch].length; i++){ d += (a[ch][i] - b[ch][i])**2; e += b[ch][i]**2; }
+      return 10*Math.log10(d/Math.max(e, 1e-30));
+    };
+    const clean = { ...hot, mx0: 0 };
+    const lrMono = await stereo(hot, 'mono');
+    const sideIn = await stereo({ ...clean }, 'side');
+    const monoClean = await stereo({ ...clean }, 'mono');
+    for (const [name, a, b] of [
+      ['Mid on a mono signal is L/R', await stereo({ ...hot, st0: 'mid' }, 'mono'), lrMono],
+      ['Mid leaves a side-only signal clean', await stereo({ ...hot, st0: 'mid' }, 'side'), sideIn],
+      ['Side leaves a mono signal clean', await stereo({ ...hot, st0: 'side' }, 'mono'), monoClean],
+    ]){
+      const d = diffDb(a, b);
+      check(name, d < -60, `differs by ${d.toFixed(1)} dB`);
+    }
+    // and the other way round: each mode does drive what it is meant to
+    const sideDriven = diffDb(await stereo({ ...hot, st0: 'side' }, 'side'), sideIn);
+    check('Side drives a side-only signal', sideDriven > -20, `differs from clean by ${sideDriven.toFixed(1)} dB`);
+    const def = await page.evaluate(() => window.FX.defaults().st0);
+    check('bands start on L/R', def === 'lr', def);
+  }
+
+  console.log('\nThe Scope\'s harmonic readout');
+  {
+    // the reader alone, on spectra windowed the way the analyser windows them
+    const synth = await page.evaluate(() => {
+      const sr = 48000, N = 8192;
+      const spectrum = parts => {
+        const re = new Float64Array(N), im = new Float64Array(N);
+        for (let i = 0; i < N; i++){
+          let x = 0; for (const [f, a] of parts) x += a*Math.sin(2*Math.PI*f*i/sr + f);
+          const w = 0.42 - 0.5*Math.cos(2*Math.PI*i/N) + 0.08*Math.cos(4*Math.PI*i/N);
+          re[i] = x*w;
+        }
+        for (let i = 1, j = 0; i < N; i++){ let bit = N >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit;
+          if (i < j){ [re[i], re[j]] = [re[j], re[i]]; } }
+        for (let len = 2; len <= N; len <<= 1){
+          const ang = -2*Math.PI/len;
+          for (let i = 0; i < N; i += len) for (let k = 0; k < len/2; k++){
+            const wr = Math.cos(ang*k), wi = Math.sin(ang*k), a = i + k, b = a + len/2;
+            const tr = re[b]*wr - im[b]*wi, ti = re[b]*wi + im[b]*wr;
+            re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+          }
+        }
+        const db = new Float32Array(N/2);
+        for (let k = 0; k < N/2; k++) db[k] = 20*Math.log10(Math.hypot(re[k], im[k])/N + 1e-30);
+        return db;
+      };
+      const out = {};
+      for (const f0 of [45, 440]){
+        const r = window.FX.readHarmonics(spectrum([[f0, 0.5]]), spectrum([[f0, 0.5], [2*f0, 0.05], [3*f0, 0.005]]), sr);
+        out[f0] = { tonal: r.tonal, f0: r.f0, h2: r.level[2], h3: r.level[3], h4: r.level[4], text: window.FX.readoutText(r) };
+      }
+      const chord = window.FX.readHarmonics(spectrum([[220, 0.3], [277.2, 0.3], [329.6, 0.3]]), spectrum([[220, 0.3]]), sr);
+      out.chord = chord.tonal;
+      const low = window.FX.readHarmonics(spectrum([[25, 0.5]]), spectrum([[25, 0.5]]), sr);
+      out.low = low.tonal;
+      return out;
+    });
+    for (const f0 of [45, 440]){
+      const r = synth[f0];
+      check(`a ${f0} Hz note with its 2nd at -20 dB and 3rd at -40 dB reads as such`,
+        r.tonal && Math.abs(r.f0 - f0) < 0.5 && Math.abs(r.h2 + 20) < 0.5 && Math.abs(r.h3 + 40) < 0.5 && r.h4 < -60,
+        JSON.stringify(r));
+    }
+    check('the reading names the note', synth[440].text.startsWith('A4  2nd -20  3rd -40'), synth[440].text);
+    check('a chord is not read as a note', synth.chord === false);
+    check('a note below the frame\'s reach is not read', synth.low === false);
+
+    // and through the engine, from the Scope's own analysers: Soft is
+    // symmetrical, so it adds no 2nd; Tube is not, so it does
+    const reading = (patch, f) => page.evaluate(`(${READING})(${JSON.stringify(patch)}, ${f}, 0.6)`);
+    for (const f of [45, 220]){
+      const soft = await reading({ bands: '1', m0a: 'soft', d0a: 8 }, f);
+      const tube = await reading({ bands: '1', m0a: 'tube', d0a: 8 }, f);
+      check(`at ${f} Hz the engine's analysers read the note`, soft && soft.tonal && Math.abs(soft.f0 - f) < 1,
+        soft ? `${soft.f0.toFixed(2)} Hz, "${soft.text}"` : 'no reading');
+      check(`at ${f} Hz Soft adds a 3rd and no 2nd, Tube adds a 2nd`,
+        soft && tube && soft.level[2] < -50 && soft.level[3] > -40 && tube.level[2] > -40,
+        soft && tube ? `Soft "${soft.text}", Tube "${tube.text}"` : 'no reading');
+    }
+  }
+
   console.log('\nModulation');
   const modded = await render({ bands: '1', d0a: 12, mS0: 'lfo1', mD0: 'd0a', mA0: 100, l1Rate: 8 }, 0.4);
   check('lfo on drive renders finite', modded.bad === 0 && modded.rms > 0.005 && modded.peak <= 0.95,
@@ -383,6 +516,47 @@ async function main() {
       dips >= 1 && dips <= 3, `${dips} dips in ${(quarter.L.length*0.005).toFixed(2)} s`);
   }
 
+  console.log('\nTyped values');
+  {
+    const parsed = await page.evaluate(() => {
+      const P = window.FX.P, tv = window.FX.typedValue;
+      return {
+        db: tv(P.inGain, '-6 dB'), plus: tv(P.inGain, '+3'), k: tv(P.x1, '2.2k'), khz: tv(P.x1, '2.2 kHz'),
+        pc: window.FX.parseTyped('50%'), redux: window.FX.parseTyped('/4'), off: window.FX.parseTyped('off'),
+        drive: tv(P.d0a, '12'), junk: tv(P.inGain, 'loud'),
+      };
+    });
+    check('typed text reads in the units shown',
+      parsed.db === -6 && parsed.plus === 3 && parsed.k === 2200 && parsed.khz === 2200 && parsed.pc === 50 &&
+      parsed.redux === 4 && parsed.off === 0 && Math.abs(parsed.drive - Math.pow(10, 12/20)) < 1e-9 && parsed.junk === null,
+      JSON.stringify(parsed));
+    // click the number under the Input knob, type, Enter
+    const box = await page.evaluateHandle(() => {
+      const knob = [...document.querySelectorAll('.knob')].find(k => k.querySelector('.klab').textContent === 'Input');
+      knob.querySelector('.kval').click();
+      return knob.querySelector('.kval input');
+    });
+    const opened = await page.evaluate(b => !!b, box);
+    check('clicking a knob\'s number opens a box to type in', opened);
+    if (opened){
+      await box.type('-7.5 dB'); await page.keyboard.press('Enter');
+      const after = await page.evaluate(() => ({ v: window.FX.state.inGain,
+        shown: [...document.querySelectorAll('.knob')].find(k => k.querySelector('.klab').textContent === 'Input').querySelector('.kval').textContent }));
+      check('Enter applies the typed value', after.v === -7.5 && after.shown === '-7.5', JSON.stringify(after));
+      await page.evaluate(() => [...document.querySelectorAll('.knob')].find(k => k.querySelector('.klab').textContent === 'Input').querySelector('.kval').click());
+      await page.keyboard.type('12'); await page.keyboard.press('Escape');
+      const esc = await page.evaluate(() => window.FX.state.inGain);
+      check('Escape leaves it as it was', esc === -7.5, String(esc));
+      await page.evaluate(() => [...document.querySelectorAll('.knob')].find(k => k.querySelector('.klab').textContent === 'Input').querySelector('.kval').click());
+      await page.keyboard.type('99'); await page.keyboard.press('Enter');
+      const clamped = await page.evaluate(() => window.FX.state.inGain);
+      check('a typed value past the end of the knob stops at the end', clamped === 24, String(clamped));
+      // and back to 0 dB, so the live checks below hear the default
+      await page.evaluate(() => [...document.querySelectorAll('.knob')].find(k => k.querySelector('.klab').textContent === 'Input').querySelector('.kval').click());
+      await page.keyboard.type('0'); await page.keyboard.press('Enter');
+    }
+  }
+
   console.log('\nPresets');
   const presetProblems = await page.evaluate(() => {
     const bad = [];
@@ -399,6 +573,20 @@ async function main() {
   });
   check('every preset value is a real parameter in range', presetProblems.length === 0, presetProblems.join(' | '));
 
+  // the headings must be the plugin's, or the two menus group differently
+  {
+    const src = fs.readFileSync(path.join(root, 'plugin', 'core', 'FactoryPresets.h'), 'utf8');
+    const body = src.slice(src.indexOf('presetCategory('));
+    const plugin = Object.fromEntries([...body.matchAll(/\{ "([^"]+)", "([^"]+)" \}/g)].map(m => [m[1], m[2]]));
+    const { names, headings, groups } = await page.evaluate(() => ({
+      names: window.FX.PRESETS.map(p => p.name), headings: window.FX.PRESET_HEADINGS,
+      groups: [...document.querySelectorAll('#presetSel optgroup')].map(g => g.label),
+    }));
+    const wrong = names.filter(n => !headings[n] || headings[n] !== plugin[n]).map(n => `${n}: ${headings[n]} vs ${plugin[n]}`);
+    check(`every browser preset sits under the plugin's heading (${names.length})`, wrong.length === 0, wrong.join(' | '));
+    check('the menu shows the headings in order', groups.join(',') === 'Start,Character,By use', groups.join(','));
+  }
+
   const presetCount = await page.evaluate(() => window.FX.PRESETS.length);
   for (let i = 0; i < presetCount; i++) {
     const pr = await page.evaluate(i => window.FX.PRESETS[i], i);
@@ -408,6 +596,16 @@ async function main() {
   }
 
   console.log('\nLive context');
+  check('a sub sine is offered as a source', await page.evaluate(() => [...document.querySelectorAll('#srcSel option')].some(o => o.value === 'sub')));
+  for (const [src, note] of [['tone', /^A2  2nd/], ['sub', /^(F|F#)1  2nd/]]){
+    await page.select('#srcSel', src);
+    if (!(await page.evaluate(() => document.getElementById('btnPlay').textContent.includes('Stop')))) await page.click('#btnPlay');
+    await wait(900);
+    const t = await page.evaluate(() => document.getElementById('specRead').textContent);
+    check(`playing the ${src === 'sub' ? 'sub sine' : '110 Hz tone'}, the Scope names the note`, note.test(t), t);
+    await page.click('#btnPlay');
+    await wait(100);
+  }
   await page.select('#srcSel', 'pluck');
   await page.click('#btnPlay');
   await wait(700);

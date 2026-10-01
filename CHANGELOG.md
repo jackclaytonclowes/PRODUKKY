@@ -3,6 +3,17 @@
 Both plugins are still beta: measured by machine, not yet judged by ear. Save your project
 before you try a new version on something that matters.
 
+## Since 0.2.0
+
+**The browser version** has caught up: Stereo per band (L/R, Mid, Side), the Scope's input
+line and harmonic readout, typed values, and the preset menu under the plugin's headings.
+It also has a new test sound, a **45 Hz sub sine**, for hearing what a setting does to the
+low end.
+
+**FRACTURE** — the harmonic readout could take a low note, below what it can read, for a
+higher one (a 60 Hz tone read as about 82 Hz), off the edge of its own peak. It now says
+nothing instead. Fixed in the next release; the browser version has the fix already.
+
 ## 0.2.0
 
 **FRACTURE**

@@ -131,7 +131,7 @@ deliberately different, and the tests pin each one:
   to 35 dB, while a low note's first twenty harmonics move by 0.001 dB. Warp is already
   clean and Quantize's steps are its sound, so both are left alone. Each stage adds half a
   sample of delay at the oversampled rate, which the tuned feedback loop now allows for.
-  The browser version is unchanged and aliases as it always did.
+  Since 0.2 the browser version runs the same oversampler and shapers in a worklet.
 - **Oversampling is real work now.** `oversample: '4x'` was one string; here it is a
   65-tap linear-phase FIR pair per band, which is why the plugin reports 48 samples of
   latency at 4x, 32 at 2x, 0 with it off. `test_core` measures the actual delay through the
@@ -306,6 +306,8 @@ signal is the clean band, all to 0.000 millionths; and on a real stereo signal M
 from both. Not measured: the tuned feedback loop through the drive is tuned for the driven
 half, and the clean half skips the drive's DC blockers and its half sample of anti-aliasing
 delay, so on a low note the undriven part of the loop can ring a few tens of cents off.
+The browser version has the same three choices, with the same ids, so patches move between
+the two; its suite checks the same three equalities.
 
 ## The sidechain
 
