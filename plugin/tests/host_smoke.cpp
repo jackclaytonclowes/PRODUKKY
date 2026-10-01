@@ -307,6 +307,43 @@ int main(int argc, char** argv){
                 std::printf("  screenshot %s\n", file.getFullPathName().toRawUTF8());
             }
 
+            // the Scope's harmonic readout: a 440 Hz tone through Tube in one
+            // band, and the line names the note and a 2nd harmonic in dB
+            {
+                std::function<Scope*(juce::Component*)> findScope = [&](juce::Component* c) -> Scope* {
+                    if (auto* sc = dynamic_cast<Scope*>(c)) return sc;
+                    for (auto* ch : c->getChildren()) if (auto* r = findScope(ch)) return r;
+                    return nullptr;
+                };
+                auto setP = [&](const char* id, float v){
+                    if (auto* prm = proc.apvts.getParameter(id)) prm->setValueNotifyingHost(prm->convertTo0to1(v)); };
+                setP("bands", 0); setP("m0a", static_cast<float>(fracture::Mode::Tube)); setP("d0a", 4.0f);
+                setP("sb0", 0.0f); setP("fltType", 0.0f); setP("crMix", 0.0f); setP("fbAmt", 0.0f);
+                // the processor writes a frame only once the last was taken, so
+                // take whatever earlier tests left before playing the tone
+                if (auto* sc = findScope(editor.get())) sc->refresh();
+                juce::AudioBuffer<float> tone(2, 512); juce::MidiBuffer none; int t = 0;
+                for (int blk = 0; blk < 24; ++blk){
+                    for (int ch = 0; ch < 2; ++ch)
+                        for (int i = 0; i < 512; ++i)
+                            tone.setSample(ch, i, 0.4f * std::sin(2.0f * juce::MathConstants<float>::pi * 440.0f * (t + i) / 48000.0f));
+                    t += 512;
+                    proc.processBlock(tone, none);
+                }
+                if (auto* sc = findScope(editor.get())){
+                    sc->refresh();
+                    const juce::String text = sc->readoutText();
+                    check("the Scope reads the note and the harmonics Tube adds",
+                          text.startsWith("A4") && text.contains("2nd -") && !text.contains("2nd - "), text);
+                    auto img = sc->createComponentSnapshot(sc->getLocalBounds(), true, 2.0f);
+                    juce::File f(juce::File::getCurrentWorkingDirectory().getChildFile(shotPath).withFileExtension("")
+                                     .getFullPathName() + "-scope.png");
+                    f.deleteFile();
+                    if (auto st = std::unique_ptr<juce::FileOutputStream>(f.createOutputStream()))
+                        juce::PNGImageFormat().writeImageToStream(img, *st);
+                } else check("the Scope is on the panel", false);
+            }
+
             // the mouse controls, driven with real mouse events: nothing else in
             // the suite touches them, and a drag that moved the wrong parameter
             // or the wrong way would pass every other check

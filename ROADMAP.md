@@ -71,7 +71,7 @@ Mac only; nobody has judged the sound against references yet.
 - [x] **M** The anti-aliasing in the browser version: the plugin's oversampler and shapers in a worklet
 - [x] **M** Per-band stereo: L/R, mid only, side only
 - [ ] **M** Sidechain input for the envelope follower (check old Logic sessions still open)
-- [ ] **M** Spectrum view in the scope, harmonics labelled
+- [x] **M** Spectrum view in the scope, harmonics labelled (input against output, and a harmonic readout)
 - [ ] **M** Table "hold the recipe": level-independent harmonics
 - [ ] **M** Feedback pitch snapped to a key
 - [ ] **M** Auto gain and preset levelling by loudness (K-weighted), not RMS

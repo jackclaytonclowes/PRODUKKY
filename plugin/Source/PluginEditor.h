@@ -5,6 +5,7 @@
 #include "PluginProcessor.h"
 #include "Bauhaus.h"
 #include "Guide.h"
+#include "Harmonics.h"
 #include <array>
 
 // ---------------------------------------------------------------- primitives
@@ -76,7 +77,13 @@ private:
     void timerCallback() override;
     FractureProcessor& proc;
     std::array<float, FractureProcessor::scopeSize / 2> spectrum {};
-    std::array<float, 36> bars {};
+    std::array<float, 36> bars {}, inBars {};
+    fracture::HarmonicReading reading;     // the last tonal one, held briefly
+    int readingAge = 1000;                 // frames since it was read
+public:
+    // for the tests: what the readout line says right now, and a read now
+    juce::String readoutText() const;
+    void refresh(){ timerCallback(); }
 };
 
 class Meters : public juce::Component, private juce::Timer {

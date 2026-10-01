@@ -9,6 +9,7 @@
 #include "FactoryPresets.h"
 #include "History.h"
 #include "HarmonicTable.h"
+#include "Harmonics.h"
 #include "../../tools/audition/common.h"
 #include <cstdio>
 #include <cstdlib>
@@ -658,6 +659,80 @@ static void testBandStereo(){
     const double vsClean = worst(renderLR(mid, a, b), renderLR(clean, a, b));
     check("  ... and on a real stereo signal Mid is its own sound", vsLR > 0.01 && vsClean > 0.01,
           f2s(vsLR, 3) + " from L/R, " + f2s(vsClean, 3) + " from clean");
+}
+
+// The Scope's harmonic readout (Harmonics.h): does it read a tone's harmonics
+// as they are, and keep quiet when there is no tone to read?
+static void testHarmonicReadout(){
+    const double sr = 48000.0; const int n = 2048;
+    auto mags = [&](const std::vector<double>& x){        // Hann, as the plugin's FFT
+        std::vector<std::complex<double>> a(n);
+        for (int i = 0; i < n; ++i) a[i] = x[i] * (0.5 - 0.5 * std::cos(2.0 * M_PI * i / (n - 1)));
+        fftInPlace(a);
+        std::vector<float> m(n / 2);
+        for (int k = 0; k < n / 2; ++k) m[k] = static_cast<float>(std::abs(a[k]));
+        return m;
+    };
+    auto tone = [&](double f, double amp){
+        std::vector<double> x(n);
+        for (int i = 0; i < n; ++i) x[i] = amp * std::sin(2.0 * M_PI * f * i / sr);
+        return x;
+    };
+    auto through = [&](const std::vector<double>& x, int mode, double drive){
+        std::vector<double> y(x.size());
+        for (size_t i = 0; i < x.size(); ++i) y[i] = shape(mode, drive * x[i]);
+        return y;
+    };
+    // the true levels, from one period of the curve
+    auto truth = [&](int mode, double peak, int h){
+        const int m = 8192; double a1 = 0.0, ah = 0.0;
+        for (int j = 0; j < m; ++j){
+            const double t = 2.0 * M_PI * j / m, y = shape(mode, peak * std::sin(t));
+            a1 += y * std::sin(t); ah += y * std::sin(h * t);
+        }
+        // an asymmetric curve's even harmonics sit in the cosine terms
+        double bh = 0.0; for (int j = 0; j < m; ++j){ const double t = 2.0 * M_PI * j / m; bh += shape(mode, peak * std::sin(t)) * std::cos(h * t); }
+        return 10.0 * std::log10((ah * ah + bh * bh) / (a1 * a1));
+    };
+    const int tube = static_cast<int>(Mode::Tube), soft = static_cast<int>(Mode::Soft);
+    const auto in = tone(220.0, 0.5);
+    const auto r = readHarmonics(mags(in).data(), mags(through(in, tube, 4.0)).data(), n / 2, sr);
+    double worst = 0.0; std::string got;
+    for (int h = 2; h <= 5; ++h){
+        const double want = truth(tube, 2.0, h);
+        if (want > -50.0) worst = std::max(worst, std::fabs(r.level[h] - want));
+        got += " " + std::to_string(h) + ": " + f2s(r.level[h], 1) + " (" + f2s(want, 1) + ")";
+    }
+    check("the harmonic readout reads Tube's harmonics as they are (within 0.5 dB)",
+          r.tonal && worst < 0.5 && std::fabs(r.f0 - 220.0) < 0.5, "f0 " + f2s(r.f0, 2) + " Hz," + got);
+    const auto rs = readHarmonics(mags(in).data(), mags(through(in, soft, 4.0)).data(), n / 2, sr);
+    check("  ... and reads no 2nd harmonic from Soft", rs.tonal && rs.level[2] < -60.0, f2s(rs.level[2], 1) + " dB");
+
+    // through the whole engine: Tube's 2nd shows, Soft's does not
+    auto engineOut = [&](int mode){
+        Patch p; p.v = { {"bands", 0}, {"m0a", static_cast<float>(mode)}, {"d0a", 4} };
+        Engine e; e.prepare(sr, 256); applyPatch(e, p); e.seedFrom(0);
+        const int len = 24000; std::vector<float> l(len), rr(len);
+        for (int i = 0; i < len; ++i) l[i] = rr[i] = static_cast<float>(0.4 * std::sin(2.0 * M_PI * 440.0 * i / sr));
+        for (int i = 0; i < len; i += 256){ float* io[2] = { l.data() + i, rr.data() + i }; e.process(io, 2, std::min(256, len - i)); }
+        std::vector<double> x(n), y(n);
+        for (int i = 0; i < n; ++i){ x[i] = 0.4 * std::sin(2.0 * M_PI * 440.0 * (len - n + i) / sr); y[i] = l[len - n + i]; }
+        return readHarmonics(mags(x).data(), mags(y).data(), n / 2, sr);
+    };
+    const auto et = engineOut(tube), es = engineOut(soft);
+    check("  ... and through the engine Tube has a 2nd harmonic and Soft none",
+          et.tonal && es.tonal && et.level[2] > -35.0 && es.level[2] < -60.0,
+          "Tube " + f2s(et.level[2], 1) + " dB, Soft " + f2s(es.level[2], 1) + " dB");
+
+    // nothing to read: noise, or a chord
+    std::mt19937 rng(5); std::normal_distribution<double> g(0.0, 0.2);
+    std::vector<double> noise(n); for (auto& v : noise) v = g(rng);
+    std::vector<double> chord(n);
+    for (int i = 0; i < n; ++i) chord[i] = 0.2 * (std::sin(2 * M_PI * 220.0 * i / sr) + std::sin(2 * M_PI * 277.2 * i / sr) + std::sin(2 * M_PI * 329.6 * i / sr));
+    const bool quietNoise = !readHarmonics(mags(noise).data(), mags(noise).data(), n / 2, sr).tonal;
+    const bool quietChord = !readHarmonics(mags(chord).data(), mags(chord).data(), n / 2, sr).tonal;
+    check("  ... and gives no reading for noise or a chord", quietNoise && quietChord,
+          std::string(quietNoise ? "" : "noise read as a tone ") + (quietChord ? "" : "chord read as a tone"));
 }
 
 int main(int argc, char** argv){
@@ -1474,6 +1549,9 @@ int main(int argc, char** argv){
 
     std::printf("\nBand stereo\n");
     testBandStereo();
+
+    std::printf("\nHarmonic readout\n");
+    testHarmonicReadout();
 
     std::printf("\nZipper noise\n");
     {

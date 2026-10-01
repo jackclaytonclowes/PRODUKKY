@@ -98,6 +98,8 @@ The panel reads in the order the sound flows: top row first, left to right, then
 
 - The top shows the sound's spectrum, with the post filter's response drawn over it in blue, on the same frequency scale. A notch shows as a dip at its frequency, a band pass as a hump, a resonant low pass as a peak before the drop, and the label says the type and where it is (for example "Notch · 1.40 kHz").
 - The curve is live: when the filter rhythm or an LFO moves the cutoff, it moves too, so you can see where a sweep is.
+- The grey line is what went **in**; the bars are what comes out. The difference is what FRACTURE added.
+- Play a single note (a sine, a bass note, a held synth) and the line under the spectrum names it and reads out the **harmonics** the drive added, in dB under the note: for example "A4  2nd -21  3rd -14". Tube adds a 2nd and Soft does not; a drawn Table shows the recipe you drew. With chords, drums or noise there is no single note to read, and it says so.
 - The bottom shows the current band's distortion curve: flat is clean, bent is distorted.
 
 ## 09 Perform

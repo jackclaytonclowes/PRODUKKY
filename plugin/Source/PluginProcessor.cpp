@@ -59,8 +59,8 @@ void FractureProcessor::prepareToPlay(double sampleRate, int samplesPerBlock){
     engine.prepare(sampleRate, samplesPerBlock);
     reportedLatency = engine.latencySamples();
     setLatencySamples(reportedLatency);
-    scopeFill = 0;
-    scopeFifo.fill(0.0f);
+    scopeFill = 0; scopeInFill = 0;
+    scopeFifo.fill(0.0f); scopeInFifo.fill(0.0f);
 }
 
 void FractureProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&){
@@ -93,6 +93,7 @@ void FractureProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear(ch, 0, buffer.getNumSamples());
 
+    pushScopeInput(buffer.getReadPointer(0), buffer.getNumSamples());
     float* io[2] = { buffer.getWritePointer(0),
                      buffer.getNumChannels() > 1 ? buffer.getWritePointer(1) : nullptr };
     engine.process(io, buffer.getNumChannels() > 1 ? 2 : 1, buffer.getNumSamples());
@@ -131,15 +132,31 @@ void FractureProcessor::pushScopeSamples(const float* data, int n){
                 fft.performFrequencyOnlyForwardTransform(scopeScratch.data());
                 for (size_t k = 0; k < scopeSpectrum.size(); ++k)
                     scopeSpectrum[k] = scopeScratch[k];
+                // and the input over the same samples, for the harmonic readout
+                std::fill(scopeScratch.begin(), scopeScratch.end(), 0.0f);
+                std::copy(scopeInFifo.begin(), scopeInFifo.end(), scopeScratch.begin());
+                window.multiplyWithWindowingTable(scopeScratch.data(), scopeSize);
+                fft.performFrequencyOnlyForwardTransform(scopeScratch.data());
+                for (size_t k = 0; k < scopeInSpectrum.size(); ++k)
+                    scopeInSpectrum[k] = scopeScratch[k];
                 scopeReady.store(true);
             }
             scopeFill = 0;
         }
     }
 }
+// the input fills in step with the output (both are pushed every block, from
+// the same position), so a full output frame is a full input frame too
+void FractureProcessor::pushScopeInput(const float* data, int n){
+    for (int i = 0; i < n; ++i){
+        scopeInFifo[static_cast<size_t>(scopeInFill++)] = data[i];
+        if (scopeInFill == scopeSize) scopeInFill = 0;
+    }
+}
 bool FractureProcessor::copyScopeSpectrum(std::array<float, scopeSize / 2>& dest){
     if (!scopeReady.load()) return false;
     dest = scopeSpectrum;
+    scopeInHeld = scopeInSpectrum;
     scopeReady.store(false);
     return true;
 }

@@ -307,6 +307,21 @@ from both. Not measured: the tuned feedback loop through the drive is tuned for 
 half, and the clean half skips the drive's DC blockers and its half sample of anti-aliasing
 delay, so on a low note the undriven part of the loop can ring a few tens of cents off.
 
+## Reading the harmonics
+
+The Scope analyses the input and the output in the same FFT frame. The input is drawn as a
+line over the output's bars, and when the input is one clear tone (60% of its energy in one
+peak's main lobe, between 90 Hz and 4 kHz) the line under it names the note and reads out
+each harmonic of it in the output, in dB against the output's fundamental
+(`core/Harmonics.h`). Below 90 Hz a 2048-point frame cannot separate the harmonics, and a
+chord, a drum or noise is not one tone, so it reads nothing rather than invent a number.
+
+Tested: a Tube-shaped tone reads back each harmonic within 0.1 dB of the level computed
+exactly from one period of the curve, and the note within a third of a hertz; Soft reads no
+2nd (-63 dB); through the whole engine Tube's 2nd is at -20.6 dB and Soft's at -84.5; noise
+and a three-note chord give no reading. In the host test a 440 Hz tone through Tube makes the
+panel read "A4" with a 2nd harmonic.
+
 ## Seeing the filter
 
 The Scope draws the post filter's frequency response over the live spectrum, on the same
@@ -381,7 +396,7 @@ The menu rereads the folder every time it opens.
 
 ## What is verified, and where
 
-`npm run test:core` — 165 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 169 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -441,7 +456,7 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   and a value that did not round-trip exactly is not taken for an edit; A and B keep
   separate histories, B opens as a copy of A, and a switch is never an undo step
 
-`host_smoke` — 126 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 127 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
 and comes back out unchanged; a knob drag is one undo step (a version that committed on
 every value fails five checks), and so are a pad drag, a stroke across the steps, a preset

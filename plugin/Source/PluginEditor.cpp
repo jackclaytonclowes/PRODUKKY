@@ -248,11 +248,36 @@ void Scope::timerCallback(){
             const float db = juce::Decibels::gainToDecibels(m / 64.0f, -70.0f);
             const float norm = juce::jlimit(0.0f, 1.0f, (db + 70.0f) / 70.0f);
             bars[i] = std::max(norm, bars[i] * 0.82f);           // slow fall
+            float mi = 0.0f;                                     // the input, the same way
+            const auto& in = proc.scopeInputSpectrum();
+            for (int b = b0; b < b1; ++b) mi = std::max(mi, in[static_cast<size_t>(b)]);
+            const float dbi = juce::Decibels::gainToDecibels(mi / 64.0f, -70.0f);
+            inBars[i] = std::max(juce::jlimit(0.0f, 1.0f, (dbi + 70.0f) / 70.0f), inBars[i] * 0.82f);
         }
+        // the harmonics added to a single tone: held for half a second, so the
+        // line does not flicker between frames that read and frames that don't
+        const auto r = fracture::readHarmonics(proc.scopeInputSpectrum().data(), spectrum.data(), bins, sr);
+        if (r.tonal){ reading = r; readingAge = 0; }
+        else ++readingAge;
     } else {
         for (auto& b : bars) b *= 0.9f;
+        for (auto& b : inBars) b *= 0.9f;
+        ++readingAge;
     }
     repaint();
+}
+juce::String Scope::readoutText() const {
+    if (readingAge > 15) return "play one note to read the harmonics it gains";
+    static const char* names[] = { "C","C#","D","D#","E","F","F#","G","G#","A","A#","B" };
+    const double midi = 69.0 + 12.0 * std::log2(reading.f0 / 440.0);
+    const int k = juce::roundToInt(midi);
+    juce::String t = juce::String(names[((k % 12) + 12) % 12]) + juce::String(k / 12 - 1) + "  ";
+    static const char* ord[] = { "", "", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th" };
+    for (int h = 2; h <= 6; ++h){
+        if (!reading.inRange[h]) break;
+        t << ord[h] << " " << (reading.level[h] < -60.0 ? juce::String("-") : juce::String(juce::roundToInt(reading.level[h]))) << "  ";
+    }
+    return t.trimEnd() + "  dB";
 }
 // The post filter's response, drawn from its own coefficients (FilterResponse.h)
 // on a 20 Hz - 20 kHz log axis, +18 to -36 dB. Shared by the Scope, which draws
@@ -315,7 +340,7 @@ static void drawFilterCurve(juce::Graphics& g, juce::Rectangle<float> fr, const 
 void Scope::paint(juce::Graphics& g){
     auto area = getLocalBounds();
     auto specArea = area.removeFromTop(area.getHeight() * 55 / 100);
-    area.removeFromTop(12);
+    auto readoutRow = area.removeFromTop(14);
     auto curveArea = area;
 
     // ---- spectrum: flat bars, three regions following the live crossovers
@@ -343,11 +368,39 @@ void Scope::paint(juce::Graphics& g){
         g.setColour(c);
         g.fillRect(inner.getX() + slot * i + 1.0f, inner.getBottom() - bh, slot - 2.0f, bh);
     }
+    // what went in, as a line over what came out: the gap between them is
+    // what FRACTURE added
+    {
+        juce::Path line;
+        for (size_t i = 0; i < inBars.size(); ++i){
+            const float x = inner.getX() + slot * (i + 0.5f), y = inner.getBottom() - inBars[i] * inner.getHeight();
+            if (i == 0) line.startNewSubPath(x, y); else line.lineTo(x, y);
+        }
+        g.setColour(ink.withAlpha(0.55f));
+        g.strokePath(line, juce::PathStrokeType(1.25f));
+    }
+    // and the harmonics of a tone, marked where they fall
+    if (readingAge <= 15){
+        g.setFont(mono(9.0f));
+        for (int h = 1; h <= 5; ++h){              // past the 5th they crowd on a log axis
+            const double f = h * reading.f0;
+            if (!reading.inRange[h] || f < 20.0 || f > 20000.0) continue;
+            const float x = inner.getX() + inner.getWidth() * static_cast<float>(std::log(f / 20.0) / std::log(1000.0));
+            // numbered tags along the top, clear of the bars
+            const auto tag = juce::Rectangle<float>(x - 6.0f, inner.getY() + 24.0f, 12.0f, 12.0f);
+            g.setColour(face); g.fillRect(tag);
+            g.setColour(ink); g.drawRect(tag, 1.0f);
+            g.drawText(juce::String(h), tag, juce::Justification::centred);
+        }
+    }
 
     // ---- the post filter's response over the spectrum, on the same log axis:
     // live, so a notch sits where it is heard and moves when it is modulated
     drawFilterCurve(g, specArea.reduced(3).toFloat(), proc.filterState(),
                     proc.getSampleRate() > 0 ? proc.getSampleRate() : 48000.0, true);
+    g.setColour(readingAge <= 15 ? ink : dim);
+    g.setFont(mono(10.0f));
+    g.drawText(readoutText(), readoutRow.reduced(2, 0), juce::Justification::centredLeft);
 
     // ---- transfer curve of the selected band, computed from the parameters
     g.setColour(face); g.fillRect(curveArea);

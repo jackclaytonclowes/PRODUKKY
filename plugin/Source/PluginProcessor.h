@@ -72,7 +72,10 @@ public:
     static constexpr int scopeOrder = 11;                 // 2048-point FFT
     static constexpr int scopeSize = 1 << scopeOrder;
     void pushScopeSamples(const float* data, int n);
+    void pushScopeInput(const float* data, int n);      // before the engine, in step with the output
     bool copyScopeSpectrum(std::array<float, scopeSize / 2>& dest);
+    // the input's spectrum from the same frame as the last copyScopeSpectrum
+    const std::array<float, scopeSize / 2>& scopeInputSpectrum() const { return scopeInHeld; }
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout buildLayout();
@@ -87,7 +90,9 @@ private:
     std::array<float, scopeSize> scopeFifo {};
     std::array<float, scopeSize * 2> scopeScratch {};
     std::array<float, scopeSize / 2> scopeSpectrum {};
-    int scopeFill = 0;
+    std::array<float, scopeSize> scopeInFifo {};
+    std::array<float, scopeSize / 2> scopeInSpectrum {}, scopeInHeld {};
+    int scopeFill = 0, scopeInFill = 0;
     std::atomic<bool> scopeReady { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FractureProcessor)
