@@ -103,7 +103,8 @@ Mac only; nobody has judged the sound against references yet.
 - [ ] **S** A licence (AGPLv3 to match JUCE's free licence, or a paid JUCE licence)
 - [x] **S** Stale docs: "fourteen modes", "44 presets"
 - [ ] **M** Developer ID signing and notarisation in CI ($99 a year)
-- [ ] **M** Windows VST3, Linux VST3 and CLAP builds
+- [ ] ~~**M** Windows VST3, Linux VST3 and CLAP builds~~ Not for now: Mac and the browser version only,
+  by choice. The code is portable (the Linux VST3 already builds for the tests) if that changes
 - [ ] **S** Steinberg's VST3 validator and pluginval on the Mac in CI
 - [ ] **S** Before-and-after audio previews on the site
 - [ ] **M** Before a third plugin: shared code in one `shared/` folder, and build, disk image and
@@ -127,6 +128,6 @@ Mac only; nobody has judged the sound against references yet.
 - **0.1.2**: fixed-clock modulation; listening fixes; versions, typed values, preset-change fade,
   flam fix, Start from…; browser anti-aliasing; docs, installer re-sign, site warning, licence.
 - **0.2**: mid/side, sidechain, spectrum, preset browser; keep the sub, lookahead, bits meter;
-  loudness levelling; Windows and CLAP; signing.
+  loudness levelling; signing. (Windows and CLAP set aside: Mac and browser for now.)
 - **0.3**: dynamic Tube and Tape, bounce quality, cheaper oversampler, more CRATE machines.
 - **Then**: `shared/`, SLAB, SPOOL.
