@@ -46,6 +46,7 @@ The panel reads in the order the sound flows: top row first, left to right, then
 - **Stage B** adds a second distortion after the first, with its own **Mode B** and **Drive B**.
 - **Tone** tilts the band brighter or darker between the two stages.
 - **Mix** blends this band's distortion with its clean sound, and **Level** sets its volume. **Mute** and **Solo** help you hear one band at a time.
+- **Stereo** picks which part of the band the drive works on. **L/R** is both channels, as normal. **Mid** drives only what the two sides share (the kick, the bass, the vocal) and leaves the stereo spread clean, so a mix bus stays wide. **Side** drives only the width and leaves the centre clean, for a wider, more excited top.
 
 ## The harmonic table
 

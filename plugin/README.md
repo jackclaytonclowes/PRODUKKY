@@ -290,6 +290,23 @@ harmonic by 150 dB; and the block edges of a 512-sample render sit 38 dB under t
 (stepping instead measures 19, and fails). In the host test, a mouse stroke across a frame
 sets every bar it crosses in one undo step. Start from: the bars match the mode's harmonics measured separately by a DFT to half a percent, Soft has no even bars and Tube has a 2nd, and in the host test a fill changes only its frame, is one undo step, and the four-frame fill grows frame by frame.
 
+## Mid and side, per band
+
+Each band has a **Stereo** choice: L/R drives both channels as before; **Mid** drives what
+the two channels share and passes the side clean; **Side** drives the side and passes the
+middle clean. The half that is not driven goes through the band's other oversampler with
+nothing in it, so both halves get the same filters and the same delay and recombine in
+step, and it costs what L/R costs. On a mono input there is no side, so it acts as L/R.
+
+To make it possible the sample loop runs in three passes (split each channel, run each band
+on both, then the rest per channel), with every sum in L/R taken in the old order, so all
+47 earlier presets render bit for bit as before. Tested against what each must equal:
+Mid on a side-only signal is the clean band, Mid on a mono signal is L/R, Side on a mono
+signal is the clean band, all to 0.000 millionths; and on a real stereo signal Mid differs
+from both. Not measured: the tuned feedback loop through the drive is tuned for the driven
+half, and the clean half skips the drive's DC blockers and its half sample of anti-aliasing
+delay, so on a low note the undriven part of the loop can ring a few tens of cents off.
+
 ## Seeing the filter
 
 The Scope draws the post filter's frequency response over the live spectrum, on the same
@@ -364,7 +381,7 @@ The menu rereads the folder every time it opens.
 
 ## What is verified, and where
 
-`npm run test:core` — 161 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 165 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -424,7 +441,7 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   and a value that did not round-trip exactly is not taken for an edit; A and B keep
   separate histories, B opens as a copy of A, and a switch is never an undo step
 
-`host_smoke` — 124 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 126 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
 and comes back out unchanged; a knob drag is one undo step (a version that committed on
 every value fails five checks), and so are a pad drag, a stroke across the steps, a preset
@@ -477,7 +494,7 @@ opening a DAW.
 
 ## The presets
 
-Forty-seven, in two groups.
+Forty-nine, in two groups.
 
 **Twenty-two browser presets**, from `fx/fracture.html`, which both versions play. The first
 thirteen show off the drive section; the other nine are chosen by use rather than by
@@ -486,7 +503,7 @@ bass (**Bass — harmonics driven, sub clean**, **808**), a vocal (**Vocal — w
 presence**), a guitar-like part (**Amp — crunchy rhythm**, **Fuzz**), a mix (**Mix bus — a
 touch of tape**) or an effect (**Radio — the AM band**).
 
-**Twenty-five plugin-only presets**, in `core/FactoryPresets.h`, which need what the browser does
+**Twenty-seven plugin-only presets**, in `core/FactoryPresets.h`, which need what the browser does
 not have:
 - tuned feedback: **Tuned comb**, **Resonator**, **Growl**, **Kick tuned to the key** (a C1
   resonator under the low band), **Snare ring** (G4), **Comb on the fifth**
@@ -500,6 +517,8 @@ not have:
   feedback up**, **Macros — 1 folds and crushes, 2 widens and repeats**. These are
   levelled at every corner of the pad and both ends of each macro, not only where they
   are saved, because that is where they will be dragged
+- a band's stereo: **Mid only** (the top band's centre through tape, the sides clean) and
+  **Wider** (the side driven, the centre clean)
 - the Table: **harmonic wobble** (an LFO across the frames), **an octave up** (the 2nd and
   4th drawn in), **the harder you play, the more harmonics** (the envelope on Position)
 

@@ -65,6 +65,7 @@ static juce::String helpFor(std::string id){
         { "trSpread", "Offsets the right channel; 180 degrees is auto-pan" },
         { "mS#", "What moves this slot's target" }, { "mD#", "What this slot moves" },
         { "mA#", "How far, either way" },
+        { "st#", "Which part of this band the drive works on: both channels (L/R), what they share (Mid, the side stays clean) or the width (Side, the centre stays clean)" },
         { "mc#", "A macro: pick it as a source in the matrix and this one knob moves everything it is routed to" },
         { "xyX", "The pad's horizontal axis, as a matrix source" }, { "xyY", "The pad's vertical axis, as a matrix source" },
     };
@@ -1256,8 +1257,8 @@ void FractureEditor::buildBand(int band){
         reg(id, k);
         return static_cast<juce::Component*>(k);
     };
-    auto choice = [&](const char* id, const char* label){
-        auto* c = new ChoiceBox(proc, id, label, 116);
+    auto choice = [&](const char* id, const char* label, int width = 116){
+        auto* c = new ChoiceBox(proc, id, label, width);
         owned.emplace_back(c);
         pane->addAndMakeVisible(c);
         reg(id, c);
@@ -1285,7 +1286,8 @@ void FractureEditor::buildBand(int band){
         knob(("lv" + s).toRawUTF8(), ink),
         div2,
         toggle(("mu" + s).toRawUTF8(), red, 84),
-        toggle(("so" + s).toRawUTF8(), blue, 84)
+        toggle(("so" + s).toRawUTF8(), blue, 84),
+        choice(("st" + s).toRawUTF8(), "Stereo", 80)
     };
 }
 

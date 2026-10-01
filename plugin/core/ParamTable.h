@@ -270,6 +270,13 @@ private:
               destPtrs.data(), static_cast<int>(destPtrs.size()), 0, -1, destIdPtrs.data());
             f("mA" + s, "Mod " + std::to_string(k + 1) + " amount", -100, 100, 0, false, false, "%");
         }
+        // ---- 0.2, after everything, so no saved index moves: which part of a
+        // band's stereo image the drive works on. Mid drives what the two
+        // channels share and leaves the side clean; Side the other way round
+        static const char* const stereoNames[] = { "L/R", "Mid", "Side" };
+        static const char* const stereoIds[] = { "lr", "mid", "side" };
+        for (int i = 0; i < numBands; ++i)
+            c("st" + std::to_string(i), "B" + std::to_string(i + 1) + " Stereo", stereoNames, 3, 0, i, stereoIds);
     }
     std::vector<ParamInfo> info_;
     std::vector<int> dests_;
@@ -315,7 +322,7 @@ struct Ids {
     int envAtk, envRel, envSens;
     int bandDriveA[numBands], bandModeA[numBands], bandStageB[numBands], bandDriveB[numBands],
         bandModeB[numBands], bandTone[numBands], bandMix[numBands], bandLevel[numBands],
-        bandMute[numBands], bandSolo[numBands];
+        bandMute[numBands], bandSolo[numBands], bandStereo[numBands];
     int slotSrc[numSlots], slotDst[numSlots], slotAmt[numSlots];
 private:
     Ids(){
@@ -356,6 +363,7 @@ private:
             bandLevel[i]  = I(("lv" + s).c_str());
             bandMute[i]   = I(("mu" + s).c_str());
             bandSolo[i]   = I(("so" + s).c_str());
+            bandStereo[i] = I(("st" + s).c_str());
         }
         for (int k = 0; k < numSlots; ++k){
             const std::string s = std::to_string(k);

@@ -611,6 +611,55 @@ static void testStartFrom(){
           "Wrap " + f2s(eWrap * 100, 0) + "% out");
 }
 
+// Per-band stereo: Mid drives what the channels share and leaves the side
+// clean, Side the other way round. Each is checked against something it must
+// equal exactly: the band at Mix 0 is the clean path, and a mono signal has no
+// side, so Mid on it is plain L/R
+static void testBandStereo(){
+    auto renderLR = [](const Patch& p, const std::vector<float>& inL, const std::vector<float>& inR){
+        Engine e; e.prepare(48000.0, 256); applyPatch(e, p); e.seedFrom(0);
+        std::vector<float> l = inL, r = inR;
+        for (size_t i = 0; i < l.size(); i += 256){
+            float* io[2] = { l.data() + i, r.data() + i };
+            e.process(io, 2, static_cast<int>(std::min<size_t>(256, l.size() - i)));
+        }
+        return std::make_pair(l, r);
+    };
+    auto worst = [](const std::pair<std::vector<float>, std::vector<float>>& a,
+                    const std::pair<std::vector<float>, std::vector<float>>& b){
+        double w = 0.0;
+        for (size_t i = 0; i < a.first.size(); ++i)
+            w = std::max({ w, std::fabs(static_cast<double>(a.first[i]) - b.first[i]),
+                           std::fabs(static_cast<double>(a.second[i]) - b.second[i]) });
+        return w;
+    };
+    const int n = 24000;
+    std::vector<float> a(n), neg(n);
+    std::mt19937 rng(11); std::normal_distribution<float> g(0.0f, 0.2f);
+    for (int i = 0; i < n; ++i){ a[i] = g(rng); neg[i] = -a[i]; }
+    Patch driven; driven.v = { {"bands", 0}, {"m0a", static_cast<float>(Mode::Tube)}, {"d0a", 20}, {"sb0", 1},
+                               {"m0b", static_cast<float>(Mode::Fold)}, {"d0b", 6}, {"t0", 4} };
+    Patch clean = driven; clean.v["mx0"] = 0;
+    Patch mid = driven; mid.v["st0"] = 1;
+    Patch side = driven; side.v["st0"] = 2;
+
+    const double sideThroughMid = worst(renderLR(mid, a, neg), renderLR(clean, a, neg));
+    check("Mid leaves the side alone: a side-only signal comes out as the clean band",
+          sideThroughMid < 1e-6, f2s(sideThroughMid * 1e6, 3) + " millionths at worst");
+    const double monoThroughMid = worst(renderLR(mid, a, a), renderLR(driven, a, a));
+    check("  ... and drives the mid: a mono signal comes out exactly as in L/R",
+          monoThroughMid < 1e-6, f2s(monoThroughMid * 1e6, 3) + " millionths at worst");
+    const double monoThroughSide = worst(renderLR(side, a, a), renderLR(clean, a, a));
+    check("Side leaves the mid alone: a mono signal comes out as the clean band",
+          monoThroughSide < 1e-6, f2s(monoThroughSide * 1e6, 3) + " millionths at worst");
+    // and it does something: Mid on a stereo signal is neither L/R nor clean
+    std::vector<float> b(n); for (int i = 0; i < n; ++i) b[i] = g(rng);
+    const double vsLR = worst(renderLR(mid, a, b), renderLR(driven, a, b));
+    const double vsClean = worst(renderLR(mid, a, b), renderLR(clean, a, b));
+    check("  ... and on a real stereo signal Mid is its own sound", vsLR > 0.01 && vsClean > 0.01,
+          f2s(vsLR, 3) + " from L/R, " + f2s(vsClean, 3) + " from clean");
+}
+
 int main(int argc, char** argv){
     const char* csv = argc > 1 ? argv[1] : "plugin/tests/shaper_reference.csv";
     const char* presetsPath = argc > 2 ? argv[2] : "plugin/tests/presets.json";
@@ -1423,6 +1472,9 @@ int main(int argc, char** argv){
     testTableInEngine();
     testStartFrom();
 
+    std::printf("\nBand stereo\n");
+    testBandStereo();
+
     std::printf("\nZipper noise\n");
     {
         struct Case { const char* name; std::map<std::string, float> base; const char* id; float from, to; };
@@ -1648,8 +1700,10 @@ int main(int argc, char** argv){
                 for (int b = 0; b < numBands; ++b)
                     for (const char* st : { "a", "b" })
                         if (static_cast<int>(get(("m" + std::to_string(b) + st).c_str())) == static_cast<int>(Mode::Table)) table = true;
+                bool stereo = false;                 // a band driven on its mid or its side
+                for (int b = 0; b < numBands; ++b) stereo = stereo || get(("st" + std::to_string(b)).c_str()) > 0.5f;
                 const bool uses = get("fbMode") > 0.5f || get("fbThru") > 0.5f || get("rhDepth") != 0.0f
-                               || get("fltMix") < 100.0f || get("fltPoles") > 1.5f || perf || table;
+                               || get("fltMix") < 100.0f || get("fltPoles") > 1.5f || perf || table || stereo;
                 if (!uses) noFeature += std::string(" [") + all[k].name + "]";
             }
         }

@@ -75,7 +75,12 @@ inline const std::vector<Preset>& pluginOnlyPresets(){
         { "Table — an octave up, the 2nd and 4th drawn in",
           R"JSON({"bands":"2","x1":150,"d1a":2,"m1a":"table","tblPos":66.67,"mx1":70})JSON" },
         { "Table — the harder you play, the more harmonics",
-          R"JSON({"bands":"1","d0a":2.5,"m0a":"table","tblPos":0,"mS0":"env","mD0":"tblPos","mA0":90,"envSens":70})JSON" }
+          R"JSON({"bands":"1","d0a":2.5,"m0a":"table","tblPos":0,"mS0":"env","mD0":"tblPos","mA0":90,"envSens":70})JSON" },
+        // 0.2: a band's drive on the mid or the side alone
+        { "Mid only — the centre driven, the sides left clean",
+          R"JSON({"bands":"2","x1":180,"d1a":8,"m1a":"tape","sb1":true,"m1b":"soft","d1b":2,"t1":2,"st1":"mid"})JSON" },
+        { "Wider — the sides driven, the centre clean",
+          R"JSON({"bands":"1","d0a":6,"m0a":"warm","mx0":60,"st0":"side"})JSON" }
     };
     return all;
 }

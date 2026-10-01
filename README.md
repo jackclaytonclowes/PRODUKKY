@@ -6,7 +6,8 @@ Two audio effect plugins, built with JUCE as Audio Unit, VST3 and a standalone a
   Minimal Audio's Rift. It splits the sound into up to three bands, each with two drive
   stages and fifteen modes. It also has a crusher, feedback that can ring at a note, an
   analogue-style filter with a rhythm and a drawn response, a modulation matrix, an XY pad
-  and macros, and a Table mode whose harmonics you draw. It has 47 presets.
+  and macros, a Table mode whose harmonics you draw, and mid/side drive per band. It has
+  49 presets.
 - **CRATE** (`crate/`) is a twelve-bit drum processor after the SP-1200 and Akai S900: the
   two machines' converters, the pitch trick, a hit-opened four-pole filter, a rhythm, dust,
   and swing against the host's grid, with the low end kept clean if you want it. It has 27 presets.

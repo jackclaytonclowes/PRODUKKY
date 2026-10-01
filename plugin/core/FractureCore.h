@@ -284,6 +284,7 @@ private:
             bd.modeA = static_cast<int>(mv_[id.bandModeA[b]]);
             bd.modeB = static_cast<int>(mv_[id.bandModeB[b]]);
             bd.stageB = mv_[id.bandStageB[b]] > 0.5f;
+            bd.stereo = static_cast<int>(mv_[id.bandStereo[b]]);
             const bool audible = b < nb && mv_[id.bandMute[b]] < 0.5f && (solo == 0 || solo == b + 1);
             setR(bd.driveA, dA);
             setR(bd.driveB, dB);
@@ -489,18 +490,24 @@ private:
                 bm[b] = bands_[b].mix.next();    bl[b] = bands_[b].level.next();
             }
             double y[maxChannels] = { 0.0, 0.0 };
+            // In three passes, because a band driven in mid/side needs both
+            // channels at once: the split, for each channel; the bands, for
+            // both; then the rest, for each channel. In L/R every sum is taken
+            // in the same order as when it was one pass, so the output is the
+            // same to the bit
+            double dryS[maxChannels], fbRead[maxChannels], bandIn[maxChannels][numBands], sum[maxChannels] = { 0.0, 0.0 };
             for (int ch = 0; ch < nch; ++ch){
                 sumSq_ += static_cast<double>(io[ch][i]) * io[ch][i];
                 const double xin = static_cast<double>(io[ch][i]) * gIn;
                 inPk = std::max(inPk, std::fabs(xin));
-                const double dryS = dry_[ch].process(xin);
+                dryS[ch] = dry_[ch].process(xin);
                 double pre = xin;
                 if (preHPOn) pre = preHP_[ch].process(pre);
                 if (preLPOn) pre = preLP_[ch].process(pre);
                 // through the drive, the repeats go in after the pre-filters and
                 // before the split, so each one is split and driven again
-                const double fbRead = fb_[ch].read() * amt;
-                if (fbThru) pre += fbRead;
+                fbRead[ch] = fb_[ch].read() * amt;
+                if (fbThru) pre += fbRead[ch];
 
                 double lo = 0.0, mid = 0.0, hi = 0.0;
                 if (nb == 1){
@@ -514,19 +521,21 @@ private:
                     mid = xLP2b_[ch].process(xLP2a_[ch].process(h1));
                     hi  = xHP2b_[ch].process(xHP2a_[ch].process(h1));
                 }
-                const double bandIn[numBands] = { lo, mid, hi };
+                bandIn[ch][0] = lo; bandIn[ch][1] = mid; bandIn[ch][2] = hi;
+            }
 
-                double sum = 0.0;
-                for (int b = 0; b < nb; ++b){
-                    Band& bd = bands_[b];
-                    const double driveA = dA[b], driveB = dB[b], postA = pA[b], postB = pB[b], mix = bm[b];
-                    const int mA = bd.modeA, mB = bd.modeB;
-                    const bool sB = bd.stageB;
-                    Biquad& dcA = bd.dcA[ch]; Biquad& dcB = bd.dcB[ch];
-                    Biquad& tLo = bd.tiltLo[ch]; Biquad& tHi = bd.tiltHi[ch];
-                    AntialiasedShaper& shA = bd.shA[ch]; AntialiasedShaper& shB = bd.shB[ch];
-                    TableShaper& tbA = bd.tbA[ch]; TableShaper& tbB = bd.tbB[ch];
-                    const double out = bd.os[ch].process(bandIn[b], [&](double s){
+            for (int b = 0; b < nb; ++b){
+                Band& bd = bands_[b];
+                const double driveA = dA[b], driveB = dB[b], postA = pA[b], postB = pB[b], mix = bm[b];
+                const int mA = bd.modeA, mB = bd.modeB;
+                const bool sB = bd.stageB;
+                // one channel's worth of this band's drive, at the oversampled rate
+                auto drive = [&](int c, double x){
+                    Biquad& dcA = bd.dcA[c]; Biquad& dcB = bd.dcB[c];
+                    Biquad& tLo = bd.tiltLo[c]; Biquad& tHi = bd.tiltHi[c];
+                    AntialiasedShaper& shA = bd.shA[c]; AntialiasedShaper& shB = bd.shB[c];
+                    TableShaper& tbA = bd.tbA[c]; TableShaper& tbB = bd.tbB[c];
+                    return bd.os[c].process(x, [&](double s){
                         double v = (mA == tableMode ? tbA.process(curve_, curveVersion_, s * driveA)
                                                     : shA.process(mA, s * driveA)) * postA;
                         v = dcA.process(v);
@@ -538,11 +547,27 @@ private:
                         }
                         return s + (v - s) * mix;      // the band's own dry/wet
                     });
-                    sum += out * bl[b];
+                };
+                const int stereo = nch == 2 ? bd.stereo : 0;
+                if (stereo == 0){
+                    for (int ch = 0; ch < nch; ++ch) sum[ch] += drive(ch, bandIn[ch][b]) * bl[b];
+                } else {
+                    // Mid or Side: that half goes through the drive (channel 0's
+                    // stages), the other through channel 1's oversampler with
+                    // nothing in it, so both halves get the same filtering and
+                    // the same delay and recombine in step
+                    const double m = (bandIn[0][b] + bandIn[1][b]) * 0.5, sd = (bandIn[0][b] - bandIn[1][b]) * 0.5;
+                    const double driven = drive(0, stereo == 1 ? m : sd);
+                    const double clean = bd.os[1].process(stereo == 1 ? sd : m, [](double v){ return v; });
+                    const double mo = stereo == 1 ? driven : clean, so = stereo == 1 ? clean : driven;
+                    sum[0] += (mo + so) * bl[b];
+                    sum[1] += (mo - so) * bl[b];
                 }
+            }
 
+            for (int ch = 0; ch < nch; ++ch){
                 // feedback around the drive section
-                double node = fbThru ? sum : sum + fbRead;
+                double node = fbThru ? sum[ch] : sum[ch] + fbRead[ch];
                 fb_[ch].write(softLimit(fbHP_[ch].process(fbTone_[ch].process(node))));
 
                 double v = crusher_.process(ch, node, bits, redux, cm);
@@ -555,7 +580,7 @@ private:
                     }
                     v = into + (v - into) * fmix;            // the filter's own mix
                 }
-                y[ch] = dryS * (1.0 - w) + v * w;
+                y[ch] = dryS[ch] * (1.0 - w) + v * w;
             }
             if (nch == 2){                                   // mid/side width
                 const double m = (y[0] + y[1]) * 0.5, s = (y[0] - y[1]) * 0.5 * width;
@@ -608,6 +633,7 @@ private:
         TableShaper tbA[maxChannels], tbB[maxChannels];         // the Table mode
         Ramp driveA, driveB, postA, postB, mix, level;
         int modeA = 0, modeB = 4;
+        int stereo = 0;              // 0 L/R, 1 mid driven, 2 side driven
         bool stageB = false;
     };
     double sr_ = 44100.0;
