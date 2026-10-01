@@ -277,6 +277,11 @@ private:
         static const char* const stereoIds[] = { "lr", "mid", "side" };
         for (int i = 0; i < numBands; ++i)
             c("st" + std::to_string(i), "B" + std::to_string(i + 1) + " Stereo", stereoNames, 3, 0, i, stereoIds);
+        // what the envelope follower listens to: the input, or the sidechain
+        // (with none connected, the input)
+        static const char* const keyNames[] = { "Input", "Sidechain" };
+        static const char* const keyIds[] = { "input", "sidechain" };
+        c("envKey", "Env follows", keyNames, 2, 0, -1, keyIds);
     }
     std::vector<ParamInfo> info_;
     std::vector<int> dests_;
@@ -319,7 +324,7 @@ struct Ids {
     int fltMix, rhDepth, rhDiv, rhRate, rhShape, rhGroove, rhPhase, rhGlide, rhStep[8];
     int mix, width, outGain, autoGain, safety, osFactor;
     int l1Rate, l1Div, l1Shape, l1Depth, l2Rate, l2Div, l2Shape, l2Depth;
-    int envAtk, envRel, envSens;
+    int envAtk, envRel, envSens, envKey;
     int bandDriveA[numBands], bandModeA[numBands], bandStageB[numBands], bandDriveB[numBands],
         bandModeB[numBands], bandTone[numBands], bandMix[numBands], bandLevel[numBands],
         bandMute[numBands], bandSolo[numBands], bandStereo[numBands];
@@ -350,7 +355,7 @@ private:
         autoGain = I("autoGain"); safety = I("safety"); osFactor = I("osFactor");
         l1Rate = I("l1Rate"); l1Div = I("l1Div"); l1Shape = I("l1Shape"); l1Depth = I("l1Depth");
         l2Rate = I("l2Rate"); l2Div = I("l2Div"); l2Shape = I("l2Shape"); l2Depth = I("l2Depth");
-        envAtk = I("envAtk"); envRel = I("envRel"); envSens = I("envSens");
+        envAtk = I("envAtk"); envRel = I("envRel"); envSens = I("envSens"); envKey = I("envKey");
         for (int i = 0; i < numBands; ++i){
             const std::string s = std::to_string(i);
             bandDriveA[i] = I(("d" + s + "a").c_str());

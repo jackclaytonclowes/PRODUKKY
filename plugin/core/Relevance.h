@@ -145,7 +145,7 @@ inline std::vector<Idle> idleControls(const float* v){
                               + ": pick it as a source in a slot");
     }
     if (!sourceUsed({ 3, 4 }))
-        for (int p : { id.envAtk, id.envRel, id.envSens }) idle(p, "Nothing in the matrix uses the envelope");
+        for (int p : { id.envAtk, id.envRel, id.envSens, id.envKey }) idle(p, "Nothing in the matrix uses the envelope");
 
     // ---- the tremolo: off means silent as a source too
     if (v[id.trOn] < 0.5f){

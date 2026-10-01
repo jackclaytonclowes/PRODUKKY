@@ -192,9 +192,15 @@ public:
     // straight line to the new one. Choices and switches change at once.
     static constexpr int controlStep = 32;
 
-    void process(float* const* io, int numChannels, int n){
+    // key: the sidechain, if the host connected one. Env follows: Sidechain
+    // makes the envelope follower listen to it instead of the input; with no
+    // key it carries on following the input
+    void process(float* const* io, int numChannels, int n,
+                 const float* const* key = nullptr, int keyChannels = 0){
         if (n <= 0) return;
         const int nch = std::clamp(numChannels, 1, maxChannels);
+        const int kch = key != nullptr && target_[static_cast<size_t>(Ids::get().envKey)] > 0.5f
+                      ? std::clamp(keyChannels, 0, maxChannels) : 0;
         const size_t np = target_.size();
         if (first_) from_ = target_;       // after a reset, start where the knobs are
         bool moving = false;
@@ -216,7 +222,9 @@ public:
             const int len = std::min(n - done, controlStep - pos_);
             float* sub[maxChannels];
             for (int ch = 0; ch < nch; ++ch) sub[ch] = io[ch] + done;
-            runSamples(sub, nch, len);
+            const float* keySub[maxChannels] = { nullptr, nullptr };
+            for (int ch = 0; ch < kch; ++ch) keySub[ch] = key[ch] + done;
+            runSamples(sub, nch, len, kch > 0 ? keySub : nullptr, kch);
             pos_ += len; done += len;
             if (pos_ == controlStep){ endStep(); pos_ = 0; }
         }
@@ -230,8 +238,11 @@ private:
         // ---- modulation, once a step
         const double rms = sumN_ > 0 ? std::sqrt(sumSq_ / static_cast<double>(sumN_)) : 0.0;
         sumSq_ = 0.0; sumN_ = 0;
+        // the Input knob scales what is processed, not what keys it
+        const double keyGain = keyed_ ? 1.0 : dbToGain(base_[id.inGain]);
+        keyed_ = false;
         mod_.setTrem(trem_.value());               // the tremolo is a matrix source too
-        mod_.update(controlStep, rms * dbToGain(base_[id.inGain]), base_.data(), transport_);
+        mod_.update(controlStep, rms * keyGain, base_.data(), transport_);
         applyMatrix(mod_, base_.data(), mv_.data());
 
         setOversampling(static_cast<int>(mv_[id.osFactor]));
@@ -424,7 +435,7 @@ private:
         for (int b = 0; b < numBands; ++b) toneWas_[b] = mv_[id.bandTone[b]];
     }
 
-    void runSamples(float* const* io, int nch, int n){
+    void runSamples(float* const* io, int nch, int n, const float* const* key = nullptr, int kch = 0){
         const Ids& id = Ids::get();
         const int tableMode = static_cast<int>(Mode::Table);
         const int nb = st_.nb;
@@ -497,7 +508,7 @@ private:
             // same to the bit
             double dryS[maxChannels], fbRead[maxChannels], bandIn[maxChannels][numBands], sum[maxChannels] = { 0.0, 0.0 };
             for (int ch = 0; ch < nch; ++ch){
-                sumSq_ += static_cast<double>(io[ch][i]) * io[ch][i];
+                if (kch == 0) sumSq_ += static_cast<double>(io[ch][i]) * io[ch][i];
                 const double xin = static_cast<double>(io[ch][i]) * gIn;
                 inPk = std::max(inPk, std::fabs(xin));
                 dryS[ch] = dry_[ch].process(xin);
@@ -597,7 +608,12 @@ private:
                 io[ch][i] = static_cast<float>(o);
             }
         }
-        sumN_ += n * nch;
+        if (kch > 0){
+            for (int c = 0; c < kch; ++c)
+                for (int i = 0; i < n; ++i) sumSq_ += static_cast<double>(key[c][i]) * key[c][i];
+            sumN_ += n * kch;
+            keyed_ = true;
+        } else sumN_ += n * nch;
         inPeak = std::max(inPeak, static_cast<float>(inPk));
         outPeak = std::max(outPeak, static_cast<float>(outPk));
     }
@@ -650,7 +666,8 @@ private:
     std::vector<float> target_, from_;     // what the host set, and what it set a block ago
     std::vector<char> isFloat_;
     int pos_ = 0;                          // samples into the current control step
-    double sumSq_ = 0.0;                   // the step's input, for the envelope
+    double sumSq_ = 0.0;                   // the step's input (or key), for the envelope
+    bool keyed_ = false;                   // ... and whether it was the key
     long sumN_ = 0;
     Band bands_[numBands];
     Biquad preHP_[maxChannels], preLP_[maxChannels];

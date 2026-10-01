@@ -90,6 +90,60 @@ int main(int argc, char** argv){
         check("  ... em dashes included", anyDash);
     }
 
+    std::printf("\nSidechain\n");
+    {
+        check("there is a sidechain input, off unless the host turns it on",
+              proc.getBusCount(true) == 2 && !proc.getBus(true, 1)->isEnabled());
+        auto layout = proc.getBusesLayout();
+        layout.inputBuses.getReference(1) = juce::AudioChannelSet::stereo();
+        auto odd = layout; odd.inputBuses.getReference(1) = juce::AudioChannelSet::create5point1();
+        check("  ... a stereo sidechain is accepted and a 5.1 one refused",
+              proc.checkBusesLayoutSupported(layout) && !proc.checkBusesLayoutSupported(odd));
+        const bool set = proc.setBusesLayout(layout);
+        proc.prepareToPlay(48000.0, 256);
+        const fracture::Params& P = fracture::Params::get();
+        auto setP = [&](const char* id, float v){
+            if (auto* prm = proc.apvts.getParameter(id)) prm->setValueNotifyingHost(prm->convertTo0to1(v)); };
+        proc.setCurrentProgram(0);
+        const int dD = 1 + static_cast<int>(std::find(P.dests().begin(), P.dests().end(), P.index("d0a")) - P.dests().begin());
+        setP("bands", 0); setP("m0a", 0); setP("d0a", 2); setP("autoGain", 0);
+        setP("mS0", 3); setP("mD0", static_cast<float>(dD)); setP("mA0", 80); setP("envKey", 1);
+        setP("envAtk", 2); setP("envRel", 60);
+        auto render = [&](bool kick){
+            juce::AudioBuffer<float> buf(4, 256); juce::MidiBuffer none;
+            std::vector<float> out;
+            for (int blk = 0; blk < 120; ++blk){
+                for (int i = 0; i < 256; ++i){
+                    const int n = blk * 256 + i, ph = n % 12000;
+                    const float tone = 0.3f * std::sin(2.0f * juce::MathConstants<float>::pi * 220.0f * n / 48000.0f);
+                    const float key = kick && ph < 2400 ? 0.8f * std::exp(-ph / 600.0f) * std::sin(2.0f * juce::MathConstants<float>::pi * 60.0f * ph / 48000.0f) : 0.0f;
+                    buf.setSample(0, i, tone); buf.setSample(1, i, tone);
+                    buf.setSample(2, i, key);  buf.setSample(3, i, key);
+                }
+                proc.processBlock(buf, none);
+                for (int i = 0; i < 256; ++i) out.push_back(buf.getSample(0, i));
+            }
+            // level in 2400-sample windows: eleven cycles of the tone each, so
+            // the tone itself does not ripple the measurement
+            double lo = 1e9, hi = 0.0;
+            for (size_t w = 4800; w + 2400 <= out.size(); w += 2400){
+                double p = 0.0; for (size_t i = w; i < w + 2400; ++i) p += static_cast<double>(out[i]) * out[i];
+                lo = std::min(lo, p); hi = std::max(hi, p);
+            }
+            return 10.0 * std::log10(hi / std::max(lo, 1e-12));
+        };
+        const double still = render(false);              // first, so no earlier kick is still decaying
+        const double moved = render(true);
+        check("  ... and with Env following it, a kick on the sidechain moves the drive",
+              set && moved > still + 4.0 && proc.sidechainLive.load(),
+              juce::String(moved, 1) + " dB of movement with the kick, " + juce::String(still, 1) + " without");
+        setP("envKey", 0); setP("mS0", 0); setP("envAtk", 12); setP("envRel", 220);
+        layout.inputBuses.getReference(1) = juce::AudioChannelSet::disabled();
+        const bool off = proc.setBusesLayout(layout);
+        proc.prepareToPlay(48000.0, 256);
+        check("  ... and it can be turned off again", off && !proc.getBus(true, 1)->isEnabled());
+    }
+
     std::printf("\nState\n");
     proc.setCurrentProgram(3);
     juce::MemoryBlock state;
@@ -329,6 +383,9 @@ int main(int argc, char** argv){
                             tone.setSample(ch, i, 0.4f * std::sin(2.0f * juce::MathConstants<float>::pi * 440.0f * (t + i) / 48000.0f));
                     t += 512;
                     proc.processBlock(tone, none);
+                    // halfway, take the frame that straddles what played before,
+                    // as the editor's timer would, so the one read is all tone
+                    if (blk == 11) if (auto* sc = findScope(editor.get())) sc->refresh();
                 }
                 if (auto* sc = findScope(editor.get())){
                     sc->refresh();

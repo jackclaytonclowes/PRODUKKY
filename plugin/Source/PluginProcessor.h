@@ -69,6 +69,7 @@ public:
     }             // 0..1, for the step display
     std::atomic<float> hostBpm { 120.0f };             // what the panel shows next to a division
     std::atomic<bool>  hostPlaying { false };
+    std::atomic<bool>  sidechainLive { false };       // the host has a sidechain connected
     static constexpr int scopeOrder = 11;                 // 2048-point FFT
     static constexpr int scopeSize = 1 << scopeOrder;
     void pushScopeSamples(const float* data, int n);

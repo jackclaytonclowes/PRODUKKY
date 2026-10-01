@@ -38,7 +38,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout FractureProcessor::buildLayo
 FractureProcessor::FractureProcessor()
     : AudioProcessor(BusesProperties()
           .withInput("Input", juce::AudioChannelSet::stereo(), true)
-          .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+          .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+          // off unless the host turns it on, so a session saved before it
+          // existed opens with the buses it had
+          .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)),
       apvts(*this, nullptr, "FRACTURE", buildLayout())
 {
     const Params& P = Params::get();
@@ -52,7 +55,12 @@ FractureProcessor::FractureProcessor()
 bool FractureProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
     const auto& out = layouts.getMainOutputChannelSet();
     if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo()) return false;
-    return layouts.getMainInputChannelSet() == out;
+    if (layouts.getMainInputChannelSet() != out) return false;
+    if (layouts.inputBuses.size() > 1){
+        const auto& sc = layouts.getChannelSet(true, 1);
+        if (!sc.isDisabled() && sc != juce::AudioChannelSet::mono() && sc != juce::AudioChannelSet::stereo()) return false;
+    }
+    return true;
 }
 
 void FractureProcessor::prepareToPlay(double sampleRate, int samplesPerBlock){
@@ -93,10 +101,23 @@ void FractureProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear(ch, 0, buffer.getNumSamples());
 
-    pushScopeInput(buffer.getReadPointer(0), buffer.getNumSamples());
-    float* io[2] = { buffer.getWritePointer(0),
-                     buffer.getNumChannels() > 1 ? buffer.getWritePointer(1) : nullptr };
-    engine.process(io, buffer.getNumChannels() > 1 ? 2 : 1, buffer.getNumSamples());
+    // the main bus, and the sidechain if the host has connected one: with a
+    // sidechain the buffer holds both, so the main channels come from the bus
+    auto main = getBusBuffer(buffer, true, 0);
+    const float* key[2] = { nullptr, nullptr };
+    int keyChannels = 0;
+    if (getBusCount(true) > 1)
+        if (auto* scBus = getBus(true, 1); scBus != nullptr && scBus->isEnabled()){
+            auto sc = getBusBuffer(buffer, true, 1);
+            keyChannels = juce::jmin(2, sc.getNumChannels());
+            for (int ch = 0; ch < keyChannels; ++ch) key[ch] = sc.getReadPointer(ch);
+        }
+    pushScopeInput(main.getReadPointer(0), main.getNumSamples());
+    float* io[2] = { main.getWritePointer(0),
+                     main.getNumChannels() > 1 ? main.getWritePointer(1) : nullptr };
+    engine.process(io, main.getNumChannels() > 1 ? 2 : 1, main.getNumSamples(),
+                   keyChannels > 0 ? key : nullptr, keyChannels);
+    sidechainLive.store(keyChannels > 0);
 
     if (engine.latencySamples() != reportedLatency){
         reportedLatency = engine.latencySamples();

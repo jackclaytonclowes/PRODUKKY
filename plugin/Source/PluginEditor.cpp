@@ -58,6 +58,7 @@ static juce::String helpFor(std::string id){
         { "l#Shape", "LFO shape" }, { "l#Depth", "How much of the LFO reaches the matrix" },
         { "envAtk", "How fast the envelope follower rises" },
         { "envRel", "How fast it falls" }, { "envSens", "How much of the input level reaches the matrix" },
+        { "envKey", "What the envelope listens to: this track, or the sidechain your DAW sends in (a kick, to duck the drive on every hit)" },
         { "trOn", "An insert tremolo at the very end of the chain" },
         { "trDiv", "Lock the tremolo to the host's tempo" }, { "trRate", "Tremolo speed" },
         { "trDepth", "How deep the tremolo cuts" }, { "trShape", "Sine through triangle to a hard chop" },
@@ -1226,7 +1227,7 @@ FractureEditor::FractureEditor(FractureProcessor& p)
                       knob(pMod, ("l" + n + "Depth").toRawUTF8(), blue, true) };
     }
     envRow = { knob(pMod, "envAtk", red, true), knob(pMod, "envRel", red, true),
-               knob(pMod, "envSens", red, true) };
+               knob(pMod, "envSens", red, true), choice(pMod, "envKey", "Follows", 100) };
     lfoCaption[0] = new Caption("LFO 1", blue);
     lfoCaption[1] = new Caption("LFO 2", blue);
     envCaption = new Caption("Envelope follower", red);
@@ -1394,7 +1395,10 @@ void FractureEditor::updateIdle(){
     for (auto& c : controls){
         juce::String why;
         for (const auto& d : idle) if (d.param == c.param){ why = d.why; break; }
-        const juce::String help = helpFor(P[c.param].id);
+        juce::String help = helpFor(P[c.param].id);
+        // Sidechain chosen with nothing connected: say what it does instead
+        if (c.param == Ids::get().envKey && v[static_cast<size_t>(c.param)] > 0.5f && !proc.sidechainLive.load())
+            help = "No sidechain is connected, so it follows the input. Route one to FRACTURE's sidechain in your DAW.  " + help;
         const juce::String tip = why.isNotEmpty() ? "Inactive: " + why + ".  " + help : help;
         if (tip != c.tip){ c.set(why.isNotEmpty(), tip); c.tip = tip; }   // only on a change
     }

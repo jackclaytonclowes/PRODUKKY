@@ -91,6 +91,7 @@ The panel reads in the order the sound flows: top row first, left to right, then
 ## 07 Modulation
 
 - Two **LFOs** (slow wobbles) and an **Envelope follower** (which follows how loud the input is) are the sources, along with the tremolo and the Perform controls.
+- The envelope follower's **Follows** choice can listen to the **Sidechain** instead of the track itself. Send a kick to FRACTURE's sidechain in your DAW (in Logic, the Side Chain menu at the top of the plugin window), route the envelope to Drive with a negative amount, and the distortion ducks on every kick. With no sidechain connected it follows the track, and its tooltip says so.
 - The **Matrix** connects them: choose a **Source**, a **Target** (almost any knob), and an amount. Up to six connections.
 - The bars show what each source is doing right now.
 

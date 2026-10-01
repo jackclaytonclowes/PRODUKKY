@@ -735,6 +735,61 @@ static void testHarmonicReadout(){
           std::string(quietNoise ? "" : "noise read as a tone ") + (quietChord ? "" : "chord read as a tone"));
 }
 
+// Env follows: Sidechain. The envelope listens to the key instead of the input;
+// with no key connected it goes on following the input
+static void testSidechain(){
+    const Params& P = Params::get();
+    const double sr = 48000.0; const int len = 48000;
+    std::vector<float> in(len), keyL(len), keyR(len);
+    for (int i = 0; i < len; ++i){
+        in[i] = static_cast<float>(0.3 * std::sin(2.0 * M_PI * 220.0 * i / sr));
+        // a kick-like key: a burst every quarter second
+        const int ph = i % 12000;
+        keyL[i] = keyR[i] = ph < 2400 ? static_cast<float>(0.8 * std::exp(-ph / 600.0) * std::sin(2.0 * M_PI * 60.0 * ph / sr)) : 0.0f;
+    }
+    auto dest = [&](const char* id){
+        return 1.0f + static_cast<float>(std::find(P.dests().begin(), P.dests().end(), P.index(id)) - P.dests().begin());
+    };
+    std::vector<double> envTrace;                         // the envelope, once a block
+    auto render = [&](float follows, bool withKey, float inGainDb = 0.0f){
+        Patch p; p.v = { {"bands", 0}, {"m0a", static_cast<float>(Mode::Soft)}, {"d0a", 2}, {"autoGain", 0},
+                         {"mS0", 3}, {"mD0", dest("d0a")}, {"mA0", 80}, {"envAtk", 2}, {"envRel", 60},
+                         {"envKey", follows}, {"inGain", inGainDb} };
+        Engine e; e.prepare(sr, 256); applyPatch(e, p); e.seedFrom(0);
+        std::vector<float> l = in, r = in;
+        envTrace.clear();
+        for (int i = 0; i < len; i += 256){
+            const int m = std::min(256, len - i);
+            float* io[2] = { l.data() + i, r.data() + i };
+            const float* k[2] = { keyL.data() + i, keyR.data() + i };
+            e.process(io, 2, m, withKey ? k : nullptr, withKey ? 2 : 0);
+            envTrace.push_back(e.envOut());
+        }
+        return l;
+    };
+    auto swing = [&](const std::vector<float>& x){       // how much the level moves, block to block
+        double lo = 1e9, hi = 0.0;
+        for (int b = 4; b < len / 480; ++b){
+            double s = 0.0; for (int i = 0; i < 480; ++i){ const double v = x[b * 480 + i]; s += v * v; }
+            const double db = 10.0 * std::log10(s / 480.0 + 1e-20); lo = std::min(lo, db); hi = std::max(hi, db);
+        }
+        return hi - lo;
+    };
+    const auto keyed = render(1, true), inputOnly = render(0, true), noKey = render(1, false), none = render(0, false);
+    check("Env follows Sidechain: a steady tone pulses with the key", swing(keyed) > swing(inputOnly) + 4.0,
+          f2s(swing(keyed), 1) + " dB of movement keyed, " + f2s(swing(inputOnly), 2) + " following the input");
+    check("  ... with Env following the input the key changes nothing, bit for bit", inputOnly == none);
+    check("  ... and with no key connected, Sidechain follows the input", noKey == none);
+    // the Input knob scales what is processed, not what keys it: the envelope
+    // the key makes is the same at 0 and at +6 dB in
+    render(1, true, 0.0f); const auto env0 = envTrace;
+    render(1, true, 6.0f); const auto env6 = envTrace;
+    double worstEnv = 0.0;
+    for (size_t i = 0; i < env0.size(); ++i) worstEnv = std::max(worstEnv, std::fabs(env0[i] - env6[i]));
+    check("  ... and the Input knob does not change what the key does to the envelope", worstEnv < 1e-9,
+          "largest difference " + f2s(worstEnv, 12));
+}
+
 int main(int argc, char** argv){
     const char* csv = argc > 1 ? argv[1] : "plugin/tests/shaper_reference.csv";
     const char* presetsPath = argc > 2 ? argv[2] : "plugin/tests/presets.json";
@@ -1552,6 +1607,9 @@ int main(int argc, char** argv){
 
     std::printf("\nHarmonic readout\n");
     testHarmonicReadout();
+
+    std::printf("\nSidechain\n");
+    testSidechain();
 
     std::printf("\nZipper noise\n");
     {

@@ -307,6 +307,25 @@ from both. Not measured: the tuned feedback loop through the drive is tuned for 
 half, and the clean half skips the drive's DC blockers and its half sample of anti-aliasing
 delay, so on a low note the undriven part of the loop can ring a few tens of cents off.
 
+## The sidechain
+
+FRACTURE has a stereo sidechain input, off unless the host turns it on, so a session saved
+before it existed opens with the buses it had. The envelope follower's **Follows** choice
+(`envKey`, appended) makes it listen to the sidechain instead of the input; with nothing
+connected it goes on following the input. The Input knob scales what is processed, not what
+keys it. The processor takes its main channels from the bus, not from the front of the
+buffer, because with a sidechain the host's buffer holds both.
+
+Tested: a steady tone with a pulsing key mapped to Drive moves 8.1 dB keyed against 1.9 dB
+following the input; with Follows on Input the key changes nothing, bit for bit; with no key,
+Sidechain is bit for bit the input; the envelope the key makes is identical at Input 0 and
++6 dB (scaling the key by Input fails it). In the host test the bus is there and off, a
+stereo sidechain is accepted and 5.1 refused, a kick on a real 4-channel buffer moves the
+drive, and it turns off again; pluginval at strictness 10 exercises the layouts.
+**Not yet known**: how Logic treats a session saved with 0.1 opening on a build that has
+the extra bus. Adding an optional input bus should not change the Audio Unit's identity,
+but nobody has opened an old project with it yet: try that before relying on it.
+
 ## Reading the harmonics
 
 The Scope analyses the input and the output in the same FFT frame. The input is drawn as a
@@ -396,7 +415,7 @@ The menu rereads the folder every time it opens.
 
 ## What is verified, and where
 
-`npm run test:core` — 169 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 173 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -456,7 +475,7 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   and a value that did not round-trip exactly is not taken for an edit; A and B keep
   separate histories, B opens as a copy of A, and a switch is never an undo step
 
-`host_smoke` — 127 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 131 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
 and comes back out unchanged; a knob drag is one undo step (a version that committed on
 every value fails five checks), and so are a pad drag, a stroke across the steps, a preset
