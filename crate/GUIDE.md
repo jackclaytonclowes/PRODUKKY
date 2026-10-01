@@ -39,6 +39,8 @@ Everything runs left to right and top to bottom on the panel, which is also the 
 - **Bits** is resolution. 12 is the classic; lower is noisier and rougher.
 - **Compand** squashes quiet and loud differently, so loud hits get grainier. Off is how the real machines worked.
 - **Anti-alias** controls how much of the crunchy fold-back gets through. Lower is crunchier.
+- **Keep sub** sends everything below it around the converter and the filter, clean. Turn it to about 100 Hz on a drum bus and the kick keeps its weight while everything else is crushed. At the bottom it is off.
+- **Bits in use** shows how many of the converter's bits the drums are reaching. Each 6 dB below full scale costs one bit, so quiet drums into 12 bits might only use 8. Push **Input** until it reads near the top for the grain the machines had; the last cell turns red when it clips.
 
 ## 03 Four-pole — the filter
 

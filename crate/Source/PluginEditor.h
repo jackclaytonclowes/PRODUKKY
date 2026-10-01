@@ -98,6 +98,22 @@ private:
     float inDb = -60.0f, outDb = -60.0f;
 };
 
+// How many of the converter's bits the signal is using: one cell per bit at the
+// current Bits setting, filled to the held peak, red at the end when it clips
+class BitsMeter : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
+public:
+    explicit BitsMeter(CrateProcessor&);
+    void paint(juce::Graphics&) override;
+    double shown() const { return used; }           // for the tests
+    void refresh();                                  // read the processor (30 times a second)
+private:
+    void timerCallback() override { refresh(); }
+    CrateProcessor& proc;
+    double used = 0.0, hold = 0.0;
+    int holdFrames = 0;
+    bool clipping = false;
+};
+
 class CrateEditor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
     explicit CrateEditor(CrateProcessor&);
@@ -145,6 +161,7 @@ private:
     std::unique_ptr<session::PresetMenu> presetMenu;
     FeelStrip* strip = nullptr;
     Meters* meters = nullptr;
+    BitsMeter* bitsMeter = nullptr;
     StepEditor* steps = nullptr;
 
     template <typename T, typename... A> T* make(A&&... args){

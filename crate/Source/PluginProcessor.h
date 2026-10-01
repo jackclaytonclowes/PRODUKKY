@@ -49,6 +49,7 @@ public:
     juce::String userPresetName() const { return userPreset; }
 
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
+    std::atomic<float> convPeak { 0.0f };       // into the converter, for the bits-in-use meter
     std::atomic<bool> transportRunning { false };
     std::atomic<float> hostBpm { 120.0f };
     std::atomic<float> rhythmNow { 0.0f };     // where the rhythm is, 0..1, for the step display

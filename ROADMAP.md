@@ -84,8 +84,8 @@ Mac only; nobody has judged the sound against references yet.
 ## CRATE
 
 - [x] **S** Version in the header
-- [ ] **S** Keep the sub: a crossover so the low end skips the converter
-- [ ] **S** A "bits in use" meter by the converter
+- [x] **S** Keep the sub: a crossover so the low end skips the converter (and the four-pole)
+- [x] **S** A "bits in use" meter by the converter
 - [x] **S** Flams: the detector now looks for a rise, with a 10 ms hold. It also finds all eleven
   drums in the audition loop (it found nine). Equal-level rolls still merge: needs spectral onsets
 - [ ] **M** Optional 5 ms lookahead for the hit envelope

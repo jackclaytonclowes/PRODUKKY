@@ -2,10 +2,18 @@
 // and is measured with a bare compiler (crate/tests/test_core.cpp).
 //
 //   in ─ gain ─┬─ dry ─ delay (matches the 4x) ───────────────────┐
-//              ├─ + dust ─ converter ─ [ four-pole at 4x ] ─ wet ──┤
+//              ├─ high ─ + dust ─ converter ─ [ four-pole at 4x ] ─┤ wet
+//              │  low (Keep sub) ─ delay (matches the 4x) ─────────┘
 //              └─ hit detector ─ envelope ──┤ (cutoff)             │
 //                 rhythm (host position) ───┘                      │
 //                                       mix ─ feel (swing, push) ─ out gain ─ clip
+//
+// Keep sub splits the wet path with a Linkwitz-Riley crossover, the one a
+// drum bus wants most: below it the kick stays clean and full, and only the
+// rest is crushed. The two halves sum flat (LR4), with the crossover's phase
+// turn and nothing else. At 20 Hz it is off and out of the signal path
+// altogether, so a session saved before it existed renders bit for bit as it
+// did.
 //
 // Two ordering decisions worth knowing:
 //
@@ -40,6 +48,15 @@ inline double softLimit(double x){
     return (x < 0 ? -1.0 : 1.0) * (t + (1.0 - t) * std::tanh((a - t) / (1.0 - t)));
 }
 
+// How many of the converter's bits a signal uses. A sampler only uses all of
+// them at full scale: each 6.02 dB below it costs one, which is why hitting the
+// converter hard was the technique. A drum peaking at -12 dBFS into twelve
+// bits is using ten. At or past full scale it is all of them, and clipping.
+inline double bitsInUse(double bits, double peak){
+    if (peak <= 0.0) return 0.0;
+    return std::clamp(bits + std::log2(peak), 0.0, bits);
+}
+
 struct Ramp {
     double cur = 0.0, inc = 0.0;
     void target(double t, int n){ inc = (t - cur) / (n > 0 ? n : 1); }
@@ -61,6 +78,7 @@ public:
         os_[0].prepare(osFactor_); os_[1].prepare(osFactor_);
         ladder_.prepare(sampleRate * osFactor_);
         for (auto& d : dryDelay_){ d.prepare(64); d.setDelay(os_[0].latencySamples()); }
+        for (auto& d : subDelay_){ d.prepare(64); d.setDelay(os_[0].latencySamples()); }
         dust_.prepare(sampleRate);
         hit_.prepare(sampleRate);
         rhythm_.prepare(sampleRate);
@@ -72,6 +90,9 @@ public:
         conv_.reset(); ladder_.reset(); feel_.reset(); hit_.reset(); rhythm_.reset();
         for (auto& o : os_) o.reset();
         for (auto& d : dryDelay_) d.reset();
+        for (auto& d : subDelay_) d.reset();
+        for (int ch = 0; ch < maxChannels; ++ch) for (auto& f : xo_[ch]) f.reset();
+        subWas_ = 0.0;
         first_ = true;
         inPeak = outPeak = 0.0f;
     }
@@ -94,6 +115,7 @@ public:
     }
 
     float inPeak = 0.0f, outPeak = 0.0f;
+    float convPeak = 0.0f;              // the block's peak into the converter (bitsInUse)
     double swingOffsetMs() const {                       // what the editor draws
         return (feel_.currentDelaySamples() - feel_.latencySamples()) * 1000.0 / sr_;
     }
@@ -138,17 +160,26 @@ public:
         feel_.setPush(v_[static_cast<size_t>(id.push)]);
         feel_.beginBlock(playing_, ppq_, bpm_);
 
+        const bool wasFirst = first_;
         auto setR = [&](Ramp& r, double t){ if (first_) r.snap(t); else r.target(t, n); };
         setR(inG_, dbToGain(v_[static_cast<size_t>(id.inGain)]));
         setR(outG_, dbToGain(v_[static_cast<size_t>(id.outGain)]));
         setR(mix_, v_[static_cast<size_t>(id.mix)] / 100.0);
         first_ = false;
 
+        // Keep sub: on above 20 Hz. A moved frequency glides, retuned every 16
+        // samples; switched on, it glides up from 20 Hz, where the crossover is
+        // all but transparent, so it enters the path without a step. After a
+        // reset (a preset, a session) it starts where it is set
+        const double subNow = v_[static_cast<size_t>(id.subHz)];
+        const bool subOn = subNow > 20.5 || subWas_ > 20.5;
+        const double subFrom = wasFirst ? subNow : (subWas_ > 20.5 ? subWas_ : 20.0);
+        if (subOn && subFrom == subNow) setSub(subNow);
         const bool mono = v_[static_cast<size_t>(id.mono)] > 0.5f;
         const bool safety = v_[static_cast<size_t>(id.safety)] > 0.5f;
         const double driveComp = 1.0 / std::sqrt(drive);   // so Drive is character, not level
 
-        double inPk = 0.0, outPk = 0.0;
+        double inPk = 0.0, outPk = 0.0, convPk = 0.0;
         for (int i = 0; i < n; ++i){
             const double gIn = inG_.next(), gOut = outG_.next(), m = mix_.next();
             double dryIn[maxChannels];
@@ -168,15 +199,25 @@ public:
                 for (int ch = 0; ch < nch; ++ch)
                     ladder_.setCutoff(cutoff * std::exp2(envOct * e + rhDepth * rhythm_.value(ch)), ch);
             }
+            if (subOn && subFrom != subNow && (i & 15) == 0)
+                setSub(subFrom + (subNow - subFrom) * std::min(1.0, (i + 16) / static_cast<double>(n)));
             for (int ch = 0; ch < nch; ++ch){
                 const double dry = dryDelay_[ch].process(dryIn[ch]);   // in step with the wet path
-                double wet = dryIn[ch] + dust_.process(ch);
+                double low = 0.0, high = dryIn[ch];
+                if (subOn){
+                    Biquad* x = xo_[ch];
+                    low  = subDelay_[ch].process(x[1].process(x[0].process(dryIn[ch])));
+                    high = x[3].process(x[2].process(dryIn[ch]));
+                }
+                double wet = high + dust_.process(ch);
+                convPk = std::max(convPk, std::fabs(wet));
                 wet = conv_.process(ch, wet);
                 // the filter's own mix happens inside the oversampled region, so
                 // both halves share its filters and no extra delay is needed
                 wet = os_[ch].process(wet, [&](double v){
                     return v + (ladder_.process(ch, v) * driveComp - v) * fmix;
                 });
+                wet += low;
                 feel_.write(ch, dry * (1.0 - m) + wet * m);
             }
             feel_.advance();
@@ -190,10 +231,26 @@ public:
         }
         inPeak = static_cast<float>(inPk);
         outPeak = static_cast<float>(outPk);
+        convPeak = static_cast<float>(convPk);
+        // off means off: back to 20 and the crossover leaves the path, with
+        // its filters cleared for the next time
+        if (subNow <= 20.5 && subWas_ > 20.5)
+            for (int ch = 0; ch < maxChannels; ++ch){ for (auto& f : xo_[ch]) f.reset(); subDelay_[ch].reset(); }
+        subWas_ = subNow;
     }
 
 private:
     static void juceUnused(int){}
+    // two cascaded Butterworth sections each way: Linkwitz-Riley, 24 dB an octave
+    void setSub(double hz){
+        for (int ch = 0; ch < maxChannels; ++ch){
+            xo_[ch][0].set(Biquad::LowPass, hz, sr_);  xo_[ch][1].copyCoeffs(xo_[ch][0]);
+            xo_[ch][2].set(Biquad::HighPass, hz, sr_); xo_[ch][3].copyCoeffs(xo_[ch][2]);
+        }
+    }
+    Biquad xo_[maxChannels][4];
+    DelayLine subDelay_[maxChannels];
+    double subWas_ = 0.0;
     double sr_ = 48000.0;
     bool first_ = true, playing_ = false;
     double ppq_ = 0.0, bpm_ = 120.0;

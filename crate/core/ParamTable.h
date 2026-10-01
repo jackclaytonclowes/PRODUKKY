@@ -112,6 +112,9 @@ private:
         f("mix",     "Mix",    0, 100, 100, false, "%");
         f("outGain", "Output", -24, 12, 0, false, "dB");
         b("safety",  "Safety clip", true);
+        // 0.2, appended so saved sessions keep their meaning: the low end
+        // around the converter and the four-pole. 20 Hz is off
+        f("subHz",   "Keep sub", 20, 300, 20, true, "Hz");
     }
     std::vector<ParamInfo> info_;
 };
@@ -121,7 +124,7 @@ struct Ids {
     int inGain, mono, machine, tune, trick, clock, bits, compand, aa;
     int fltFreq, fltReso, fltDrive, fltEnv, fltDecay, fltShape, fltPoles, fltMix;
     int rhDepth, rhDiv, rhRate, rhShape, rhGroove, rhPhase, rhGlide, rhStep[8];
-    int swing, grid, push, dust, dustTone, mix, outGain, safety;
+    int swing, grid, push, dust, dustTone, mix, outGain, safety, subHz;
 private:
     Ids(){
         const Params& p = Params::get();
@@ -137,6 +140,7 @@ private:
         swing = I("swing"); grid = I("grid"); push = I("push");
         dust = I("dust"); dustTone = I("dustTone");
         mix = I("mix"); outGain = I("outGain"); safety = I("safety");
+        subHz = I("subHz");
     }
 };
 

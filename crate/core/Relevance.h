@@ -32,7 +32,7 @@ inline std::vector<Idle> idleControls(const float* v){
     if (v[id.mix] == 0.0f){
         // only the dry signal is heard; the feel section still moves it, and
         // the grid decides the latency, so those stay live
-        for (int p : { id.machine, id.tune, id.trick, id.clock, id.bits, id.compand, id.aa,
+        for (int p : { id.machine, id.tune, id.trick, id.clock, id.bits, id.compand, id.aa, id.subHz,
                        id.fltMix, id.dust, id.dustTone })
             idle(p, "Mix is at 0%, so only the dry signal is heard");
         for (int p : filter) idle(p, "Mix is at 0%, so only the dry signal is heard");

@@ -232,6 +232,29 @@ int main(int argc, char** argv){
             std::printf("        editor size %d x %d\n", w, h);
             check("editor comes up big enough to work in", w >= 600 && h >= 340,
                   juce::String(w) + "x" + juce::String(h));
+            // the bits-in-use meter, with a tone 12 dB under full scale playing:
+            // it reads what the converter is given, Input included
+            {
+                juce::AudioBuffer<float> tone(2, 256); juce::MidiBuffer none;
+                for (int blk = 0; blk < 8; ++blk){
+                    for (int ch = 0; ch < 2; ++ch)
+                        for (int i = 0; i < 256; ++i)
+                            tone.setSample(ch, i, 0.25f * std::sin(2.0f * juce::MathConstants<float>::pi * 1000.0f * (blk * 256 + i) / 48000.0f));
+                    proc.processBlock(tone, none);
+                }
+                std::function<BitsMeter*(juce::Component*)> findMeter = [&](juce::Component* c) -> BitsMeter* {
+                    if (auto* m = dynamic_cast<BitsMeter*>(c)) return m;
+                    for (auto* ch : c->getChildren()) if (auto* r = findMeter(ch)) return r;
+                    return nullptr;
+                };
+                if (auto* m = findMeter(editor.get())){
+                    m->refresh();
+                    const double gain = juce::Decibels::decibelsToGain(proc.apvts.getRawParameterValue("inGain")->load());
+                    const double want = crate::bitsInUse(proc.apvts.getRawParameterValue("bits")->load(), 0.25 * gain);
+                    check("the bits meter reads what the converter is given", std::abs(m->shown() - want) < 0.05,
+                          juce::String(m->shown(), 2) + " bits, want " + juce::String(want, 2));
+                } else check("the bits meter is on the panel", false);
+            }
             juce::Image shot(juce::Image::ARGB, w, h, true);
             {
                 juce::Graphics g(shot);

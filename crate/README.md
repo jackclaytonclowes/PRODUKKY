@@ -175,7 +175,7 @@ a file leaves out loads at its default.
 
 ## What is verified, and how
 
-`npm run test:crate` — 93 assertions, no JUCE needed (`VERBOSE=1` prints the measured
+`npm run test:crate` — 97 assertions, no JUCE needed (`VERBOSE=1` prints the measured
 value behind every one). These are measurements, not smoke
 tests, because nobody involved in building this has heard it:
 
@@ -230,13 +230,23 @@ tests, because nobody involved in building this has heard it:
 - **push moves everything by the milliseconds it says**, and stopping the transport stops
   the swing
 - **reported latency is the measured latency**, sample for sample
+- **Keep sub takes the low end around the converter**: a 50 Hz fundamental through four
+  bits carries -21 dB of crushing noise, and -153 dB with the sub kept at 150 Hz; a 3 kHz
+  tone is as crushed as before (within 0.2 dB); and with the converter clean and the
+  four-pole out the two halves sum flat to 0.000 dB from 60 Hz to 1 kHz, so the low path is
+  in step with the oversampled one. With the four-pole in, the low end comes back at its
+  own level, without the 1.4 dB a resonant ladder takes out of the bass at defaults. At
+  20 Hz it is off and out of the path: every preset renders bit for bit as before
+- **bits in use**: a tone 12 dB under full scale into twelve bits reads 10.00, full scale
+  12.00, and the same tone with Input at +12 reads 11.99; in the host test the panel's meter
+  reads what the converter is given, Input included
 - dust is bit-identical across two renders of the same bar, and silent at zero
 - 44.1 / 48 / 96 kHz, block sizes 16 to 1024, and everything at once: finite and bounded
 - undo, redo and A/B: the same seventeen checks as FRACTURE's, on the same file
 
-`host_smoke` adds 72 more at the host level, including a synthetic transport: the plugin
+`host_smoke` adds 74 more at the host level, including a synthetic transport: the plugin
 sees the tempo, notices when playback stops, re-declares its latency when the grid changes,
-recalls all twenty-six presets, round-trips its state, and paints its editor to a PNG — twice,
+recalls all twenty-seven presets, round-trips its state, and paints its editor to a PNG — twice,
 the second time at half size, checking the corner panels are scaled rather than cropped. It
 also takes undo, A/B and your presets through a real parameter tree: a drag is one step, a
 session saved on B reopens on B with A held, a saved preset reads as named choices and
@@ -244,7 +254,7 @@ loads back, and the header's buttons and Ctrl + Shift + Z do what they say. A va
 
 ## The presets
 
-Twenty-six, grouped by what they demonstrate: the machines and their outputs (**SP,
+Twenty-seven, grouped by what they demonstrate: the machines and their outputs (**SP,
 outputs 1-2 / 3-4 / 7-8**, **S900, forty kilohertz**, **S950, bass lifted out**), the pitch
 trick (**SP, 45 on 33**), the filter rhythm (the five **Rhythm:** presets), feel (**Off the
 grid**, **Behind the beat**, **Drunk sixteenths**), and starting points for a whole beat

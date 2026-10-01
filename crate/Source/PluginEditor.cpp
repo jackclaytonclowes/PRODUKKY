@@ -20,6 +20,7 @@ static juce::String helpFor(const std::string& id){
         { "bits", "Converter resolution. Six decibels of noise floor per bit" },
         { "compand", "Mu-law companding. Off is linear, which is what both machines stored" },
         { "aa", "How much the anti-alias filter removes. Lower lets more fold back" },
+        { "subHz", "Everything below this goes around the converter and the four-pole, clean. Off at the bottom" },
         { "fltFreq", "Cutoff. For low and high pass this is the -3 dB point; for band pass and reject, the centre" },
         { "fltReso", "Resonance. Sings at the pole" },
         { "fltDrive", "Drive into the filter's saturating core" },
@@ -58,6 +59,7 @@ static juce::String fmtValue(const ParamInfo& p, double v){
     if (p.unit == "oct") return std::fabs(v) < 0.05 ? juce::String("off")
                                                      : (v > 0 ? "+" : "") + juce::String(v, 1) + " oct";
     if (p.unit == "deg") return juce::String(juce::roundToInt(v)) + " deg";
+    if (p.id == "subHz") return v <= 20.5 ? juce::String("off") : juce::String(juce::roundToInt(v));
     if (p.unit == "Hz")  return v >= 1000.0 ? juce::String(v / 1000.0, v < 10000.0 ? 2 : 1) + "k"
                                             : juce::String(juce::roundToInt(v));
     if (p.unit == "dB")  return (v > 0 ? "+" : "") + juce::String(v, 1);
@@ -224,6 +226,47 @@ void Meters::timerCallback(){
     outDb = fall(outDb, juce::Decibels::gainToDecibels(proc.outPeak.load(), -60.0f));
     repaint();
 }
+BitsMeter::BitsMeter(CrateProcessor& p) : proc(p){
+    setTooltip("How many of the converter's bits the drums are using. Each 6 dB under full scale "
+               "costs one: push Input until it reads near the top for the grain the machines had");
+    setSize(84, KnobBox::h);
+    startTimerHz(30);
+}
+void BitsMeter::refresh(){
+    const double bits = proc.apvts.getRawParameterValue("bits")->load();
+    const float peak = proc.convPeak.load();
+    const double now = crate::bitsInUse(bits, peak);
+    used = now > used ? now : std::max(now, used - 0.25);     // falls a quarter bit a frame
+    if (now >= hold){ hold = now; holdFrames = 45; }          // and the peak waits 1.5 s
+    else if (--holdFrames <= 0) hold = std::max(now, hold - 0.25);
+    clipping = peak >= 1.0f;
+    repaint();
+}
+void BitsMeter::paint(juce::Graphics& g){
+    const double bits = proc.apvts.getRawParameterValue("bits")->load();
+    const int cells = juce::jlimit(1, 16, juce::roundToInt(std::ceil(bits)));
+    auto a = getLocalBounds();
+    drawTracked(g, "Bits in use", a.removeFromTop(11), 8.5f, 1.4f, juce::Justification::left, dim);
+    a.removeFromTop(6);
+    auto row = a.removeFromTop(30);
+    const float cw = row.getWidth() / static_cast<float>(cells);
+    for (int k = 0; k < cells; ++k){
+        const auto c = juce::Rectangle<float>(row.getX() + k * cw, (float) row.getY(), cw, (float) row.getHeight()).reduced(1.0f, 0.0f);
+        g.setColour(face); g.fillRect(c);
+        const double fill = juce::jlimit(0.0, 1.0, used - k);
+        if (fill > 0.0){
+            g.setColour(clipping && k == cells - 1 ? red : yellow);
+            g.fillRect(c.withTop(c.getBottom() - static_cast<float>(fill) * c.getHeight()));
+        }
+        if (hold > k && hold <= k + 1){ g.setColour(ink); g.fillRect(c.withHeight(2.0f)); }
+        g.setColour(ink); g.drawRect(c, 1.0f);
+    }
+    a.removeFromTop(6);
+    g.setColour(dim); g.setFont(mono(11.0f));
+    g.drawText(juce::String(used, 1) + " / " + juce::String(bits, bits == std::floor(bits) ? 0 : 1)
+                   + (clipping ? "  over" : ""), a.removeFromTop(14), juce::Justification::left);
+}
+
 void Meters::paint(juce::Graphics& g){
     const char* caps[] = { "IN", "OUT" };
     const float vals[] = { inDb, outDb };
@@ -383,7 +426,10 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     convRow   = { choice(pConv, "machine", "Machine", 96), knob(pConv, "tune", yellow),
                   knob(pConv, "trick", yellow), knob(pConv, "clock", yellow),
                   knob(pConv, "bits", yellow), knob(pConv, "compand", yellow),
-                  knob(pConv, "aa", yellow) };
+                  knob(pConv, "aa", yellow), knob(pConv, "subHz", yellow) };
+    bitsMeter = new BitsMeter(proc);
+    owned.emplace_back(bitsMeter); pConv->addAndMakeVisible(bitsMeter);
+    convRow.push_back(bitsMeter);
     filterRow = { choice(pFilter, "fltShape", "Shape", 76), choice(pFilter, "fltPoles", "Poles", 60),
                   knob(pFilter, "fltFreq", blue), knob(pFilter, "fltReso", blue),
                   knob(pFilter, "fltDrive", blue), knob(pFilter, "fltEnv", blue),

@@ -106,7 +106,11 @@ inline const std::vector<Preset>& presets(){
             { "fltFreq", 400 }, { "fltReso", 10 }, { "rhShape", 3 }, { "rhDiv", 6 }, { "rhDepth", 4 } } },
         // as rough as the box goes while still being drums
         { "Eight bits, sped up seven", {
-            { "bits", 8 }, { "trick", 7 }, { "aa", 5 }, { "mono", 1 } } }
+            { "bits", 8 }, { "trick", 7 }, { "aa", 5 }, { "mono", 1 } } },
+        // 0.2: Keep sub. The whole kit through eight companded bits, except
+        // the kick's body and the bass below 110 Hz, which stay clean and full
+        { "Crushed top, clean sub", {
+            { "bits", 8 }, { "compand", 40 }, { "aa", 15 }, { "subHz", 110 } } }
     };
     return all;
 }

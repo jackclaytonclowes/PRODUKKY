@@ -252,7 +252,7 @@ int main(){
     const Params& P = Params::get();
 
     std::printf("\nParameters\n");
-    check("the table is complete", P.count() == 40, std::to_string(P.count()) + " parameters");
+    check("the table is complete", P.count() == 41, std::to_string(P.count()) + " parameters");
     check("the clock defaults to the rate the hardware ran at",
           std::fabs(P[P.index("clock")].def - 26040.0f) < 1.0f);
     check("twelve bits by default", std::fabs(P[P.index("bits")].def - 12.0f) < 0.01f);
@@ -837,6 +837,65 @@ int main(){
     }
 
     // ------------------------------------------------------ what the panel dims
+    std::printf("\nKeep sub\n");
+    {
+        const double sr = 48000.0;
+        const int from = static_cast<int>(0.2 * sr);
+        auto noiseDb = [&](const Patch& p, double f){
+            const auto r = run(p, sine(f, 0.5, 1.0, sr), sr);
+            return 10.0 * std::log10(residualPower(r.l, f, sr, from) / totalPower(r.l, from));
+        };
+        // a 50 Hz kick fundamental through a 4-bit converter, and the same with
+        // the sub kept: the crushing noise on it must fall a long way
+        const Patch crushed = { {"bits", 4} };
+        Patch kept = crushed; kept["subHz"] = 150;
+        const double lowOff = noiseDb(crushed, 50.0), lowOn = noiseDb(kept, 50.0);
+        check("Keep sub takes a 50 Hz fundamental around the 4-bit converter",
+              lowOn < lowOff - 20.0, f2s(lowOff, 1) + " dB of noise on it, " + f2s(lowOn, 1) + " dB kept");
+        // the top is still crushed exactly as it was
+        const double topOff = noiseDb(crushed, 3000.0), topOn = noiseDb(kept, 3000.0);
+        check("  ... while a 3 kHz tone is as crushed as before",
+              std::fabs(topOn - topOff) < 1.5, f2s(topOff, 1) + " dB, " + f2s(topOn, 1) + " dB kept");
+        // the two halves sum flat: with the converter clean and the four-pole
+        // out, the level at and around the crossover is what it is with Keep
+        // sub off. A low path out of step with the oversampled one would cut a
+        // notch here. (With the four-pole in, the low end comes back at its own
+        // level, without the bass a resonant ladder loses: 1.4 dB at defaults)
+        const Patch clean = { {"bits", 16}, {"clock", 48000}, {"aa", 0}, {"fltMix", 0} };
+        Patch cleanKept = clean; cleanKept["subHz"] = 150;
+        double worst = 0.0;
+        for (double f : { 60.0, 100.0, 150.0, 250.0, 1000.0 }){
+            const double a = goertzel(run(clean, sine(f, 0.3, 1.0, sr), sr).l, f, sr, from);
+            const double b = goertzel(run(cleanKept, sine(f, 0.3, 1.0, sr), sr).l, f, sr, from);
+            worst = std::max(worst, std::fabs(dBOf(b / a)));
+            if (std::getenv("VERBOSE")) std::printf("      %g Hz: %+.3f dB\n", f, dBOf(b / a));
+        }
+        check("  ... and the two halves sum flat (60 Hz to 1 kHz, around a 150 Hz split)",
+              worst < 0.25, f2s(worst, 3) + " dB at worst");
+    }
+
+    std::printf("\nBits in use\n");
+    {
+        // a tone peaking 12 dB under full scale into twelve bits uses ten; at
+        // full scale, all twelve; Input +12 on it reaches them all again
+        auto peakInto = [&](const Patch& p, double amp){
+            Engine e; e.prepare(48000.0, 256); applyPatch(e, p);
+            auto l = sine(1000.0, amp, 0.1, 48000.0), r = l; float peak = 0.0f;
+            for (size_t i = 0; i < l.size(); i += 256){
+                float* io[2] = { l.data() + i, r.data() + i };
+                e.process(io, 2, static_cast<int>(std::min<size_t>(256, l.size() - i)));
+                peak = std::max(peak, e.convPeak);
+            }
+            return static_cast<double>(peak);
+        };
+        const double quiet = bitsInUse(12, peakInto({}, 0.25));
+        const double full = bitsInUse(12, peakInto({}, 1.0));
+        const double pushed = bitsInUse(12, peakInto({ {"inGain", 12} }, 0.25));
+        check("bits in use: -12 dBFS into twelve bits is ten, full scale is twelve, +12 dB in brings it back",
+              std::fabs(quiet - 10.0) < 0.02 && std::fabs(full - 12.0) < 0.02 && std::fabs(pushed - 12.0) < 0.05,
+              f2s(quiet, 2) + ", " + f2s(full, 2) + ", " + f2s(pushed, 2));
+    }
+
     std::printf("\nDimmed controls\n");
     {
         // every control the panel dims is moved end to end, in each of these
@@ -935,6 +994,7 @@ int main(){
             { "Cutoff, resonant band pass", { {"fltShape", 1}, {"fltReso", 60} }, "fltFreq", 300, 6000 },
             { "Resonance", { {"fltFreq", 1500} }, "fltReso", 0, 90 },
             { "Clock", {}, "clock", 8000, 48000 },
+            { "Keep sub", { {"bits", 8} }, "subHz", 40, 250 },
             { "Tune", {}, "tune", -12, 12 },
             { "Output", {}, "outGain", -24, 6 },
             { "Mix", {}, "mix", 0, 100 },
