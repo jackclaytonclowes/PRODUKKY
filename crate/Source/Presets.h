@@ -115,4 +115,43 @@ inline const std::vector<Preset>& presets(){
     return all;
 }
 
+// The heading each preset sits under in the menu (Session.h's PresetMenu).
+// Every factory preset is in this table, which the tests check, so a new one
+// cannot arrive in the menu without a heading. New presets are appended to the
+// list, but take their heading from here, so the menu groups them by what they
+// are for rather than by when they were written.
+inline const char* presetCategory(const std::string& name){
+    static const std::pair<const char*, const char*> table[] = {
+        { "Init", "Start" },
+        { "Twelve bit, companded", "Machines and outputs" },
+        { "SP, outputs 3-4", "Machines and outputs" },
+        { "SP, outputs 7-8 raw", "Machines and outputs" },
+        { "SP, outputs 1-2", "Machines and outputs" },
+        { "Filtered bass line", "Machines and outputs" },
+        { "S900, forty kilohertz", "Machines and outputs" },
+        { "S950, bass lifted out", "Machines and outputs" },
+        { "Rhythm: gated sixteenths", "Filter rhythm" },
+        { "Rhythm: swung band pass", "Filter rhythm" },
+        { "Rhythm: notch through the bar", "Filter rhythm" },
+        { "Rhythm: random steps", "Filter rhythm" },
+        { "Rhythm: eight-pole bar sweep", "Filter rhythm" },
+        { "SP, 45 on 33", "Character" },
+        { "Pitched down for grit", "Character" },
+        { "Dusty break", "Character" },
+        { "Thick kick", "Character" },
+        { "Broken telephone", "Character" },
+        { "Eight bits, sped up seven", "Character" },
+        { "Off the grid", "Feel" },
+        { "Behind the beat", "Feel" },
+        { "Drunk sixteenths", "Feel" },
+        { "Whole bus, gently", "Whole beat" },
+        { "Lo-fi bus, S900 at 22 kHz", "Whole beat" },
+        { "Chopped soul break", "Whole beat" },
+        { "Quarter-note filter pump", "Whole beat" },
+        { "Crushed top, clean sub", "Whole beat" },
+    };
+    for (const auto& [n, c] : table) if (name == n) return c;
+    return "";
+}
+
 } // namespace crate

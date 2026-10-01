@@ -1051,6 +1051,9 @@ int main(){
             if (std::fabs(rel) > 3.0 || pk > 0.95) out += std::string(" [") + p.name + " " + f2s(rel, 1) + " dB, peak " + f2s(pk, 2) + "]";
         }
         check("every preset is within 3 dB of the dry loop's loudness (K-weighted), off the ceiling", out.empty(), out);
+        std::string noHeading;
+        for (const auto& pr : presets()) if (std::string(presetCategory(pr.name)).empty()) noHeading += std::string(" [") + pr.name + "]";
+        check("every preset has a heading in the menu", noHeading.empty(), noHeading);
     }
 
     std::printf("\nZipper noise\n");

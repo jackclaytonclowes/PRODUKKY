@@ -79,7 +79,7 @@ Mac only; nobody has judged the sound against references yet.
   modes rise 3 to 5 dB at middle drives, Gap 9 and Harmonics 20 dB at low drive. Changing it
   also changes how hard each stage drives the next, so most presets would sound different:
   after a listening session
-- [ ] **M** Preset browser with tags and favourites (both plugins)
+- [x] **M** Preset browser with tags and favourites (both plugins): grouped headings, favourites on top; a search box is still to do
 - [ ] **L** Dynamic Tube and Tape: bias follows level, sag, emphasis, hysteresis, head bump
 - [ ] **L** 8x quality for bounces, latency held constant
 - [ ] **L** Cheaper (polyphase) oversampler and a low-latency mode

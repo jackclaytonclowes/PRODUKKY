@@ -175,7 +175,7 @@ a file leaves out loads at its default.
 
 ## What is verified, and how
 
-`npm run test:crate` — 102 assertions, no JUCE needed (`VERBOSE=1` prints the measured
+`npm run test:crate` — 103 assertions, no JUCE needed (`VERBOSE=1` prints the measured
 value behind every one). These are measurements, not smoke
 tests, because nobody involved in building this has heard it:
 
@@ -253,7 +253,7 @@ tests, because nobody involved in building this has heard it:
 - 44.1 / 48 / 96 kHz, block sizes 16 to 1024, and everything at once: finite and bounded
 - undo, redo and A/B: the same seventeen checks as FRACTURE's, on the same file
 
-`host_smoke` adds 75 more at the host level, including a synthetic transport: the plugin
+`host_smoke` adds 78 more at the host level, including a synthetic transport: the plugin
 sees the tempo, notices when playback stops, re-declares its latency when the grid changes,
 recalls all twenty-seven presets, round-trips its state, and paints its editor to a PNG — twice,
 the second time at half size, checking the corner panels are scaled rather than cropped. It

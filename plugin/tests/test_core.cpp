@@ -1860,6 +1860,9 @@ int main(int argc, char** argv){
         check("every factory preset is within 3 dB of the dry loop's loudness (K-weighted), off the ceiling",
               outOfWindow.empty(), outOfWindow);
         check("no two factory presets sound the same", notDistinct.empty(), notDistinct);
+        std::string noHeading;
+        for (const auto& pr : all) if (std::string(presetCategory(pr.name)).empty()) noHeading += std::string(" [") + pr.name + "]";
+        check("every factory preset has a heading in the menu", noHeading.empty(), noHeading);
         check("each plugin-only preset uses something only the plugin has", noFeature.empty(), noFeature);
     }
 

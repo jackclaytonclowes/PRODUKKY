@@ -11,6 +11,8 @@
 // list to that, so a preset cannot quietly arrive 25 dB down again.
 #pragma once
 #include <vector>
+#include <string>
+#include <utility>
 #include "Presets.h"
 
 namespace fracture {
@@ -96,6 +98,67 @@ inline const std::vector<Preset>& factoryPresets(){
         return v;
     }();
     return all;
+}
+
+// The heading each preset sits under in the menu (Session.h's PresetMenu).
+// Every factory preset is in this table, which the tests check, so a new one
+// cannot arrive in the menu without a heading. New presets are appended to the
+// list, but take their heading from here, so the menu groups them by what they
+// are for rather than by when they were written.
+inline const char* presetCategory(const std::string& name){
+    static const std::pair<const char*, const char*> table[] = {
+        { "Init", "Start" },
+        { "Thermal-ish — three bands, gentle", "Character" },
+        { "Rift-ish — serial fold into filter", "Character" },
+        { "Speaker in a bin", "Character" },
+        { "Bit rot", "Character" },
+        { "Screaming lead", "Character" },
+        { "Sub warmer, top untouched", "Character" },
+        { "Motion — LFO across the mids", "Character" },
+        { "Total collapse", "Character" },
+        { "Ladder sweep, on the half note", "Character" },
+        { "Squelch — vintage, a turn from singing", "Character" },
+        { "Chop — eighths with the edges left on", "Character" },
+        { "Harmonic pan — the tremolo across the image", "Character" },
+        { "Drum bus — glue and crunch", "By use" },
+        { "Kick & snare — grit on the top only", "By use" },
+        { "Bass — harmonics driven, sub clean", "By use" },
+        { "808 — saturated so it reads on small speakers", "By use" },
+        { "Vocal — warm presence", "By use" },
+        { "Amp — crunchy rhythm", "By use" },
+        { "Fuzz — gated and square", "By use" },
+        { "Mix bus — a touch of tape", "By use" },
+        { "Radio — the AM band", "By use" },
+        { "Tuned comb — rings on A2", "Tuned feedback" },
+        { "Resonator — C2 through the drive", "Tuned feedback" },
+        { "Growl — the loop through a fold", "Tuned feedback" },
+        { "Kick tuned to the key — C1 resonator", "Tuned feedback" },
+        { "Snare ring — tuned to G4", "Tuned feedback" },
+        { "Comb on the fifth — rings on G3, half wet", "Tuned feedback" },
+        { "Dub echo, dotted eighth", "Echoes" },
+        { "Tape slap, synced sixteenth", "Echoes" },
+        { "Quarter-note echo into the fold", "Echoes" },
+        { "Stutter — 1/32 echoes through the drive", "Echoes" },
+        { "Gated sixteenths on the ladder", "Filter rhythm" },
+        { "Wah on the quarter note", "Filter rhythm" },
+        { "Swung notch, stereo", "Filter rhythm" },
+        { "Random steps, half wet", "Filter rhythm" },
+        { "Trance gate — sixteenth steps at 48 dB", "Filter rhythm" },
+        { "Acid line — resonant ladder on steps", "Filter rhythm" },
+        { "Notch drift — slow, opposite sides", "Filter rhythm" },
+        { "Cliff — 48 dB sweep across the bar", "Filter" },
+        { "Parallel crunch — half a driven ladder", "Filter" },
+        { "XY — drive across, cutoff up", "Perform" },
+        { "XY — the loop's pitch across, feedback up", "Perform" },
+        { "Macros — 1 folds and crushes, 2 widens and repeats", "Perform" },
+        { "Table — harmonic wobble, an LFO across the frames", "Harmonic table" },
+        { "Table — an octave up, the 2nd and 4th drawn in", "Harmonic table" },
+        { "Table — the harder you play, the more harmonics", "Harmonic table" },
+        { "Mid only — the centre driven, the sides left clean", "Stereo" },
+        { "Wider — the sides driven, the centre clean", "Stereo" },
+    };
+    for (const auto& [n, c] : table) if (name == n) return c;
+    return "";
 }
 
 } // namespace fracture

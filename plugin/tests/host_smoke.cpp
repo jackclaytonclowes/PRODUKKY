@@ -579,8 +579,39 @@ int main(int argc, char** argv){
                     for (int i = 0; i < box->getNumItems(); ++i) listed |= box->getItemText(i) == "My bass";
                     check("the preset menu lists your presets under the factory ones", listed
                           && box->getNumItems() > static_cast<int>(fracture::factoryPresets().size()));
-                    box->setSelectedItemIndex(3, juce::sendNotificationSync);
+                    box->setSelectedId(4, juce::sendNotificationSync);            // by id: the menu is grouped
                     check("  ... and choosing a factory one from it still loads it", proc.getCurrentProgram() == 3);
+                    // headings, and favourites: add the preset showing, find it
+                    // at the top under Favourites, load it from there, take it off
+                    {
+                        int headings = 0;
+                        for (juce::PopupMenu::MenuItemIterator it(*box->getRootMenu()); it.next();)
+                            if (it.getItem().isSectionHeader) ++headings;
+                        check("the menu groups the factory presets under headings", headings >= 5, juce::String(headings) + " headings");
+                        const int fav = 5;
+                        box->setSelectedId(fav + 1, juce::sendNotificationSync);
+                        auto idOf = [&](const juce::String& text){
+                            for (int i = 0; i < box->getNumItems(); ++i) if (box->getItemText(i) == text) return box->getItemId(i);
+                            return 0;
+                        };
+                        box->setSelectedId(idOf("Add this preset to favourites"), juce::sendNotificationSync);
+                        const auto file = proc.userPresets.favouritesFile();
+                        const juce::String name = proc.getProgramName(fav);
+                        const bool saved = file.loadFileAsString().contains("f:" + name);
+                        box->beforePopup();
+                        const bool onTop = box->getNumItems() > 0 && box->getItemText(0) == name
+                                           && box->getItemId(0) == session::PresetMenu::favouriteId(0);
+                        box->setSelectedId(1, juce::sendNotificationSync);          // somewhere else
+                        box->setSelectedId(session::PresetMenu::favouriteId(0), juce::sendNotificationSync);
+                        const bool loads = proc.getCurrentProgram() == fav;
+                        box->setSelectedId(idOf("Remove this preset from favourites"), juce::sendNotificationSync);
+                        box->beforePopup();
+                        const bool gone = !file.loadFileAsString().contains("f:" + name) && box->getItemText(0) != name;
+                        check("a favourite is saved, listed first, loads from there, and comes off again",
+                              saved && onTop && loads && gone,
+                              juce::String(saved ? "" : "not saved ") + (onTop ? "" : "not on top ") + (loads ? "" : "does not load ") + (gone ? "" : "not removed"));
+                    }
+                    box->setSelectedId(4, juce::sendNotificationSync);
 
                     // the arrows either side of the menu, one preset at a time
                     auto ids = [&]{ return box->getSelectedId(); };

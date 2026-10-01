@@ -7,7 +7,8 @@ Everything runs left to right and top to bottom on the panel, which is also the 
 ## Quick start
 
 - Open the preset menu at the top right and try **SP, 45 on 33**, **Dusty break** and **S900, forty kilohertz**. Between them they cover most of what CRATE does.
-- The **arrows** either side of the preset menu step to the previous and next preset without opening the list. They run through the factory presets and then yours, and wrap round at the ends.
+- The preset menu groups the factory presets under headings by what they are for. The **arrows** either side of it step to the previous and next preset in the same order, without opening the list. They run through the factory presets and then yours, and wrap round at the ends.
+- **Favourites**: choose **Add this preset to favourites** at the bottom of the menu and the preset is listed at the top, under Favourites, from then on. Choose it again (it now says Remove) to take it off. Favourites are kept in favourites.txt in Documents/CRATE/Presets, with your own presets.
 - For a whole beat, try **Lo-fi bus, S900 at 22 kHz** or **Chopped soul break**. Presets are levelled, so switching compares sounds, not volumes.
 - Turn **Mix** down to blend the effect with your clean drums.
 - If it gets too loud, turn **Output** down. **Safety clip** stops anything going over 0 dB.

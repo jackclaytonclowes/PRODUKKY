@@ -384,7 +384,11 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
     presetMenu = std::make_unique<session::PresetMenu>(proc, proc.userPresets, session::PresetMenu::Hooks {
         [this]{ return proc.userPresetName(); },
         [this](const juce::File& f){ return proc.saveUserPreset(f); },
-        [this](const juce::File& f){ return proc.loadUserPreset(f); } }, "CRATE");
+        [this](const juce::File& f){ return proc.loadUserPreset(f); },
+        [](int i){                                         // the menu's headings
+            const auto& all = crate::presets();
+            return i >= 0 && i < static_cast<int>(all.size())
+                 ? juce::String::fromUTF8(crate::presetCategory(all[static_cast<size_t>(i)].name)) : juce::String(); } }, "CRATE");
     canvas.addAndMakeVisible(presetMenu->box);
     canvas.addAndMakeVisible(presetMenu->saveButton);
     canvas.addAndMakeVisible(presetMenu->prev);

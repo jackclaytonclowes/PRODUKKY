@@ -439,8 +439,39 @@ int main(int argc, char** argv){
                     bool listed = false;
                     for (int i = 0; i < box->getNumItems(); ++i) listed |= box->getItemText(i) == "My break";
                     check("the preset menu lists your presets under the factory ones", listed);
-                    box->setSelectedItemIndex(2, juce::sendNotificationSync);
+                    box->setSelectedId(3, juce::sendNotificationSync);            // by id: the menu is grouped
                     check("  ... and choosing a factory one from it still loads it", proc.getCurrentProgram() == 2);
+                    // headings, and favourites: add the preset showing, find it
+                    // at the top under Favourites, load it from there, take it off
+                    {
+                        int headings = 0;
+                        for (juce::PopupMenu::MenuItemIterator it(*box->getRootMenu()); it.next();)
+                            if (it.getItem().isSectionHeader) ++headings;
+                        check("the menu groups the factory presets under headings", headings >= 5, juce::String(headings) + " headings");
+                        const int fav = 6;
+                        box->setSelectedId(fav + 1, juce::sendNotificationSync);
+                        auto idOf = [&](const juce::String& text){
+                            for (int i = 0; i < box->getNumItems(); ++i) if (box->getItemText(i) == text) return box->getItemId(i);
+                            return 0;
+                        };
+                        box->setSelectedId(idOf("Add this preset to favourites"), juce::sendNotificationSync);
+                        const auto file = proc.userPresets.favouritesFile();
+                        const juce::String name = proc.getProgramName(fav);
+                        const bool saved = file.loadFileAsString().contains("f:" + name);
+                        box->beforePopup();
+                        const bool onTop = box->getNumItems() > 0 && box->getItemText(0) == name
+                                           && box->getItemId(0) == session::PresetMenu::favouriteId(0);
+                        box->setSelectedId(1, juce::sendNotificationSync);          // somewhere else
+                        box->setSelectedId(session::PresetMenu::favouriteId(0), juce::sendNotificationSync);
+                        const bool loads = proc.getCurrentProgram() == fav;
+                        box->setSelectedId(idOf("Remove this preset from favourites"), juce::sendNotificationSync);
+                        box->beforePopup();
+                        const bool gone = !file.loadFileAsString().contains("f:" + name) && box->getItemText(0) != name;
+                        check("a favourite is saved, listed first, loads from there, and comes off again",
+                              saved && onTop && loads && gone,
+                              juce::String(saved ? "" : "not saved ") + (onTop ? "" : "not on top ") + (loads ? "" : "does not load ") + (gone ? "" : "not removed"));
+                    }
+                    box->setSelectedId(3, juce::sendNotificationSync);
 
                     // the arrows either side of the menu, one preset at a time
                     auto ids = [&]{ return box->getSelectedId(); };
@@ -461,13 +492,22 @@ int main(int argc, char** argv){
                           && nextB->getX() >= box->getRight());
                     if (prevB && nextB){
                         const int n = proc.getNumPrograms();
-                        proc.setCurrentProgram(3);
+                        proc.setCurrentProgram(4);                 // inside the Machines group, which steps 3, 4, 5
                         nextB->triggerClick(); juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
-                        const bool fwd = proc.getCurrentProgram() == 4;
+                        const bool fwd = proc.getCurrentProgram() == 5;
                         prevB->triggerClick(); prevB->triggerClick(); juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
-                        const bool back = proc.getCurrentProgram() == 2;
+                        const bool back = proc.getCurrentProgram() == 3;
                         check("  ... next and previous step one preset each way", fwd && back,
                               "now " + juce::String(proc.getCurrentProgram()));
+                        // in the menu's order, not the list's: headings come in the order
+                        // their first preset does, so Character (SP, 45 on 33 is the third
+                        // preset) is followed by Filter rhythm
+
+                        proc.setCurrentProgram(25);
+                        nextB->triggerClick(); juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+                        check("  ... in the order the menu shows them, group after group",
+                              proc.getProgramName(proc.getCurrentProgram()) == "Rhythm: gated sixteenths",
+                              "now " + proc.getProgramName(proc.getCurrentProgram()));
                         proc.setCurrentProgram(n - 1);
                         nextB->triggerClick(); juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
                         check("  ... past the last factory preset comes one of yours", proc.userPresetName() == "My break",

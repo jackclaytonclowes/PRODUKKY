@@ -415,7 +415,7 @@ The menu rereads the folder every time it opens.
 
 ## What is verified, and where
 
-`npm run test:core` — 173 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 174 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -475,7 +475,7 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   and a value that did not round-trip exactly is not taken for an edit; A and B keep
   separate histories, B opens as a copy of A, and a switch is never an undo step
 
-`host_smoke` — 131 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 133 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
 and comes back out unchanged; a knob drag is one undo step (a version that committed on
 every value fails five checks), and so are a pad drag, a stroke across the steps, a preset

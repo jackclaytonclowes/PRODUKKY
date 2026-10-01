@@ -7,7 +7,8 @@ The panel reads in the order the sound flows: top row first, left to right, then
 ## Quick start
 
 - Pick a preset from the menu at the top right and change **Drive A** in the Drive panel. That is the heart of the plugin.
-- The **arrows** either side of the preset menu step to the previous and next preset without opening the list. They run through the factory presets and then yours, and wrap round at the ends.
+- The preset menu groups the factory presets under headings by what they are for. The **arrows** either side of it step to the previous and next preset in the same order, without opening the list. They run through the factory presets and then yours, and wrap round at the ends.
+- **Favourites**: choose **Add this preset to favourites** at the bottom of the menu and the preset is listed at the top, under Favourites, from then on. Choose it again (it now says Remove) to take it off. Favourites are kept in favourites.txt in Documents/FRACTURE/Presets, with your own presets.
 - Turn **Dry/wet** (in Output, bottom right) down to blend with the clean sound.
 - **Auto gain** keeps the level steady as you add drive, so you hear the character, not just loudness.
 - Presets named for a job (**Drum bus**, **Bass**, **808**, **Vocal**, **Amp**, **Mix bus**) are the quickest way in: pick the one that matches the track.

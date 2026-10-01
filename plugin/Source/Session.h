@@ -163,6 +163,23 @@ public:
         return file.getParentDirectory().createDirectory() && file.replaceWithText(json);
     }
 
+    // Favourites: one per line in favourites.txt beside the presets, "f:" and
+    // a factory preset's name or "u:" and one of yours, so they survive new
+    // presets being added and can be backed up with the rest
+    juce::File favouritesFile() const { return folder().getChildFile("favourites.txt"); }
+    juce::StringArray favourites() const {
+        juce::StringArray a;
+        if (favouritesFile().existsAsFile()) a.addLines(favouritesFile().loadFileAsString());
+        a.trim(); a.removeEmptyStrings();
+        return a;
+    }
+    bool setFavourite(const juce::String& key, bool on) const {
+        auto a = favourites();
+        a.removeString(key);
+        if (on) a.add(key);
+        return save(favouritesFile(), a.joinIntoString("\n") + "\n");
+    }
+
 private:
     juce::String product_;
     juce::File override_;
@@ -269,6 +286,7 @@ public:
     struct Hooks {
         std::function<juce::String()> userName;              // the one loaded, if any
         std::function<bool(const juce::File&)> save, load;
+        std::function<juce::String(int)> category;           // a factory preset's heading, if grouped
     };
     PresetMenu(juce::AudioProcessor& p, UserPresets& u, Hooks h, juce::String product)
         : proc_(p), user_(u), hooks_(std::move(h)), product_(std::move(product)){
@@ -288,13 +306,13 @@ public:
     juce::TextButton saveButton { "Save" };
     ArrowButton prev { false }, next { true };
 
-    // one preset along: the factory list, then yours, round and round. From a
-    // state that matches none (a preset loaded and then changed still counts
-    // as that preset), it starts from where the menu shows
+    // one preset along, in the order the menu lists them: the factory list
+    // under its headings, then yours, round and round. From a state that
+    // matches none (a preset loaded and then changed still counts as that
+    // preset), it starts from where the menu shows
     void step(int direction){
         refill();
-        std::vector<int> order;
-        for (int i = 0; i < proc_.getNumPrograms(); ++i) order.push_back(i + 1);
+        std::vector<int> order = factoryOrder();
         for (int k = 0; k < files_.size(); ++k) order.push_back(userBase + k + 1);
         if (order.empty()) return;
         const int now = currentId();
@@ -308,8 +326,28 @@ public:
 
     void refill(){
         box.clear(juce::dontSendNotification);
-        for (int i = 0; i < proc_.getNumPrograms(); ++i) box.addItem(proc_.getProgramName(i), i + 1);
         files_ = user_.list();
+        // your favourites first, each pointing at the preset it names
+        favTargets_.clear();
+        const auto favs = user_.favourites();
+        for (const auto& key : favs){
+            const int target = idForKey(key);
+            if (target <= 0) continue;                          // renamed or deleted since
+            if (favTargets_.empty()) box.addSectionHeading("Favourites");
+            box.addItem(key.substring(2), favBase + static_cast<int>(favTargets_.size()) + 1);
+            favTargets_.push_back(target);
+        }
+        if (!favTargets_.empty()) box.addSeparator();
+        // the factory list, under its headings in the order they first appear
+        juce::String heading;
+        for (const int id : factoryOrder()){            // the arrows step this same order
+            if (hooks_.category){
+                const auto h = hooks_.category(id - 1);
+                if (h != heading && h.isNotEmpty()) box.addSectionHeading(h);
+                heading = h;
+            }
+            box.addItem(proc_.getProgramName(id - 1), id);
+        }
         box.addSeparator();
         box.addSectionHeading("Your presets");
         for (int k = 0; k < files_.size(); ++k)
@@ -318,9 +356,35 @@ public:
             box.addItem("(none yet: press Save)", noneId);
             box.setItemEnabled(noneId, false);
         }
+        box.addSeparator();
+        box.addItem(isFavourite() ? "Remove this preset from favourites" : "Add this preset to favourites", favToggleId);
         box.addItem("Show the presets folder", folderId);
         box.setSelectedId(currentId(), juce::dontSendNotification);
     }
+    // the factory presets' ids in menu order: grouped, each group in list order
+    std::vector<int> factoryOrder() const {
+        std::vector<int> order;
+        if (!hooks_.category){
+            for (int i = 0; i < proc_.getNumPrograms(); ++i) order.push_back(i + 1);
+            return order;
+        }
+        juce::StringArray headings;
+        for (int i = 0; i < proc_.getNumPrograms(); ++i) headings.addIfNotAlreadyThere(hooks_.category(i));
+        for (const auto& h : headings)
+            for (int i = 0; i < proc_.getNumPrograms(); ++i) if (hooks_.category(i) == h) order.push_back(i + 1);
+        return order;
+    }
+    // the preset showing now, as a favourites key, and whether it is one
+    juce::String currentKey() const {
+        const auto name = hooks_.userName();
+        if (name.isNotEmpty()) return "u:" + name;
+        return "f:" + proc_.getProgramName(proc_.getCurrentProgram());
+    }
+    bool isFavourite() const { return user_.favourites().contains(currentKey()); }
+    void toggleFavourite(){ user_.setFavourite(currentKey(), !isFavourite()); refill(); }
+    // for the tests: choose a menu item as if clicked
+    void choose(int id){ chosen(id); box.setSelectedId(currentId(), juce::dontSendNotification); }
+    static constexpr int favouriteId(int k){ return favBase + k + 1; }   // the k-th favourite listed
     // from the editor's timer: the host can change the program behind our back
     void sync(){
         const int want = currentId();
@@ -328,7 +392,17 @@ public:
     }
 
 private:
-    static constexpr int userBase = 1000, noneId = 1999, folderId = 2000;
+    static constexpr int userBase = 1000, noneId = 1999, folderId = 2000, favToggleId = 2001, favBase = 3000;
+    std::vector<int> favTargets_;
+    int idForKey(const juce::String& key) const {
+        const auto name = key.substring(2);
+        if (key.startsWith("f:")){
+            for (int i = 0; i < proc_.getNumPrograms(); ++i) if (proc_.getProgramName(i) == name) return i + 1;
+        } else if (key.startsWith("u:")){
+            for (int k = 0; k < files_.size(); ++k) if (files_[k].getFileNameWithoutExtension() == name) return userBase + k + 1;
+        }
+        return 0;
+    }
 
     int currentId() const {
         const auto name = hooks_.userName();
@@ -340,6 +414,12 @@ private:
         return proc_.getCurrentProgram() + 1;
     }
     void chosen(int id){
+        if (id > favBase && id - favBase - 1 < static_cast<int>(favTargets_.size())){
+            chosen(favTargets_[static_cast<size_t>(id - favBase - 1)]);
+            refill();
+            return;
+        }
+        if (id == favToggleId){ toggleFavourite(); return; }
         if (id == folderId){
             user_.folder().createDirectory();
             user_.folder().startAsProcess();
