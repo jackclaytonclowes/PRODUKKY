@@ -270,8 +270,9 @@ grid**, **Behind the beat**, **Drunk sixteenths**), and starting points for a wh
 (**Lo-fi bus, S900 at 22 kHz**, **Chopped soul break**, **Quarter-note filter pump**). New
 ones are appended, so a saved program number keeps pointing where it did.
 
-Every preset is levelled on the audition loop to within 6 dB of the dry drums and kept off
-the ceiling, and the test suite fails if one drifts or if two become the same sound. The
+Every preset is levelled on the audition loop to within 3 dB of the dry drums' loudness
+(K-weighted, ITU BS.1770, rather than RMS) and kept off the ceiling; four were raised 1.5
+to 2.5 dB in 0.2 to get there, and the test suite fails if one drifts or if two become the same sound. The
 listening renders found both: "Twelve bit, straight" had become a copy of Init once the
 default went linear (it is now "Twelve bit, companded", the old default's sound), and
 "Rhythm: swung band pass" sat 14.5 dB down.

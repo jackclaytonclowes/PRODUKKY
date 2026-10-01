@@ -22,11 +22,11 @@ inline const std::vector<Preset>& pluginOnlyPresets(){
         { "Resonator — C2 through the drive",
           R"JSON({"bands":"1","d0a":5,"m0a":"tube","fbAmt":60,"fbMode":"pitch","fbNote":36,"fbThru":true,"fbTone":5000,"outGain":-7})JSON" },
         { "Growl — the loop through a fold",
-          R"JSON({"bands":"2","x1":300,"d1a":6,"m1a":"fold","fbAmt":55,"fbMode":"pitch","fbNote":40,"fbThru":true,"fltType":"lp","fltCirc":"analog","fltFreq":3500,"outGain":-6})JSON" },
+          R"JSON({"bands":"2","x1":300,"d1a":6,"m1a":"fold","fbAmt":55,"fbMode":"pitch","fbNote":40,"fbThru":true,"fltType":"lp","fltCirc":"analog","fltFreq":3500,"outGain":-7})JSON" },
         { "Dub echo, dotted eighth",
           R"JSON({"bands":"1","d0a":2,"m0a":"soft","fbAmt":55,"fbMode":"sync","fbDiv":"1/8d","fbTone":2200,"preHP":150,"mix":60,"outGain":6})JSON" },
         { "Tape slap, synced sixteenth",
-          R"JSON({"bands":"1","d0a":4,"m0a":"tape","fbAmt":30,"fbMode":"sync","fbDiv":"1/16","fbTone":4000})JSON" },
+          R"JSON({"bands":"1","d0a":4,"m0a":"tape","fbAmt":30,"fbMode":"sync","fbDiv":"1/16","fbTone":4000,"outGain":-1.5})JSON" },
         { "Gated sixteenths on the ladder",
           R"JSON({"bands":"1","d0a":3,"m0a":"tube","fltType":"lp","fltCirc":"analog","fltPoles":"24","fltFreq":300,"fltQ":5,"rhDepth":4,"rhDiv":"1/16","rhShape":"steps","rhGlide":8})JSON" },
         { "Wah on the quarter note",
@@ -67,18 +67,18 @@ inline const std::vector<Preset>& pluginOnlyPresets(){
         { "XY — the loop's pitch across, feedback up",
           R"JSON({"bands":"1","d0a":3,"m0a":"soft","fbAmt":20,"fbMode":"pitch","fbNote":36,"fbTone":8000,"mS0":"xyx","mD0":"fbNote","mA0":60,"mS1":"xyy","mD1":"fbAmt","mA1":35,"outGain":-4,"xyX":50,"xyY":50})JSON" },
         { "Macros — 1 folds and crushes, 2 widens and repeats",
-          R"JSON({"bands":"2","x1":300,"d0a":2,"d1a":2,"m1a":"fold","mS0":"mc1","mD0":"d1a","mA0":70,"mS1":"mc1","mD1":"crMix","mA1":80,"mS2":"mc2","mD2":"width","mA2":50,"mS3":"mc2","mD3":"fbAmt","mA3":50,"bits":6,"redux":4,"fbTime":80,"mc1":50,"mc2":50})JSON" },
+          R"JSON({"bands":"2","x1":300,"d0a":2,"d1a":2,"m1a":"fold","mS0":"mc1","mD0":"d1a","mA0":70,"mS1":"mc1","mD1":"crMix","mA1":80,"mS2":"mc2","mD2":"width","mA2":50,"mS3":"mc2","mD3":"fbAmt","mA3":50,"bits":6,"redux":4,"fbTime":80,"mc1":50,"mc2":50,"outGain":-1.5})JSON" },
         // the Table mode: harmonics drawn, then moved. Open Harmonic table in
         // the Drive panel to see and redraw what these play
         { "Table — harmonic wobble, an LFO across the frames",
-          R"JSON({"bands":"1","d0a":2,"m0a":"table","tblPos":50,"mS0":"lfo1","mD0":"tblPos","mA0":50,"l1Rate":0.4,"l1Shape":"tri"})JSON" },
+          R"JSON({"bands":"1","d0a":2,"m0a":"table","tblPos":50,"mS0":"lfo1","mD0":"tblPos","mA0":50,"l1Rate":0.4,"l1Shape":"tri","outGain":2})JSON" },
         { "Table — an octave up, the 2nd and 4th drawn in",
           R"JSON({"bands":"2","x1":150,"d1a":2,"m1a":"table","tblPos":66.67,"mx1":70})JSON" },
         { "Table — the harder you play, the more harmonics",
           R"JSON({"bands":"1","d0a":2.5,"m0a":"table","tblPos":0,"mS0":"env","mD0":"tblPos","mA0":90,"envSens":70})JSON" },
         // 0.2: a band's drive on the mid or the side alone
         { "Mid only — the centre driven, the sides left clean",
-          R"JSON({"bands":"2","x1":180,"d1a":8,"m1a":"tape","sb1":true,"m1b":"soft","d1b":2,"t1":2,"st1":"mid"})JSON" },
+          R"JSON({"bands":"2","x1":180,"d1a":8,"m1a":"tape","sb1":true,"m1b":"soft","d1b":2,"t1":2,"st1":"mid","outGain":-4})JSON" },
         { "Wider — the sides driven, the centre clean",
           R"JSON({"bands":"1","d0a":6,"m0a":"warm","mx0":60,"st0":"side"})JSON" }
     };

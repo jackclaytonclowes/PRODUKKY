@@ -39,7 +39,7 @@ inline const std::vector<Preset>& presets(){
         // the same envelope, slower and higher, for a sampled bass line
         { "Filtered bass line", {
             { "machine", 0 }, { "trick", 5 }, { "fltFreq", 180 }, { "fltReso", 30 },
-            { "fltEnv", 3 }, { "fltDecay", 120 }, { "mono", 1 } } },
+            { "fltEnv", 3 }, { "fltDecay", 120 }, { "mono", 1 }, { "outGain", 2.5 } } },
         // the rack sampler at its top rate: twelve bits and a steep band limit
         { "S900, forty kilohertz", {
             { "machine", 1 }, { "clock", 40000 }, { "aa", 25 }, { "fltReso", 0 } } },
@@ -54,7 +54,7 @@ inline const std::vector<Preset>& presets(){
         // 1/8 9, 1/16 11
         { "Rhythm: gated sixteenths", {
             { "fltShape", 0 }, { "fltPoles", 1 }, { "fltFreq", 250 }, { "fltReso", 30 },
-            { "rhShape", 5 }, { "rhDiv", 11 }, { "rhDepth", 5 }, { "rhGlide", 5 }, { "rhGroove", 58 } } },
+            { "rhShape", 5 }, { "rhDiv", 11 }, { "rhDepth", 5 }, { "rhGlide", 5 }, { "rhGroove", 58 }, { "outGain", 1.5 } } },
         { "Rhythm: swung band pass", {
             { "fltShape", 1 }, { "fltPoles", 1 }, { "fltFreq", 700 }, { "fltReso", 45 },
             { "rhShape", 0 }, { "rhDiv", 6 }, { "rhDepth", 3 }, { "rhGroove", 62 },
@@ -66,7 +66,7 @@ inline const std::vector<Preset>& presets(){
             { "rhShape", 1 }, { "rhDiv", 3 }, { "rhDepth", 4 }, { "rhPhase", 90 } } },
         { "Rhythm: random steps", {
             { "fltShape", 0 }, { "fltPoles", 0 }, { "fltFreq", 600 }, { "fltReso", 60 },
-            { "rhShape", 6 }, { "rhDiv", 11 }, { "rhDepth", 3 }, { "rhGlide", 20 } } },
+            { "rhShape", 6 }, { "rhDiv", 11 }, { "rhDepth", 3 }, { "rhGlide", 20 }, { "outGain", 2 } } },
         { "Rhythm: eight-pole bar sweep", {
             { "fltShape", 0 }, { "fltPoles", 3 }, { "fltFreq", 200 },
             { "rhShape", 2 }, { "rhDiv", 3 }, { "rhDepth", 6 }, { "fltMix", 80 } } },
@@ -84,7 +84,7 @@ inline const std::vector<Preset>& presets(){
             { "fltDrive", 3 }, { "mono", 1 } } },
         { "Broken telephone", {
             { "bits", 6 }, { "tune", -9 }, { "aa", 0 }, { "compand", 100 },
-            { "fltFreq", 3000 }, { "fltReso", 40 }, { "mono", 1 } } },
+            { "fltFreq", 3000 }, { "fltReso", 40 }, { "mono", 1 }, { "outGain", 2 } } },
         { "Whole bus, gently", {
             { "mix", 45 }, { "compand", 50 }, { "aa", 60 }, { "dust", 15 } } },
         // ---- starting points for a whole beat, added last so saved program

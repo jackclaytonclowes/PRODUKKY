@@ -561,8 +561,22 @@ plugin-only preset into the browser loses the parts the browser does not have. A
 browser preset moves the plugin-only ones down the menu, which is harmless: a host saves the
 plugin's whole state with a session, not the number of the preset it started from.
 
-Every preset was levelled on the audition loop (`npm run audition`) to within a few dB of
-the dry signal, so switching presets compares sounds, not volumes. Three browser presets
+Every preset is levelled on the audition loop (`npm run audition`) to within 3 dB of the
+dry signal's loudness, so switching presets compares sounds, not volumes. Loudness is
+K-weighted (ITU BS.1770), because RMS counts a bright, distorted sound as quieter than it
+sounds: measured by RMS, ten presets were 2 to 4.3 dB louder than they read (Screaming lead
+the most), and in 0.2 eleven were brought into the 3 dB window by their output level alone.
+Init, the plugin's defaults, sits 4.1 dB up and is held only to 6 dB.
+
+Auto gain is a fixed curve, drive to the power -0.55, and it is not loudness-flat: measured
+K-weighted over the loop, most modes come out 3 to 5 dB louder at middle drives (4 to 8)
+than at either end, Gap 9 dB and Harmonics 20 dB quieter at low drive, where their curves
+start shallow. A per-mode curve calibrated on loudness would hold a drive sweep to about a
+decibel, but auto gain also sets how hard stage A drives stage B, the filter and the
+crusher, so changing it changes the sound of most presets and not only their level. That
+waits for a listening session.
+
+In an earlier round three browser presets
 were far out (Speaker in a bin 25 dB down, Harmonic pan 12 dB down, Rift-ish 10 dB over and
 into the limiter); they were fixed in `fx/fracture.html` itself and regenerated, so the
 browser and the plugin still agree, and the browser suite still passes.

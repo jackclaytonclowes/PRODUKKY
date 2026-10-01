@@ -1765,7 +1765,10 @@ int main(int argc, char** argv){
         // the dry loop and stay off the ceiling. The renders found three browser
         // presets 12 to 25 dB out; this keeps it from happening again.
         const auto loop = audition::makeLoop(48000.0, true);
-        const double dryRms = audition::rms(loop);
+        // loudness, K-weighted (audition::loudness), not RMS: RMS reads a bright
+        // distorted preset as quieter than it sounds. By RMS ten presets were
+        // 2 to 4.3 dB louder than they measured, and the spread was 11 dB
+        const double dryLoud = audition::loudness(loop);
         std::string badValue, outOfWindow, notDistinct, noFeature;
         std::vector<std::vector<float>> outs;
         const auto& all = factoryPresets();
@@ -1808,7 +1811,7 @@ int main(int argc, char** argv){
                     e2.process(io2, 2, m);
                     ppq2 += m / 48000.0 * 1.5;
                 }
-                const double rel2 = db(audition::rms(o2) / dryRms), pk2 = audition::peak(o2);
+                const double rel2 = db(audition::loudness(o2) / dryLoud), pk2 = audition::peak(o2);
                 if (std::fabs(rel2) > 6.0 || pk2 > 0.95)
                     outOfWindow += std::string(" [") + all[k].name + " " + pose.first + " " + f2s(rel2, 1)
                                  + " dB, peak " + f2s(pk2, 2) + "]";
@@ -1822,8 +1825,12 @@ int main(int argc, char** argv){
                 e.process(io, 2, m);
                 ppq += m / 48000.0 * 1.5;
             }
-            const double rel = db(audition::rms(o) / dryRms), pk = audition::peak(o);
-            if (std::fabs(rel) > 6.0 || pk > 0.95 || !std::isfinite(rel))
+            const double rel = db(audition::loudness(o) / dryLoud), pk = audition::peak(o);
+            // within 3 dB, so switching presets compares sounds; Init is the
+            // plugin's defaults, a starting point rather than a sound, and is
+            // held to the wider window the pad's corners are
+            const double window = k == 0 ? 6.0 : 3.0;
+            if (std::fabs(rel) > window || pk > 0.95 || !std::isfinite(rel))
                 outOfWindow += std::string(" [") + all[k].name + " " + f2s(rel, 1) + " dB, peak " + f2s(pk, 2) + "]";
             outs.push_back(o.l);
             // a plugin-only preset has to use something the browser does not have
@@ -1850,7 +1857,7 @@ int main(int argc, char** argv){
               all.size() == presets().size() + pluginOnlyPresets().size() && pluginOnlyPresets().size() >= 10,
               std::to_string(presets().size()) + " + " + std::to_string(pluginOnlyPresets().size()));
         check("every value in every factory preset is a real parameter", badValue.empty(), badValue);
-        check("every factory preset sits within 6 dB of the dry loop, off the ceiling",
+        check("every factory preset is within 3 dB of the dry loop's loudness (K-weighted), off the ceiling",
               outOfWindow.empty(), outOfWindow);
         check("no two factory presets sound the same", notDistinct.empty(), notDistinct);
         check("each plugin-only preset uses something only the plugin has", noFeature.empty(), noFeature);

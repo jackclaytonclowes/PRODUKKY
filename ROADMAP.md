@@ -74,7 +74,11 @@ Mac only; nobody has judged the sound against references yet.
 - [x] **M** Spectrum view in the scope, harmonics labelled (input against output, and a harmonic readout)
 - [ ] **M** Table "hold the recipe": level-independent harmonics
 - [ ] **M** Feedback pitch snapped to a key
-- [ ] **M** Auto gain and preset levelling by loudness (K-weighted), not RMS
+- [x] **M** Preset levelling by loudness (K-weighted), not RMS: both plugins, within 3 dB
+- [ ] **M** Auto gain calibrated per mode on loudness. Measured: the fixed curve lets most
+  modes rise 3 to 5 dB at middle drives, Gap 9 and Harmonics 20 dB at low drive. Changing it
+  also changes how hard each stage drives the next, so most presets would sound different:
+  after a listening session
 - [ ] **M** Preset browser with tags and favourites (both plugins)
 - [ ] **L** Dynamic Tube and Tape: bias follows level, sag, emphasis, hysteresis, head bump
 - [ ] **L** 8x quality for bounces, latency held constant

@@ -44,7 +44,7 @@
    "mA0": 45,
    "l1Rate": 0.35,
    "mix": 85,
-   "outGain": -12
+   "outGain": -15.5
   }
  },
  {
@@ -103,7 +103,7 @@
    "fbAmt": 22,
    "fbTime": 9,
    "fbTone": 5200,
-   "outGain": -6
+   "outGain": -9
   }
  },
  {
@@ -171,7 +171,7 @@
    "fltFreq": 5200,
    "fltQ": 1.4,
    "width": 140,
-   "outGain": -9
+   "outGain": -11
   }
  },
  {
@@ -213,7 +213,7 @@
    "mA0": 45,
    "envAtk": 6,
    "envRel": 160,
-   "outGain": -4
+   "outGain": -1
   }
  },
  {
@@ -282,7 +282,8 @@
    "m1a": "diode",
    "d2a": 8,
    "m2a": "hard",
-   "mx2": 70
+   "mx2": 70,
+   "outGain": -1
   }
  },
  {
@@ -294,7 +295,8 @@
    "mx0": 0,
    "d1a": 10,
    "m1a": "tube",
-   "t1": 2
+   "t1": 2,
+   "outGain": -1.5
   }
  },
  {

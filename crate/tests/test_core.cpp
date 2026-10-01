@@ -1017,15 +1017,22 @@ int main(){
               same.empty(), same);
 
         // and every preset, over the audition loop (drums at 90 BPM, transport
-        // running), sits within 6 dB of the dry loop and off the ceiling. The
-        // renders found one of these 14.5 dB down; this keeps it from recurring
+        // running), sits within 3 dB of the dry loop's loudness and off the
+        // ceiling. Loudness is K-weighted (audition::loudness), not RMS, which
+        // reads a crushed, bright preset as quieter than it sounds. The renders
+        // once found one of these 14.5 dB down; this keeps it from recurring
         const auto loop = audition::makeLoop(sr, false);
         auto leftRms = [](const std::vector<float>& x, size_t from, size_t n){
             double acc = 0.0, pk = 0.0;
             for (size_t i = from; i < from + n; ++i){ acc += static_cast<double>(x[i]) * x[i]; pk = std::max(pk, static_cast<double>(std::fabs(x[i]))); }
             return std::make_pair(std::sqrt(acc / static_cast<double>(n)), pk);
         };
-        const double dry = leftRms(loop.l, 0, loop.l.size()).first;
+        // loudness of the left channel over a stretch, as a mono Stereo
+        auto leftLoud = [&](const std::vector<float>& x, size_t from, size_t n){
+            audition::Stereo m; m.sr = sr; m.l.assign(x.begin() + static_cast<long>(from), x.begin() + static_cast<long>(from + n)); m.r = m.l;
+            return audition::loudness(m);
+        };
+        const double dry = leftLoud(loop.l, 0, loop.l.size());
         std::string out;
         for (const auto& p : presets()){
             Patch patch;
@@ -1039,11 +1046,11 @@ int main(){
             std::vector<float> padded = loop.l;
             padded.resize(loop.l.size() + lat, 0.0f);
             const auto r = run(patch, padded, sr, 128, true, 90.0);
-            const auto [rms, pk] = leftRms(r.l, lat, loop.l.size());
-            const double rel = dBOf(rms / dry);
-            if (std::fabs(rel) > 6.0 || pk > 0.95) out += std::string(" [") + p.name + " " + f2s(rel, 1) + " dB, peak " + f2s(pk, 2) + "]";
+            const double pk = leftRms(r.l, lat, loop.l.size()).second;
+            const double rel = dBOf(leftLoud(r.l, lat, loop.l.size()) / dry);
+            if (std::fabs(rel) > 3.0 || pk > 0.95) out += std::string(" [") + p.name + " " + f2s(rel, 1) + " dB, peak " + f2s(pk, 2) + "]";
         }
-        check("every preset sits within 6 dB of the dry loop, off the ceiling", out.empty(), out);
+        check("every preset is within 3 dB of the dry loop's loudness (K-weighted), off the ceiling", out.empty(), out);
     }
 
     std::printf("\nZipper noise\n");

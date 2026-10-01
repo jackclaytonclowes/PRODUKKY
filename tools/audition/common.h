@@ -198,6 +198,35 @@ inline double rms(const Stereo& s){
     for (size_t i = 0; i < s.l.size(); ++i) acc += s.l[i] * s.l[i] + s.r[i] * s.r[i];
     return std::sqrt(acc / std::max<size_t>(1, 2 * s.l.size()));
 }
+// Loudness as people hear it, not as RMS reads it: the K-weighting of ITU-R
+// BS.1770 (a high shelf of about +4 dB above 1.5 kHz, and a high pass around
+// 38 Hz), then the mean square over both channels, as an amplitude. RMS counts
+// a bright, distorted sound as quieter than it sounds, which is exactly the
+// error a distortion's presets would be levelled with. The filters are built
+// from the standard's own analogue prototypes, so any sample rate works; at
+// 48 kHz they reproduce its published coefficients. No gating: these loops
+// have no silence to gate.
+inline double loudness(const Stereo& s){
+    struct BQ { double b0, b1, b2, a1, a2, z1 = 0.0, z2 = 0.0;
+                double p(double x){ const double y = b0 * x + z1; z1 = b1 * x - a1 * y + z2; z2 = b2 * x - a2 * y; return y; } };
+    const double fs = s.sr, pi = 3.14159265358979323846;
+    // stage 1, the shelf
+    double f0 = 1681.974450955533, G = 3.999843853973347, Q = 0.7071752369554196;
+    double K = std::tan(pi * f0 / fs), Vh = std::pow(10.0, G / 20.0), Vb = std::pow(Vh, 0.4996667741545416);
+    double a0 = 1.0 + K / Q + K * K;
+    const BQ shelf { (Vh + Vb * K / Q + K * K) / a0, 2.0 * (K * K - Vh) / a0, (Vh - Vb * K / Q + K * K) / a0,
+                     2.0 * (K * K - 1.0) / a0, (1.0 - K / Q + K * K) / a0 };
+    // stage 2, the high pass
+    f0 = 38.13547087602444; Q = 0.5003270373238773; K = std::tan(pi * f0 / fs);
+    a0 = 1.0 + K / Q + K * K;
+    const BQ high { 1.0, -2.0, 1.0, 2.0 * (K * K - 1.0) / a0, (1.0 - K / Q + K * K) / a0 };
+    double acc = 0.0;
+    for (const auto* ch : { &s.l, &s.r }){
+        BQ a = shelf, b = high;
+        for (float v : *ch){ const double y = b.p(a.p(v)); acc += y * y; }
+    }
+    return std::sqrt(acc / std::max<size_t>(1, 2 * s.l.size()));
+}
 inline double peak(const Stereo& s){
     double p = 0.0;
     for (size_t i = 0; i < s.l.size(); ++i) p = std::max({ p, static_cast<double>(std::fabs(s.l[i])), static_cast<double>(std::fabs(s.r[i])) });

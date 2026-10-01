@@ -47,8 +47,10 @@ wrapper change done.
 - **A dimmed control must really do nothing.** `core/Relevance.h` decides what the panel
   fades, and `test_core` moves every control it calls idle end to end and requires
   bit-identical output. Change the DSP, re-run it.
-- **Every preset is levelled:** within 6 dB of the dry loop, peak at most 0.95, and no two
-  presets identical. The tests enforce it; fix a preset's level rather than loosening the
+- **Every preset is levelled:** within 3 dB of the dry loop's loudness, K-weighted
+  (`audition::loudness`, ITU BS.1770, not RMS: RMS reads a bright, distorted preset as
+  quieter than it sounds), peak at most 0.95, and no two presets identical. FRACTURE's Init
+  is the defaults and only held to 6 dB. The tests enforce it; fix a preset's level rather than loosening the
   test.
 - **Every mouse control brackets its change in begin/endChangeGesture.** Undo takes one
   step when no gesture is open, so a control that skips this makes undo wrong. When a
