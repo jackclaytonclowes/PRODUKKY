@@ -28,6 +28,9 @@ function check(name, ok, detail) {
   else { failures.push(`${name}${detail ? ' — ' + detail : ''}`); console.log(`  FAIL  ${name}${detail ? ' — ' + detail : ''}`); }
 }
 const wait = ms => new Promise(r => setTimeout(r, ms));
+// the safety clip's ceiling: the plugin's is 0 dBFS (FractureCore.h), where the
+// browser's own engine stopped at -0.9 dBFS
+const CEILING = 1.0;
 
 /* Rendered in the page: build the engine in an OfflineAudioContext, push
    noise through it, and report what came out. */
@@ -35,8 +38,8 @@ const RENDER = `async (patch, seconds) => {
   const sr = 44100;
   const ctx = new OfflineAudioContext(2, Math.round(sr*seconds), sr);
   const eng = window.FX.createEngine(ctx);
-  await eng.initWorklet();
   window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+  await eng.initWorklet();
   const len = Math.round(sr*seconds);
   const buf = ctx.createBuffer(2, len, sr);
   for (let c = 0; c < 2; c++) {
@@ -58,7 +61,7 @@ const RENDER = `async (patch, seconds) => {
       sum += v*v; n++;
     }
   }
-  return { peak, bad, rms: Math.sqrt(sum/Math.max(1,n)), crush: eng.crushAvailable };
+  return { peak, bad, rms: Math.sqrt(sum/Math.max(1,n)), engine: !!eng.node };
 }`;
 
 /* The same graph, but reporting a per-channel envelope rather than one number:
@@ -68,8 +71,8 @@ const ENVELOPE = `async (patch, seconds) => {
   const sr = 44100;
   const ctx = new OfflineAudioContext(2, Math.round(sr*seconds), sr);
   const eng = window.FX.createEngine(ctx);
-  await eng.initWorklet();
   window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+  await eng.initWorklet();
   const len = Math.round(sr*seconds);
   const buf = ctx.createBuffer(2, len, sr);
   for (let c = 0; c < 2; c++) {
@@ -89,12 +92,11 @@ const ENVELOPE = `async (patch, seconds) => {
       env[c].push(Math.sqrt(sum/win));
     }
   }
-  return { L: env[0], R: env[1], worklet: eng.crushAvailable };
+  return { L: env[0], R: env[1], worklet: !!eng.node };
 }`;
 
 /* A sine or a quiet noise through the whole engine, returning the samples, for
-   the anti-aliasing and the delay checks. `fallback` builds the old
-   WaveShaperNode alone instead, to compare against. */
+   the anti-aliasing and the delay checks. */
 const SIGNAL = `async (patch, kind, freq, amp, seconds, fallback) => {
   const sr = 48000, len = Math.round(sr*seconds);
   const ctx = new OfflineAudioContext(2, len, sr);
@@ -108,24 +110,14 @@ const SIGNAL = `async (patch, kind, freq, amp, seconds, fallback) => {
     const tones = Array.from({ length:24 }, (_, k) => [200*Math.pow(40, k/23), Math.PI*2*Math.abs(rnd())]);
     for (let i = 0; i < len; i++) d[i] = kind === 'sine' ? amp*Math.sin(2*Math.PI*freq*i/sr)
       : kind === 'tones' ? amp*tones.reduce((acc, [f, ph]) => acc + Math.sin(2*Math.PI*f*i/sr + ph), 0)/24
+      : kind === 'impulse' ? (i === 100 ? amp : 0)
       : amp*rnd();
   }
   const s = ctx.createBufferSource(); s.buffer = buf;
-  let shaperLoaded = false;
-  if (fallback){
-    const m = window.FX.MODES.find(x => x.id === patch.m0a);
-    const D = 40, curve = new Float32Array(32769);
-    for (let i = 0; i < curve.length; i++){ const x = i/(curve.length-1)*2 - 1; curve[i] = Math.max(-1, Math.min(1, m.fn(x*D))); }
-    const g = ctx.createGain(); g.gain.value = patch.d0a/D;
-    const w = ctx.createWaveShaper(); w.curve = curve; w.oversample = '4x';
-    s.connect(g); g.connect(w); w.connect(ctx.destination);
-  } else {
-    const eng = window.FX.createEngine(ctx);
-    await eng.initWorklet();
-    shaperLoaded = !!eng.shaperAvailable;
-    window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
-    s.connect(eng.input);
-  }
+  const eng = window.FX.createEngine(ctx);
+  window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+  const shaperLoaded = await eng.initWorklet();
+  s.connect(eng.input);
   s.start();
   const r = await ctx.startRendering();
   return { input: Array.from(buf.getChannelData(0)), out: Array.from(r.getChannelData(0)), shaperLoaded };
@@ -143,8 +135,8 @@ const STEREO = `async (patch, kind, seconds) => {
   const L = buf.getChannelData(0), R = buf.getChannelData(1);
   for (let i = 0; i < len; i++){ const v = 0.1*rnd(); L[i] = v; R[i] = kind === 'side' ? -v : v; }
   const eng = window.FX.createEngine(ctx);
-  await eng.initWorklet();
   window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+  await eng.initWorklet();
   const s = ctx.createBufferSource(); s.buffer = buf; s.connect(eng.input); s.start();
   const r = await ctx.startRendering();
   return { L: Array.from(r.getChannelData(0)), R: Array.from(r.getChannelData(1)) };
@@ -158,8 +150,8 @@ const READING = `async (patch, freq, seconds) => {
   const buf = ctx.createBuffer(2, len, sr);
   for (let c = 0; c < 2; c++){ const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = 0.5*Math.sin(2*Math.PI*freq*i/sr); }
   const eng = window.FX.createEngine(ctx);
-  await eng.initWorklet();
   window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+  await eng.initWorklet();
   const s = ctx.createBufferSource(); s.buffer = buf; s.connect(eng.input); s.start();
   let reading = null;
   ctx.suspend(seconds*0.75).then(() => {
@@ -181,8 +173,8 @@ const HARMONICS = `async (patch) => {
   const ctx = new OfflineAudioContext(2, len, sr);
   const buf = ctx.createBuffer(2, len, sr);
   for (let c = 0; c < 2; c++){ const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = 0.5*Math.sin(2*Math.PI*f0*i/sr); }
-  const eng = window.FX.createEngine(ctx); await eng.initWorklet();
-  window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+  const eng = window.FX.createEngine(ctx); window.FX.applyValues(eng, Object.assign(window.FX.defaults(), patch));
+  await eng.initWorklet();
   const s = ctx.createBufferSource(); s.buffer = buf; s.connect(eng.input); s.start();
   const r = (await ctx.startRendering()).getChannelData(0);
   const st = len - N, lv = [];
@@ -247,7 +239,7 @@ async function main() {
   page.on('console', m => { if (m.type() === 'error') pageErrors.push('console: ' + m.text()); });
   await page.setViewport({ width: 1280, height: 1500, deviceScaleFactor: 1.2 });
   await page.goto('file://' + APP);
-  await wait(300);
+  await page.waitForFunction(() => window.FX && window.FX.ready, { timeout: 15000 });
 
   const render = (patch = {}, seconds = 0.3) =>
     page.evaluate(`(${RENDER})(${JSON.stringify(patch)}, ${seconds})`);
@@ -320,19 +312,19 @@ async function main() {
   const base = await render({});
   check('default patch is finite', base.bad === 0, base.bad + ' non-finite samples');
   check('default patch is audible', base.rms > 0.01, 'rms ' + base.rms.toFixed(4));
-  check('default patch stays inside full scale', base.peak <= 0.95, 'peak ' + base.peak.toFixed(3));
-  check('bit crusher worklet loaded', base.crush === true);
+  check('default patch stays inside full scale', base.peak <= CEILING, 'peak ' + base.peak.toFixed(3));
+  check('the plugin\'s engine runs in its worklet', base.engine === true);
 
   const modes = await page.evaluate(() => window.FX.MODES.map(m => m.id));
   for (const id of modes) {
     const r = await render({ bands: '1', m0a: id, d0a: 40, sb0: true, m0b: id, d0b: 40 });
     check(`mode ${id} at +32 dB, two stages`,
-      r.bad === 0 && r.peak <= 0.95 && r.rms > 0.0005,
+      r.bad === 0 && r.peak <= CEILING && r.rms > 0.0005,
       `bad ${r.bad} peak ${r.peak.toFixed(3)} rms ${r.rms.toFixed(4)}`);
   }
 
   const fb = await render({ bands: '1', m0a: 'hard', d0a: 24, fbAmt: 85, fbTime: 3, fbTone: 14000 }, 0.6);
-  check('feedback at 85% does not run away', fb.bad === 0 && fb.peak <= 0.95,
+  check('feedback at 85% does not run away', fb.bad === 0 && fb.peak <= CEILING,
     `bad ${fb.bad} peak ${fb.peak.toFixed(3)}`);
 
   const crushed = await render({ bands: '1', bits: 2, redux: 32, crMix: 100 });
@@ -340,7 +332,7 @@ async function main() {
     `rms ${crushed.rms.toFixed(4)} vs ${base.rms.toFixed(4)}`);
 
   const wrapped = await render({ bands: '1', m0a: 'wrap', d0a: 30, autoGain: false, safety: true });
-  check('safety clip contains the worst mode', wrapped.bad === 0 && wrapped.peak <= 0.95,
+  check('safety clip contains the worst mode', wrapped.bad === 0 && wrapped.peak <= CEILING,
     'peak ' + wrapped.peak.toFixed(3));
 
   console.log('\nRouting');
@@ -360,12 +352,12 @@ async function main() {
   console.log('\nThe drive shaper (the plugin\'s oversampling and anti-aliasing)');
   {
     const wrapPatch = { bands: '1', m0a: 'wrap', d0a: 25, autoGain: false, safety: false, mix: 100 };
-    const now = await page.evaluate(`(${SIGNAL})(${JSON.stringify(wrapPatch)}, 'sine', 3700, 0.5, 0.6, false)`);
-    const old = await page.evaluate(`(${SIGNAL})(${JSON.stringify(wrapPatch)}, 'sine', 3700, 0.5, 0.6, true)`);
-    check('the drive shaper worklet loaded', now.shaperLoaded === true);
-    const aNow = aliasDb(now.out, 3700), aOld = aliasDb(old.out, 3700);
-    check('Wrap on a 3.7 kHz tone: aliasing well under the note, and far under the old shaper',
-      aNow < -12 && aNow < aOld - 15, `${aNow.toFixed(1)} dB against ${aOld.toFixed(1)} dB with WaveShaperNode`);
+    const now = await page.evaluate(`(${SIGNAL})(${JSON.stringify(wrapPatch)}, 'sine', 3700, 0.5, 0.6)`);
+    const off = await page.evaluate(`(${SIGNAL})(${JSON.stringify({ ...wrapPatch, osFactor: 'off' })}, 'sine', 3700, 0.5, 0.6)`);
+    check('the engine loaded', now.shaperLoaded === true);
+    const aNow = aliasDb(now.out, 3700), aOff = aliasDb(off.out, 3700);
+    check('Wrap on a 3.7 kHz tone: aliasing well under the note at 4x, and under what it is with oversampling off',
+      aNow < -12 && aNow < aOff - 6, `${aNow.toFixed(1)} dB at 4x against ${aOff.toFixed(1)} dB off`);
 
     // The dry and wet paths must arrive together, or any mix between them
     // comb-filters. Each is rendered on its own, quietly so the shapers are
@@ -540,7 +532,7 @@ async function main() {
     for (let f = 1; f <= 4; f++) for (let k = 1; k <= 16; k++) wild[`tb${f}h${k}`] = ((f*7 + k*13) % 21) * 10 - 100;
     const hot = await render({ bands: '1', m0a: 'table', d0a: 40, sb0: true, m0b: 'table', d0b: 40, tblPos: 37, ...wild });
     check('Table at +32 dB, two stages, every bar drawn: finite and bounded',
-      hot.bad === 0 && hot.peak <= 0.95 && hot.rms > 0.0005, `bad ${hot.bad} peak ${hot.peak.toFixed(3)}`);
+      hot.bad === 0 && hot.peak <= CEILING && hot.rms > 0.0005, `bad ${hot.bad} peak ${hot.peak.toFixed(3)}`);
     const mod = await page.evaluate(() => window.FX.PLIST.find(d => d.id === 'tblPos').mod === true);
     check('Table position is a matrix target', mod);
 
@@ -558,7 +550,7 @@ async function main() {
 
   console.log('\nModulation');
   const modded = await render({ bands: '1', d0a: 12, mS0: 'lfo1', mD0: 'd0a', mA0: 100, l1Rate: 8 }, 0.4);
-  check('lfo on drive renders finite', modded.bad === 0 && modded.rms > 0.005 && modded.peak <= 0.95,
+  check('lfo on drive renders finite', modded.bad === 0 && modded.rms > 0.005 && modded.peak <= CEILING,
     `bad ${modded.bad} peak ${modded.peak.toFixed(3)}`);
   const modUi = await page.evaluate(() => {
     const dests = window.FX.PLIST.filter(d => d.mod).map(d => d.id);
@@ -578,18 +570,18 @@ async function main() {
       analog.bad === 0 && analog.rms > 0.002 && Math.abs(analog.rms - clean.rms)/clean.rms > 0.05,
       `clean ${clean.rms.toFixed(4)} analogue ${analog.rms.toFixed(4)}`);
     check('the vintage circuit is different again and still bounded',
-      vintage.bad === 0 && vintage.peak <= 0.95 && Math.abs(vintage.rms - analog.rms)/analog.rms > 0.02,
+      vintage.bad === 0 && vintage.peak <= CEILING && Math.abs(vintage.rms - analog.rms)/analog.rms > 0.02,
       `analogue ${analog.rms.toFixed(4)} vintage ${vintage.rms.toFixed(4)}`);
     const singing = await render({ ...base, fltCirc: 'analog', fltQ: 18, fltDrive: 12 }, 0.5);
     check('a self-oscillating ladder stays inside the rails',
-      singing.bad === 0 && singing.peak <= 0.95, `peak ${singing.peak.toFixed(3)}`);
+      singing.bad === 0 && singing.peak <= CEILING, `peak ${singing.peak.toFixed(3)}`);
   }
   {
     const off = await envelope({ bands: '1', mx0: 0, trOn: false });
     const on = await envelope({ bands: '1', mx0: 0, trOn: true, trDiv: 'free', trRate: 6,
                                 trDepth: 100, trShape: 100, trEdge: 90 });
     const a = stats(off.L), b = stats(on.L);
-    check('the worklet carries the tremolo as well as the crusher', on.worklet === true);
+    check('the tremolo is the engine\'s own', on.worklet === true);
     check('a tremolo at full depth chops the level',
       b.min/b.max < 0.2 && a.min/a.max > 0.4,
       `off ${(a.min/a.max).toFixed(3)} on ${(b.min/b.max).toFixed(3)}`);
@@ -609,6 +601,93 @@ async function main() {
       dips >= 1 && dips <= 3, `${dips} dips in ${(quarter.L.length*0.005).toFixed(2)} s`);
   }
 
+  console.log('\nThe engine is the plugin\'s');
+  {
+    const build = await import(path.join(root, 'fx', 'engine', 'build.mjs'));
+    const meta = await page.evaluate(() => ({ src: window.FX.ENGINE_SOURCE, guide: window.FX.GUIDE, tips: window.FX.TIPS,
+      ver: document.getElementById('ver').textContent, n: window.FX.PLIST.length }));
+    check('the embedded engine was built from plugin/core as it is now (else: npm run wasm)', meta.src === build.sourceHash(),
+      `page ${meta.src}, sources ${build.sourceHash()}`);
+    check('the guide is plugin/GUIDE.md, word for word', meta.guide === build.guideText());
+    check('the tooltips are the plugin\'s', JSON.stringify(meta.tips) === JSON.stringify(build.tips()) && Object.keys(meta.tips).length > 60);
+    check('the version shown is the plugin\'s', meta.ver === 'v' + build.version(), meta.ver);
+    const table = fs.readFileSync(path.join(root, 'plugin', 'core', 'ParamTable.h'), 'utf8');
+    check('every parameter in ParamTable.h is the page\'s too (185)', meta.n === 185 && /envKey/.test(table), String(meta.n));
+  }
+
+  console.log('\nWhat the plugin had and the page did not');
+  {
+    const sig = (patch, kind, f, amp, secs) => page.evaluate(`(${SIGNAL})(${JSON.stringify(patch)}, '${kind}', ${f}, ${amp}, ${secs})`);
+    // the loop's period, from the autocorrelation of what comes out
+    const period = x => {
+      const a = x.slice(x.length - 16384);
+      let best = { lag: 0, r: -1 };
+      const e0 = a.reduce((p, v) => p + v*v, 0);
+      for (let lag = 60; lag < 3000; lag++){
+        let r = 0; for (let i = 0; i + lag < a.length; i++) r += a[i]*a[i + lag];
+        if (r/e0 > best.r) best = { lag, r: r/e0 };
+      }
+      return best;
+    };
+    const fb = { bands: '1', d0a: 1.2, m0a: 'soft', autoGain: false, safety: true, fbAmt: 80, fbTone: 14000, mix: 100 };
+    // Pitch is measured as the plugin's test_core measures it: an impulse into
+    // the loop, and how far the fundamental's phase moves in one period. An
+    // autocorrelation peak measures the loop's group delay, which at low notes
+    // the DC blocker pulls away from the pitch
+    const cents = (x, from, hz, sr = 48000) => {
+      const per = sr/hz, n = Math.round(per*12), D = Math.round(per), w = 2*Math.PI*hz/sr;
+      const frame = start => { let re = 0, im = 0;
+        for (let i = 0; i < n; i++){ const win = 0.5 - 0.5*Math.cos(2*Math.PI*i/(n - 1)); re += x[start + i]*win*Math.cos(-w*i); im += x[start + i]*win*Math.sin(-w*i); }
+        return [re, im]; };
+      const [a, b] = frame(from), [c, d] = frame(from + D);
+      const adv = Math.atan2(d*a - c*b, c*a + d*b);
+      let dphi = adv - w*D; dphi -= 2*Math.PI*Math.round(dphi/(2*Math.PI));
+      return 1200*Math.log2((hz + dphi*sr/(2*Math.PI*D))/hz);
+    };
+    const ring = { bands: '1', mx0: 0, osFactor: 'off', fbMode: 'pitch', fbAmt: 85, fbTone: 14000, mix: 100 };
+    const tuning = [];
+    for (const note of [45, 69]){
+      const hz = 440*Math.pow(2, (note - 69)/12);
+      const out = (await sig({ ...ring, fbNote: note }, 'impulse', 0, 0.5, 0.8)).out;
+      tuning.push(cents(out, Math.round(100 + 3*48000/hz), hz));
+    }
+    check('FB mode Pitch: the loop rings at the note, A2 and A4, within a cent (as the plugin\'s test requires)',
+      tuning.every(c => Math.abs(c) < 1), tuning.map(c => c.toFixed(2) + ' cents').join(', '));
+    const timed = period((await sig({ ...fb, fbMode: 'time', fbTime: 30 }, 'noise', 0, 0.05, 0.8)).out);
+    check('FB mode Time: the loop is the time set (30 ms, 1440 samples)', Math.abs(timed.lag - 1440) < 6, `period ${timed.lag}`);
+    const synced = period((await sig({ ...fb, fbMode: 'sync', fbDiv: '1/32' }, 'noise', 0, 0.05, 0.8)).out);
+    check('FB mode Sync: a 1/32 at 120 BPM (62.5 ms, 3000 samples) is past this window, so no shorter period', synced.lag > 2900 || synced.r < 0.3, `period ${synced.lag}`);
+
+    const lfoOut = await envelope({ bands: '1', mx0: 0, mS0: 'lfo1', mD0: 'outGain', mA0: 100, l1Rate: 4 }, 1.0);
+    const lo = stats(lfoOut.L);
+    check('the modulation matrix runs in the engine: LFO 1 on Output moves the level', lo.min/lo.max < 0.3, `min/max ${(lo.min/lo.max).toFixed(3)}`);
+    const flat = await envelope({ bands: '1', mx0: 0, fltType: 'lp', fltFreq: 400, rhDepth: 0 }, 1.0);
+    const rh = await envelope({ bands: '1', mx0: 0, fltType: 'lp', fltFreq: 400, rhDepth: 3, rhDiv: '1/8', rhShape: 'sqr' }, 1.0);
+    // 25 ms windows, so the noise's own jitter does not hide the rhythm: a
+    // 1/8 at 120 BPM is 250 ms, half of it three octaves up, half three down
+    const smooth = e => Array.from({ length: Math.floor(e.length/5) }, (_, k) => e.slice(5*k, 5*k + 5).reduce((p, v) => p + v, 0)/5);
+    const lagCorr = (e, lag) => { const m = stats(e).mean; let n = 0, d = 0;
+      for (let i = 0; i + lag < e.length; i++) n += (e[i] - m)*(e[i + lag] - m);
+      for (const v of e) d += (v - m)**2; return n/d; };
+    const e1 = smooth(rh.L), e0 = smooth(flat.L);
+    const at = { full: lagCorr(e1, 10), half: lagCorr(e1, 5), without: lagCorr(e0, 10) };
+    check('Filter rhythm moves the cutoff in time: a 1/8 square at 120 BPM repeats every 250 ms and flips every 125',
+      at.full > 0.5 && at.half < -0.4 && at.without < 0.3, Object.entries(at).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', '));
+    const mc = async v => (await render({ bands: '1', mS0: 'mc1', mD0: 'outGain', mA0: -100, mc1: v }, 0.3)).rms;
+    const m0 = await mc(0), m1 = await mc(100);
+    check('Macro 1 is a matrix source: turned up, it moves what it is routed to', m1 < m0*0.5, `${m0.toFixed(4)} at 0, ${m1.toFixed(4)} at 100`);
+    const xy = async v => (await render({ bands: '1', mS0: 'xyy', mD0: 'outGain', mA0: -100, xyY: v }, 0.3)).rms;
+    const y0 = await xy(0), y1 = await xy(100);
+    check('the pad is a matrix source too', y1 < y0*0.5, `${y0.toFixed(4)} at 0, ${y1.toFixed(4)} at 100`);
+    const thru = await render({ bands: '1', m0a: 'fold', d0a: 6, fbAmt: 70, fbTime: 20, fbThru: true }, 0.4);
+    const plain = await render({ bands: '1', m0a: 'fold', d0a: 6, fbAmt: 70, fbTime: 20, fbThru: false }, 0.4);
+    check('FB through drive changes the sound and stays bounded', thru.bad === 0 && thru.peak <= CEILING && Math.abs(thru.rms - plain.rms) > 0.002,
+      `${thru.rms.toFixed(4)} through, ${plain.rms.toFixed(4)} not`);
+    const fm = await render({ bands: '1', fltType: 'lp', fltFreq: 300, fltMix: 0 }, 0.3);
+    const fw = await render({ bands: '1', fltType: 'lp', fltFreq: 300, fltMix: 100 }, 0.3);
+    check('Filter mix at 0 is the unfiltered sound', fm.rms > fw.rms*1.5, `${fm.rms.toFixed(4)} at 0, ${fw.rms.toFixed(4)} at 100`);
+  }
+
   console.log('\nTyped values');
   {
     const parsed = await page.evaluate(() => {
@@ -616,12 +695,13 @@ async function main() {
       return {
         db: tv(P.inGain, '-6 dB'), plus: tv(P.inGain, '+3'), k: tv(P.x1, '2.2k'), khz: tv(P.x1, '2.2 kHz'),
         pc: window.FX.parseTyped('50%'), redux: window.FX.parseTyped('/4'), off: window.FX.parseTyped('off'),
-        drive: tv(P.d0a, '12'), junk: tv(P.inGain, 'loud'),
+        drive: tv(P.d0a, '12'), junk: tv(P.inGain, 'loud'), note: tv(P.fbNote, 'A2'), cents: tv(P.fbNote, 'C3 +50c'),
       };
     });
     check('typed text reads in the units shown',
       parsed.db === -6 && parsed.plus === 3 && parsed.k === 2200 && parsed.khz === 2200 && parsed.pc === 50 &&
-      parsed.redux === 4 && parsed.off === 0 && Math.abs(parsed.drive - Math.pow(10, 12/20)) < 1e-9 && parsed.junk === null,
+      parsed.redux === 4 && parsed.off === 0 && Math.abs(parsed.drive - Math.pow(10, 12/20)) < 1e-9 && parsed.junk === null &&
+      parsed.note === 45 && Math.abs(parsed.cents - 48.5) < 1e-9,
       JSON.stringify(parsed));
     // click the number under the Input knob, type, Enter
     const box = await page.evaluateHandle(() => {
@@ -655,7 +735,8 @@ async function main() {
     const hidden = () => page.evaluate(() => document.getElementById('tablePanel').classList.contains('hidden'));
     check('the table panel starts closed', await hidden());
     await page.evaluate(() => { const s = [...document.querySelectorAll('.bandpane.on select')][0]; s.value = 'table'; s.dispatchEvent(new Event('change')); });
-    check('choosing Table as a mode opens it', !(await hidden()) && await page.evaluate(() => window.FX.state.m0a === 'table'));
+    await page.click('#btnTable');
+    check('Harmonic table opens it over the panels, as in the plugin', !(await hidden()) && await page.evaluate(() => window.FX.state.m0a === 'table'));
     // draw across frame 1, left to right, from the top of the 3rd bar to the
     // middle of the 6th: every bar crossed is filled
     const cv = await page.$('#tFrames canvas');
@@ -678,6 +759,94 @@ async function main() {
     const tshot = path.join(SHOTS, 'fx-table.png');
     await (await page.$('#tablePanel')).screenshot({ path: tshot });
     console.log('  screenshot ' + path.relative(root, tshot));
+    await page.click('#btnTableClose');
+    check('Close puts it away', await hidden());
+    await page.evaluate(() => { const s = document.getElementById('presetSel'); s.value = '0'; s.dispatchEvent(new Event('change')); });
+  }
+
+  console.log('\nThe panel: the plugin\'s, panel for panel');
+  {
+    const panels = await page.evaluate(() => [...document.querySelectorAll('.panel > h2')].map(h => h.dataset.no + ' ' + h.textContent.trim()));
+    const want = ['01 Input & pre-filter', '02 Split', '03 Drive', '04 Crush & feedback', '05 Filter', '06 Filter rhythm',
+                  '07 Modulation', '08 Scope', '09 Perform', '10 Tremolo', '11 Output'];
+    check('the eleven panels, numbered as the plugin numbers them', JSON.stringify(panels) === JSON.stringify(want), panels.join(' | '));
+    // every control the plugin's panel has, except the sidechain switch, which a page has nothing to offer
+    const missing = await page.evaluate(() => {
+      // the steps, the table's bars and the pad are drawn rather than knobs
+      const drawn = ['rhStep', 'tb1', 'tb2', 'tb3', 'tb4', 'xyX', 'xyY'];
+      return window.FX.PLIST.map(d => d.id).filter(id => id !== 'envKey' && !drawn.some(p => id.startsWith(p)) && !window.FX.ELS[id]);
+    });
+    check('every plugin control is on the page (the sidechain switch aside)', missing.length === 0, missing.join(', '));
+    // what Relevance.h calls idle is dimmed: one band makes both splits idle
+    const idle = async bands => { await page.select('#secSplit select', bands); return page.evaluate(() => [window.FX.ELS.x1.classList.contains('idle'), window.FX.ELS.x2.classList.contains('idle')]); };
+    const one = await idle('1'), three = await idle('3');
+    check('the engine\'s own relevance rules dim what does nothing: one band idles both splits, three idle neither',
+      one[0] && one[1] && !three[0] && !three[1], JSON.stringify({ one, three }));
+    const why = await page.evaluate(() => window.FX.ELS.fbNote.title);
+    check('an idle control says why, in the engine\'s words', / — \S/.test(why), why);
+
+    // undo, redo, and A/B with a history each
+    const typeInto = async (label, text) => {
+      await page.evaluate(l => [...document.querySelectorAll('.knob')].find(k => k.querySelector('.klab').textContent === l).querySelector('.kval').click(), label);
+      await page.keyboard.type(text); await page.keyboard.press('Enter');
+    };
+    await typeInto('Input', '-5');
+    await page.click('#btnUndo');
+    const undone = await page.evaluate(() => window.FX.state.inGain);
+    await page.click('#btnRedo');
+    const redone = await page.evaluate(() => window.FX.state.inGain);
+    check('Undo takes a change back and Redo puts it again', undone === 0 && redone === -5, `${undone}, ${redone}`);
+    await page.click('#btnB');
+    await typeInto('Input', '7');
+    await page.click('#btnA');
+    const onA = await page.evaluate(() => window.FX.state.inGain);
+    await page.click('#btnB');
+    const onB = await page.evaluate(() => window.FX.state.inGain);
+    check('A and B hold two versions of a sound', onA === -5 && onB === 7, `A ${onA}, B ${onB}`);
+    await page.click('#btnUndo');
+    const bUndo = await page.evaluate(() => window.FX.state.inGain);
+    check('B has its own undo', bUndo === -5, String(bUndo));
+    await page.click('#btnA');
+
+    // the filter display: drag across moves the cutoff, up the resonance
+    const fv = await (await page.$('#cvFilter')).boundingBox();
+    const before = await page.evaluate(() => [window.FX.state.fltFreq, window.FX.state.fltQ]);
+    await page.mouse.move(fv.x + fv.width/2, fv.y + fv.height/2); await page.mouse.down();
+    await page.mouse.move(fv.x + fv.width*0.8, fv.y + fv.height*0.3, { steps: 4 }); await page.mouse.up();
+    const after = await page.evaluate(() => [window.FX.state.fltFreq, window.FX.state.fltQ]);
+    check('dragging the filter display moves the cutoff and the resonance', after[0] > before[0]*1.5 && after[1] > before[1], `${before} -> ${after}`);
+    // the steps, drawn
+    const sv = await (await page.$('#cvSteps')).boundingBox();
+    await page.mouse.click(sv.x + 10 + (sv.width - 46)*(2.5/8), sv.y + sv.height - 8 - (sv.height - 16)*0.25);
+    const step3 = await page.evaluate(() => window.FX.state.rhStep3);
+    check('clicking in the steps sets that step', Math.abs(step3 - 25) < 6, String(step3));
+    // the pad
+    const pv = await (await page.$('#cvPad')).boundingBox();
+    await page.mouse.click(pv.x + 10 + (pv.width - 20)*0.75, pv.y + 22 + (pv.height - 32)*0.25);
+    const xy = await page.evaluate(() => [window.FX.state.xyX, window.FX.state.xyY]);
+    check('the pad sets XY X across and XY Y up', Math.abs(xy[0] - 75) < 3 && Math.abs(xy[1] - 75) < 3, xy.join(', '));
+    // a macro's routes are shown under Perform
+    await page.select('.mx select', 'mc1');
+    await page.evaluate(() => { const s = document.querySelectorAll('.mx select')[1]; s.value = 'fltFreq'; s.dispatchEvent(new Event('change')); });
+    await typeInto('Amount', '40');
+    const route = await page.evaluate(() => document.querySelector('#routes .to').textContent);
+    check('Perform shows what Macro 1 is routed to', route === 'Cutoff +40%', route);
+    // the guide is the plugin's
+    await page.click('#btnGuide');
+    const guide = await page.evaluate(() => ({ open: !document.getElementById('guidePanel').classList.contains('hidden'),
+      heads: [...document.querySelectorAll('#guideText h2')].map(h => h.textContent) }));
+    check('Guide opens the plugin\'s guide', guide.open && guide.heads.includes('The harmonic table'), guide.heads.join(' | '));
+    await page.click('#btnGuideClose');
+    // the arrows step the menu's own order
+    await page.evaluate(() => { const s = document.getElementById('presetSel'); s.value = '0'; s.dispatchEvent(new Event('change')); });
+    await page.click('#btnNext');
+    const next = await page.evaluate(() => document.getElementById('presetSel').selectedOptions[0].textContent);
+    await page.click('#btnPrev'); await page.click('#btnPrev');
+    const last = await page.evaluate(() => document.getElementById('presetSel').selectedOptions[0].textContent);
+    check('the preset arrows step through the menu, wrapping round', next.startsWith('Thermal-ish') && last.startsWith('Wider'), `${next} / ${last}`);
+    const pasted = await page.evaluate(() => [window.FX.readPatch('{"m0a":"tube","d0a":6,"nonsense":1}'), window.FX.readPatch('not json'), window.FX.readPatch('{"m0a":"nope"}')]);
+    check('a pasted patch keeps what is the plugin\'s and refuses what is not',
+      pasted[0] && pasted[0].m0a === 'tube' && pasted[0].d0a === 6 && !('nonsense' in pasted[0]) && pasted[1] === null && pasted[2] === null, JSON.stringify(pasted));
     await page.evaluate(() => { const s = document.getElementById('presetSel'); s.value = '0'; s.dispatchEvent(new Event('change')); });
   }
 
@@ -708,20 +877,22 @@ async function main() {
     }));
     const wrong = names.filter(n => !headings[n] || headings[n] !== plugin[n]).map(n => `${n}: ${headings[n]} vs ${plugin[n]}`);
     check(`every preset in the menu sits under the plugin's heading (${names.length})`, wrong.length === 0, wrong.join(' | '));
-    check('the menu shows the headings in order', groups.join(',') === 'Start,Character,By use,Harmonic table,Stereo', groups.join(','));
+    // in the plugin's order: each heading where its first preset is, browser presets first
+    const order = [...new Set(names.map(n => plugin[n])), 'Your presets'];
+    check('the menu shows the plugin\'s headings in the plugin\'s order', groups.join(',') === order.join(','), groups.join(',') + ' against ' + order.join(','));
     // the plugin's own presets, shown here too, must be the plugin's exactly
     const pluginJson = Object.fromEntries([...src.matchAll(/\{ "([^"]+)",\s*R"JSON\((.*?)\)JSON" \}/gs)].map(m => [m[1], JSON.parse(m[2])]));
     const ours = await page.evaluate(() => window.FX.PLUGIN_PRESETS);
     const differ = ours.filter(pr => JSON.stringify(pr.v) !== JSON.stringify(pluginJson[pr.name])).map(pr => pr.name);
-    check(`the plugin's Table and Stereo presets here are the plugin's own (${ours.length})`,
-      ours.length === 5 && differ.length === 0, differ.join(' | '));
+    check(`the plugin's own presets are all here, as the plugin has them (${ours.length})`,
+      ours.length === 27 && differ.length === 0, differ.join(' | '));
   }
 
   const presetCount = await page.evaluate(() => window.FX.MENU_PRESETS.length);
   for (let i = 0; i < presetCount; i++) {
     const pr = await page.evaluate(i => window.FX.MENU_PRESETS[i], i);
     const r = await render(pr.v, 0.35);
-    check(`preset "${pr.name}"`, r.bad === 0 && r.peak <= 0.95 && r.rms > 0.002,
+    check(`preset "${pr.name}"`, r.bad === 0 && r.peak <= CEILING && r.rms > 0.002,
       `bad ${r.bad} peak ${r.peak.toFixed(3)} rms ${r.rms.toFixed(4)}`);
   }
 

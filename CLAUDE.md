@@ -37,6 +37,15 @@ wrapper change done.
 - **`fx/fracture.html` is the source of truth for FRACTURE's browser presets and shapers.**
   `npm run reference` regenerates `plugin/core/Presets.h` and the reference data; the
   plugin-only presets are in `plugin/core/FactoryPresets.h`.
+- **The browser version runs the plugin's engine.** `plugin/core` is compiled to WebAssembly
+  (`fx/engine/`) and embedded in `fx/fracture.html`, with the guide, the tooltips, the
+  version and the plugin-only presets. **After changing anything in `plugin/core`,
+  `plugin/GUIDE.md`, the tooltips in `PluginEditor.cpp` or `FactoryPresets.h`, run
+  `npm run wasm`**: it rebuilds, re-embeds, and checks the WebAssembly build against a
+  native build on every preset. `test:fx` fails while the embedded copy is stale. It needs
+  `clang lld wasi-libc libc++-18-dev-wasm32 libc++abi-18-dev-wasm32 libclang-rt-18-dev-wasm32`
+  (apt). The page's parameter list comes from the engine, so a new parameter needs a place
+  on the panel (the suite requires every one to have a control).
 
 ## Rules that are load-bearing
 
@@ -76,10 +85,10 @@ wrapper change done.
 - **The shapers are anti-aliased (ADAA, `core/Shapers.h`).** A new shaper mode needs its
   antiderivative in `antiderivative()`, or an entry in `hasAntiderivative()` saying why
   not. Each anti-aliased stage adds half a sample at the oversampled rate, which
-  `splitResponse()` includes so the tuned loop stays in tune. The browser version runs the
-  same scheme in its `shaper` worklet: each mode in `fx/fracture.html`'s `MODES` carries
-  `F`, which must match `antiderivative()` mode for mode.
-- **Table (the drawn mode) is plugin-only and lives in `core/HarmonicTable.h`.** `shape()` has
+  `splitResponse()` includes so the tuned loop stays in tune. Each mode in
+  `fx/fracture.html`'s `MODES` still carries `F`, its JavaScript antiderivative; the suite
+  checks it, though the engine itself is the plugin's.
+- **Table (the drawn mode) lives in `core/HarmonicTable.h`.** `shape()` has
   only a stand-in for it; the engine and the editor build the real curve from the 64 bar
   parameters. The bars are parameters so undo, A/B and presets carry them, marked not
   automatable. Position (`tblPos`) is the newest matrix target, so it stays last.

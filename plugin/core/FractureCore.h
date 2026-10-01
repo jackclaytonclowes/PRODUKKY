@@ -165,6 +165,9 @@ public:
     float envOut() const { return static_cast<float>(mod_.env()); }
     float tremOut() const { return static_cast<float>(trem_.value()); }
     float rhythmOut() const { return static_cast<float>(rhythm_.value(0)); }
+    // a parameter as the last control step used it, modulation included, for an
+    // editor to draw where a modulated knob is (the browser version's rings)
+    float modulated(int i) const { return i >= 0 && i < static_cast<int>(mv_.size()) ? mv_[static_cast<size_t>(i)] : 0.0f; }
     // the post filter as it is right now, cutoff modulation and rhythm included,
     // for the panel to draw its response (FilterResponse.h). Written once a block
     // on the audio thread; the processor copies it into atomics for the editor

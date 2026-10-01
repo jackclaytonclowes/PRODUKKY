@@ -11,8 +11,9 @@ Two audio effect plugins, built with JUCE as Audio Unit, VST3 and a standalone a
 - **CRATE** (`crate/`) is a twelve-bit drum processor after the SP-1200 and Akai S900: the
   two machines' converters, the pitch trick, a hit-opened four-pole filter, a rhythm, dust,
   and swing against the host's grid, with the low end kept clean if you want it. It has 27 presets.
-- **The browser version** of FRACTURE (`fx/fracture.html`) is one HTML file, and the
-  original the plugin was ported from.
+- **The browser version** of FRACTURE (`fx/fracture.html`) is one HTML file: the plugin's own
+  engine, compiled to WebAssembly, behind the plugin's own panel. It is also where the plugin's
+  first presets and shapers come from.
 - **The download site** (`plugins-site/`) is a static site with both plugins, their guides
   and the downloads, ready for Vercel or Render.
 

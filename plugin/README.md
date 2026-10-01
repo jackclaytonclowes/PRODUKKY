@@ -4,10 +4,11 @@
 words. It is also built into the plugin (the Guide button at the top), and ships on the
 disk image as "How it works.md". This README is the engineering detail behind it.
 
-A native port of `../fx/fracture.html`. Same signal path, same fourteen shapers (plus the
-plugin-only Table), same
-parameter ids, same browser presets — so a patch copied out of the browser version loads
-here and means the same thing.
+Ported from `../fx/fracture.html`, which began as a Web Audio sketch: same signal path, same
+fourteen shapers, same parameter ids, same browser presets. Since 0.2 the browser version
+runs this engine itself, compiled to WebAssembly (`fx/README.md`), so the two now sound the
+same by construction, and a patch moves between them either way and means the same thing.
+The notes below on what the port changed describe the plugin against that first sketch.
 
 ## Getting an Audio Unit for Logic
 
@@ -131,7 +132,6 @@ deliberately different, and the tests pin each one:
   to 35 dB, while a low note's first twenty harmonics move by 0.001 dB. Warp is already
   clean and Quantize's steps are its sound, so both are left alone. Each stage adds half a
   sample of delay at the oversampled rate, which the tuned feedback loop now allows for.
-  Since 0.2 the browser version runs the same oversampler and shapers in a worklet.
 - **Oversampling is real work now.** `oversample: '4x'` was one string; here it is a
   65-tap linear-phase FIR pair per band, which is why the plugin reports 48 samples of
   latency at 4x, 32 at 2x, 0 with it off. `test_core` measures the actual delay through the
@@ -224,8 +224,7 @@ Filter mix defaults to 100% and Rhythm mod to off.
   which side they fell, which a test caught at -47 dB of difference between two bars.
 - Rhythm mod, Filter mix, Rate, Groove, Phase and Glide are matrix destinations, added at
   the end of the list so every saved matrix keeps its targets. The eight steps are not.
-- None of this is in the browser version, so a patch copied out of the plugin carries ids
-  the browser does not know about. Patches from the browser still load here unchanged.
+- The browser version runs this engine, so the rhythm is there too, and its patches carry it.
 
 **The feedback loop can be tuned**, after Rift. **FB mode** sets what its length is:
 **Time** is the 1–250 ms it always was (and the default, so no patch changes); **Pitch**
@@ -273,8 +272,8 @@ antiderivative of a Chebyshev series is another one, evaluated the same way (Cle
 recurrence). Position glides across each block rather than stepping when an LFO moves it.
 
 The bars are 64 parameters, not offered for automation: undo, A/B, presets, Copy patch and
-sessions all carry them with no extra machinery. The browser version has the same Table, with
-the same ids and the same arithmetic, so a drawn table moves between the two by copy and paste.
+sessions all carry them with no extra machinery. The browser version runs this engine, so a
+drawn table moves between the two by copy and paste.
 
 **Start from...** fills a frame with another mode's harmonics: its Chebyshev coefficients at
 drive 4, which are exactly what it makes of a full-scale sine (`barsFromShaper`), scaled so
@@ -307,8 +306,7 @@ signal is the clean band, all to 0.000 millionths; and on a real stereo signal M
 from both. Not measured: the tuned feedback loop through the drive is tuned for the driven
 half, and the clean half skips the drive's DC blockers and its half sample of anti-aliasing
 delay, so on a low note the undriven part of the loop can ring a few tens of cents off.
-The browser version has the same three choices, with the same ids, so patches move between
-the two; its suite checks the same three equalities.
+The browser version runs this engine; its suite checks the same three equalities through it.
 
 ## The sidechain
 
@@ -540,8 +538,9 @@ bass (**Bass — harmonics driven, sub clean**, **808**), a vocal (**Vocal — w
 presence**), a guitar-like part (**Amp — crunchy rhythm**, **Fuzz**), a mix (**Mix bus — a
 touch of tape**) or an effect (**Radio — the AM band**).
 
-**Twenty-seven plugin-only presets**, in `core/FactoryPresets.h`, which need what the browser does
-not have:
+**Twenty-seven more**, in `core/FactoryPresets.h`, which came after the browser had its own
+engine and so are not generated from its list (the browser now shows them too, embedded from
+this file):
 - tuned feedback: **Tuned comb**, **Resonator**, **Growl**, **Kick tuned to the key** (a C1
   resonator under the low band), **Snare ring** (G4), **Comb on the fifth**
 - synced feedback: **Dub echo**, **Tape slap**, **Quarter-note echo into the fold**,
@@ -559,8 +558,7 @@ not have:
 - the Table: **harmonic wobble** (an LFO across the frames), **an octave up** (the 2nd and
   4th drawn in), **the harder you play, the more harmonics** (the envelope on Position)
 
-They use the same patch JSON and the same import as everything else. A patch copied from a
-plugin-only preset into the browser loses the parts the browser does not have. Adding a
+They use the same patch JSON and the same import as everything else. Adding a
 browser preset moves the plugin-only ones down the menu, which is harmless: a host saves the
 plugin's whole state with a session, not the number of the preset it started from.
 

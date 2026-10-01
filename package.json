@@ -14,7 +14,8 @@
     "test:plugins-site": "node tests/plugins-site.mjs",
     "reference": "node plugin/tools/make-reference.mjs",
     "audition": "node tools/audition/run.mjs",
-    "site:plugins": "node plugins-site/build.mjs"
+    "site:plugins": "node plugins-site/build.mjs",
+    "wasm": "node fx/engine/build.mjs"
   },
   "devDependencies": {
     "puppeteer": "^24.0.0"

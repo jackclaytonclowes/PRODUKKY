@@ -5,12 +5,14 @@
 // exactly these, so a page they would break fails there first.
 //
 // The one page that runs code is play/fracture.html, the browser version: it
-// needs inline script, a blob: URL for its AudioWorklet, and the microphone if
-// someone chooses to play through it. Nothing on the site may load from, or
-// send to, anywhere else.
+// needs inline script, a blob: URL for its AudioWorklet, the microphone if
+// someone chooses to play through it, and 'wasm-unsafe-eval' to compile the
+// plugin's engine, which it carries as WebAssembly. That source allows
+// WebAssembly and nothing else: eval() and new Function() stay refused.
+// Nothing on the site may load from, or send to, anywhere else.
 export const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' blob:",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob:",

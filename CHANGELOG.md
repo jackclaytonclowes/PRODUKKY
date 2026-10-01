@@ -5,13 +5,17 @@ before you try a new version on something that matters.
 
 ## Since 0.2.0
 
-**The browser version** has caught up: the **harmonic table** (draw four frames of harmonics
-and morph between them, with the plugin's Table presets), Stereo per band (L/R, Mid, Side)
-with the plugin's two Stereo presets, the Scope's input line and harmonic readout, typed
-values, and the preset menu under the plugin's headings. Tuned feedback, the filter rhythm
-and the sidechain are still plugin only.
+**The browser version is now FRACTURE itself.** It runs the plugin's own engine, compiled to
+WebAssembly and carried inside the page, behind the plugin's own panel, laid out the same.
+So it has everything the plugin has: the harmonic table, tuned and synced feedback and
+feedback through the drive, the filter rhythm and the filter's mix and response display,
+the Perform panel's XY pad and macros, oversampling, Undo and Redo, A/B, the guide and the
+tooltips, and all 49 presets under the plugin's headings. A patch copies either way. Only
+the sidechain stays in your DAW. The page checks itself against the plugin: every preset
+renders the same through both, to within the last bit of a float.
+
 It also has a new test sound, a **45 Hz sub sine**, for hearing what a setting does to the
-low end.
+low end, and the Scope's harmonic readout reaches down to it.
 
 **FRACTURE** — the harmonic readout could take a low note, below what it can read, for a
 higher one (a 60 Hz tone read as about 82 Hz), off the edge of its own peak. It now says

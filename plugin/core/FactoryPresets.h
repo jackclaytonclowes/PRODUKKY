@@ -1,8 +1,10 @@
 // FactoryPresets.h — the plugin's preset menu: the browser version's presets
 // (Presets.h, generated from fx/fracture.html and never edited by hand), then
-// the ones below, which use what only the plugin has — tuned and synced
-// feedback, feedback through the drive, the filter rhythm, 36 and 48 dB
-// slopes and the filter's own mix — and so cannot live in the browser file.
+// the ones below, which came after the browser version had its own engine —
+// tuned and synced feedback, feedback through the drive, the filter rhythm,
+// 36 and 48 dB slopes and the filter's own mix — and so are not generated from
+// the browser's list. The browser version now runs this engine and shows these
+// too: fx/engine/build.mjs embeds them, and the headings below, in the page.
 //
 // They are written in the same patch JSON and loaded through the same import
 // as everything else, so a patch copied out of the plugin reads the same way.

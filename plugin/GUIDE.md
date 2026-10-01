@@ -14,7 +14,7 @@ The panel reads in the order the sound flows: top row first, left to right, then
 - Presets named for a job (**Drum bus**, **Bass**, **808**, **Vocal**, **Amp**, **Mix bus**) are the quickest way in: pick the one that matches the track.
 - The presets from **Tuned comb** onward use what only the plugin has: feedback that rings at a note, echoes locked to your tempo, and the filter rhythm. Start with **Tuned comb**, **Dub echo**, **Trance gate** and **Acid line**.
 - Presets are levelled, so switching between them compares sounds, not volumes.
-- **Copy patch** and **Paste patch** move a sound between the plugin and the browser version. The browser version has the harmonic table and mid/side but not tuned feedback, the filter rhythm or the sidechain, so those parts stay behind.
+- **Copy patch** and **Paste patch** move a sound between the plugin and the browser version. The browser version runs FRACTURE's own engine, so everything comes across except the sidechain, which a web page has nothing to offer.
 
 ## Faded controls and tooltips
 

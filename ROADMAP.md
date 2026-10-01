@@ -69,6 +69,7 @@ Mac only; nobody has judged the sound against references yet.
   make on their own. Build it only if someone hears a click
 - [x] **S** Table "Start from…": fill the bars with another mode's harmonics (and all four frames at rising drive)
 - [x] **M** The anti-aliasing in the browser version: the plugin's oversampler and shapers in a worklet
+- [x] **L** The browser version runs the plugin's engine: `plugin/core` compiled to WebAssembly and embedded, behind the plugin's own panel, with every control and every preset, checked against a native build on every preset
 - [x] **M** Per-band stereo: L/R, mid only, side only
 - [x] **M** Sidechain input for the envelope follower (still to check: old Logic sessions open)
 - [x] **M** Spectrum view in the scope, harmonics labelled (input against output, and a harmonic readout)
