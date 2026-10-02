@@ -5,6 +5,13 @@ before you try a new version on something that matters.
 
 ## Since 0.2.0
 
+**Windows.** Both plugins now build for 64-bit Windows as VST3 and standalone apps, with an
+installer that puts the VST3s in `C:\Program Files\Common Files\VST3`, where Ableton Live 12
+and every other Windows host look. The read-me in the download walks through Live's plug-in
+settings and the sidechain. The C++ runtime is linked in, so nothing else needs installing.
+Checked by machine (the DSP tests, the host smoke test and pluginval on a Windows runner);
+nobody has opened them in Live on Windows yet.
+
 **The browser version is now FRACTURE itself.** It runs the plugin's own engine, compiled to
 WebAssembly and carried inside the page, behind the plugin's own panel, laid out the same.
 So it has everything the plugin has: the harmonic table, tuned and synced feedback and

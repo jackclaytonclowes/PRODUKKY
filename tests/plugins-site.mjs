@@ -4,8 +4,9 @@
  *
  *   npm run test:plugins-site
  *
- * Three builds: one with a local disk image (FRACTURE) and a hosted URL
- * (CRATE), so both kinds of download are checked end to end; one with nothing,
+ * Three builds: one with a local disk image and Windows installer (FRACTURE)
+ * and hosted URLs (CRATE), so both kinds of download are checked end to end
+ * on both systems; one with nothing,
  * which must say "coming soon" rather than link to a file that is not there;
  * and --require-downloads on that one, which must refuse.
  *
@@ -55,11 +56,17 @@ async function main() {
   fs.mkdirSync(dmgDir);
   fs.writeFileSync(path.join(dmgDir, dmgName), dmgBytes);
   fs.writeFileSync(path.join(dmgDir, `FRACTURE-0.0.1-macOS.dmg`), 'an older build');
+  // the Windows installer packaging/windows makes holds both plugins
+  const exeName = `Fracture-and-Crate-${fv}-Windows-Setup.exe`;
+  const exeBytes = crypto.randomBytes(200000);
+  fs.writeFileSync(path.join(dmgDir, exeName), exeBytes);
+  fs.writeFileSync(path.join(dmgDir, 'Fracture-and-Crate-0.0.1-Windows-Setup.exe'), 'an older build');
   const crateUrl = 'https://downloads.example.org/CRATE-macOS.dmg';
+  const crateWinUrl = 'https://downloads.example.org/CRATE-Windows-Setup.exe';
   const config = path.join(tmp, 'site.json');
   fs.writeFileSync(config, JSON.stringify({
     title: 'Fracture & Crate', strap: 'Audio plugins, in beta', maker: 'Test Maker',
-    contact: 'someone@example.org', downloads: { crate: { macOS: crateUrl } },
+    contact: 'someone@example.org', downloads: { crate: { macOS: crateUrl, Windows: crateWinUrl } },
   }));
 
   console.log('\nBuild');
@@ -73,7 +80,8 @@ async function main() {
           `exit ${r.status}`);
     const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
     check('  ... and the page says coming soon instead of linking to nothing',
-          (html.match(/coming soon/g) || []).length === 2 && !/href="downloads\//.test(html));
+          (html.match(/Mac download coming soon/g) || []).length === 2
+            && (html.match(/Windows download coming soon/g) || []).length === 2 && !/href="downloads\//.test(html));
   }
   {
     // the committed site.json, as a host builds it: no disk image on the machine
@@ -82,7 +90,7 @@ async function main() {
     const r = build({ PLUGINS_SITE_DOWNLOADS: empty });
     const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
     const urls = ['fracture', 'crate'].map(id => real.downloads?.[id]?.macOS);
-    const hrefs = [...html.matchAll(/class="btn" href="(https:[^"]+)"/g)].map(m => m[1]);
+    const hrefs = [...html.matchAll(/class="btn" href="(https:[^"]+)" data-os="macOS"/g)].map(m => m[1]);
     check('the committed site.json links both plugins to a hosted disk image',
           r.status === 0 && urls.every(u => /^https:\/\//.test(u)) && hrefs.length === 2
             && hrefs.every((h, i) => h === urls[i]), hrefs.join(' '));
@@ -92,9 +100,9 @@ async function main() {
   check('render.yaml is the Blueprint headers.mjs describes',
         fs.readFileSync(path.join(root, 'render.yaml'), 'utf8') === renderYaml());
   const r = build({ PLUGINS_SITE_DOWNLOADS: dmgDir, PLUGINS_SITE_CONFIG: config });
-  check('builds with a local disk image and a hosted one', r.status === 0, r.stderr);
-  check('  ... and copies only the newest disk image',
-        fs.readdirSync(path.join(PUBLIC, 'downloads')).join() === dmgName,
+  check('builds with a local disk image and installer, and hosted ones', r.status === 0, r.stderr);
+  check('  ... and copies only the newest disk image and installer',
+        fs.readdirSync(path.join(PUBLIC, 'downloads')).sort().join() === [dmgName, exeName].sort().join(),
         fs.readdirSync(path.join(PUBLIC, 'downloads')).join());
   const committed = JSON.parse(fs.readFileSync(path.join(SITE, 'vercel.json'), 'utf8'));
   const emitted = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'vercel.json'), 'utf8'));
@@ -106,7 +114,7 @@ async function main() {
   const sources = ['index.html', 'guide-crate.html', 'guide-fracture.html', 'site.css']
     .map(f => fs.readFileSync(path.join(PUBLIC, f), 'utf8'));
   check('no page or stylesheet loads anything from elsewhere',
-        sources.every(s => !/(src|href)="(https?:)?\/\//.test(s.replace(/href="https:\/\/downloads\.example\.org[^"]*"/, ''))
+        sources.every(s => !/(src|href)="(https?:)?\/\//.test(s.replace(/href="https:\/\/downloads\.example\.org[^"]*"/g, ''))
                           && !/@import|url\(\s*['"]?https?:/.test(s)));
   check('the pages run no scripts', sources.slice(0, 3).every(s => !/<script/i.test(s)));
 
@@ -158,7 +166,8 @@ async function main() {
     title: document.title,
     h1: document.querySelector('h1')?.textContent,
     images: [...document.images].map(i => ({ src: i.getAttribute('src'), w: i.naturalWidth, alt: i.alt })),
-    downloads: [...document.querySelectorAll('.get a.btn')].map(a => ({ href: a.getAttribute('href'), dl: a.hasAttribute('download') })),
+    downloads: [...document.querySelectorAll('.get a.btn')].map(a => ({ href: a.getAttribute('href'), dl: a.hasAttribute('download'),
+                                                                     os: a.dataset.os, text: a.textContent })),
     sums: [...document.querySelectorAll('.sum')].map(s => s.textContent.trim()),
     links: [...document.querySelectorAll('a[href]')].map(a => a.getAttribute('href')),
     ids: [...document.querySelectorAll('[id]')].map(e => e.id),
@@ -174,6 +183,13 @@ async function main() {
   const local = info.downloads.find(d => d.href === `downloads/${dmgName}`);
   check('FRACTURE links to its disk image, as a download', local && local.dl, JSON.stringify(info.downloads));
   check('CRATE links to where its disk image is hosted', info.downloads.some(d => d.href === crateUrl));
+  const exe = info.downloads.find(d => d.href === `downloads/${exeName}`);
+  check('FRACTURE links to the Windows installer, as a download, on a Windows button',
+        exe && exe.dl && exe.os === 'Windows' && /Download for Windows/.test(exe.text), JSON.stringify(info.downloads));
+  check('CRATE links to where its Windows installer is hosted',
+        info.downloads.some(d => d.href === crateWinUrl && d.os === 'Windows'));
+  check('each plugin has one Mac and one Windows button',
+        info.downloads.length === 4 && info.downloads.filter(d => d.os === 'Windows').length === 2);
   const got = await page.evaluate(async h => {
     const res = await fetch(h);
     const buf = new Uint8Array(await res.arrayBuffer());
@@ -182,8 +198,17 @@ async function main() {
   }, `downloads/${dmgName}`);
   check('the disk image downloads whole', got.status === 200 && got.size === dmgBytes.length, JSON.stringify(got));
   check('  ... and the checksum printed on the page is the file\'s',
-        info.sums.length === 1 && info.sums[0] === crypto.createHash('sha256').update(dmgBytes).digest('hex')
+        info.sums.length === 2 && info.sums[0] === crypto.createHash('sha256').update(dmgBytes).digest('hex')
           && got.sha === info.sums[0]);
+  const gotExe = await page.evaluate(async h => {
+    const res = await fetch(h);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    const sha = [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))].map(b => b.toString(16).padStart(2, '0')).join('');
+    return { status: res.status, size: buf.length, sha };
+  }, `downloads/${exeName}`);
+  check('the Windows installer downloads whole, and its printed checksum is the file\'s',
+        gotExe.status === 200 && gotExe.size === exeBytes.length && gotExe.sha === info.sums[1]
+          && info.sums[1] === crypto.createHash('sha256').update(exeBytes).digest('hex'), JSON.stringify(gotExe));
   check('versions come from the CMake projects',
         info.versions.join() === `v${fv},v${version('crate')}`, info.versions.join());
   check('the maker and the contact from site.json appear', /Test Maker/.test(info.footer)

@@ -3,7 +3,7 @@
  * any host can serve (Render, Vercel, or anything else that serves files).
  *
  *   node plugins-site/build.mjs                  build, linking whatever downloads exist
- *   node plugins-site/build.mjs --require-downloads   fail unless every Mac download is there
+ *   node plugins-site/build.mjs --require-downloads   fail unless every download is there
  *
  * No dependencies beyond Node itself, so a host's build step needs no install.
  *
@@ -16,12 +16,13 @@
  *   ../fx/fracture.html     the browser version, served as-is under play/
  *   site.json               the title, who made it, a contact, and download links
  *
- * Downloads, for each plugin, in this order:
- *   1. a URL in site.json ("downloads": {"crate": {"macOS": "https://..."}}),
- *      for files hosted somewhere else
- *   2. the newest <NAME>-<version>-macOS.dmg in plugins-site/downloads/, or where
- *      build-macos-all.sh --dmg leaves it (plugin/dist, crate/dist). It is copied
- *      into public/downloads/, and its size and SHA-256 are printed on the page
+ * Downloads, for each plugin and each system (macOS, Windows), in this order:
+ *   1. a URL in site.json ("downloads": {"crate": {"macOS": "https://...",
+ *      "Windows": "https://..."}}), for files hosted somewhere else
+ *   2. the newest <NAME>-<version>-macOS.dmg, or <NAME>- or Fracture-and-Crate-
+ *      <version>-Windows-Setup.exe, in plugins-site/downloads/, or where the build
+ *      scripts leave them (plugin/dist, crate/dist, dist). It is copied into
+ *      public/downloads/, and its size and SHA-256 are printed on the page
  *   3. otherwise the button says "not built yet", and the build says so
  *
  * The response headers are in headers.mjs, and written out as public/vercel.json
@@ -64,11 +65,27 @@ fs.mkdirSync(path.join(out, 'img'), { recursive: true });
 fs.mkdirSync(path.join(out, 'play'), { recursive: true });
 
 // ------------------------------------------------------------------ downloads
+// One button per system. The Mac build is a disk image per plugin, or the one
+// CI makes holding both; the Windows build is an installer, normally the one
+// packaging/windows makes holding both (Fracture-and-Crate-<version>-Windows-Setup.exe).
+const platforms = [
+  { key: 'macOS', label: 'Mac', ext: '.dmg',
+    pattern: p => new RegExp(`^${p.name}-([0-9.]+)-macOS\\.dmg$`),
+    what: 'Audio Unit, VST3 and standalone app', thing: 'disk image',
+    check: f => `In Terminal, <code>shasum -a 256 ~/Downloads/${esc(f)}</code> should print:`,
+    build: './build-macos-all.sh --dmg' },
+  { key: 'Windows', label: 'Windows', ext: '.exe',
+    pattern: p => new RegExp(`^(?:${p.name}|Fracture-and-Crate)-([0-9.]+)-Windows-Setup\\.exe$`),
+    what: 'VST3 and standalone app for 64-bit Windows', thing: 'installer',
+    check: f => `In PowerShell, <code>Get-FileHash $HOME\\Downloads\\${esc(f)}</code> should print (in capitals):`,
+    build: '.\\build-windows.ps1 -Package' },
+];
 const versionKey = v => v.split('.').map(n => n.padStart(6, '0')).join('.');
-function findDmg(p) {
-  const pattern = new RegExp(`^${p.name}-([0-9.]+)-macOS\\.dmg$`);
+function findLocal(p, platform) {
+  const pattern = platform.pattern(p);
   const found = [];
-  const dirs = process.env.PLUGINS_SITE_DOWNLOADS ? downloadDirs : [...downloadDirs, path.join(root, p.dir, 'dist')];
+  const dirs = process.env.PLUGINS_SITE_DOWNLOADS ? downloadDirs
+    : [...downloadDirs, path.join(root, p.dir, 'dist'), path.join(root, 'dist')];
   for (const d of dirs) {
     if (!fs.existsSync(d)) continue;
     for (const f of fs.readdirSync(d)) {
@@ -83,40 +100,42 @@ const mb = n => (n / 1048576).toFixed(1) + ' MB';
 
 const summary = [];
 let missing = 0;
-function downloadBlock(p) {
-  const url = config.downloads?.[p.id]?.macOS;
+function platformBlock(p, platform) {
+  const url = config.downloads?.[p.id]?.[platform.key];
+  const button = `Download for ${platform.label}`;
   if (url) {
-    if (!/^https:\/\//.test(url)) throw new Error(`site.json: the ${p.id} download must be an https:// URL`);
-    summary.push(`${p.name}: linked to ${url}`);
-    // the release CI makes is one image holding both plugins; say so, so
+    if (!/^https:\/\//.test(url)) throw new Error(`site.json: the ${p.id} ${platform.key} download must be an https:// URL`);
+    summary.push(`${p.name} (${platform.label}): linked to ${url}`);
+    // the release CI makes is one file holding both plugins; say so, so
     // nobody downloads it twice
-    const shared = plugins.every(q => config.downloads?.[q.id]?.macOS === url);
-    return `<a class="btn" href="${esc(url)}">Download for Mac <small>.dmg</small></a>
+    const shared = plugins.every(q => config.downloads?.[q.id]?.[platform.key] === url);
+    return `<a class="btn" href="${esc(url)}" data-os="${platform.key}">${button} <small>${platform.ext}</small></a>
             <p class="meta">${shared
-              ? 'One disk image with both FRACTURE and CRATE: Audio Unit, VST3 and standalone app.'
-              : 'Audio Unit, VST3 and standalone app in one disk image.'}</p>`;
+              ? `One ${platform.thing} with both FRACTURE and CRATE: ${platform.what}.`
+              : `${platform.what[0].toUpperCase() + platform.what.slice(1)} in one ${platform.thing}.`}</p>`;
   }
-  const dmg = findDmg(p);
-  if (dmg) {
+  const local = findLocal(p, platform);
+  if (local) {
     fs.mkdirSync(path.join(out, 'downloads'), { recursive: true });
-    fs.copyFileSync(dmg.file, path.join(out, 'downloads', dmg.name));
-    const bytes = fs.readFileSync(dmg.file);
+    fs.copyFileSync(local.file, path.join(out, 'downloads', local.name));
+    const bytes = fs.readFileSync(local.file);
     const sha = crypto.createHash('sha256').update(bytes).digest('hex');
-    if (dmg.version !== p.version)
-      console.warn(`  ! ${dmg.name} is version ${dmg.version}, the source says ${p.version}`);
-    summary.push(`${p.name}: ${path.relative(root, dmg.file)} (${mb(bytes.length)})`);
-    return `<a class="btn" href="downloads/${esc(dmg.name)}" download>Download for Mac <small>${esc(mb(bytes.length))}</small></a>
-            <p class="meta">${esc(dmg.name)}: Audio Unit, VST3 and standalone app in one disk image.</p>
+    if (local.version !== p.version)
+      console.warn(`  ! ${local.name} is version ${local.version}, the source says ${p.version}`);
+    summary.push(`${p.name} (${platform.label}): ${path.relative(root, local.file)} (${mb(bytes.length)})`);
+    return `<a class="btn" href="downloads/${esc(local.name)}" data-os="${platform.key}" download>${button} <small>${esc(mb(bytes.length))}</small></a>
+            <p class="meta">${esc(local.name)}: ${platform.what} in one ${platform.thing}.</p>
             <details><summary>Check the download</summary>
-              <p>In Terminal, <code>shasum -a 256 ~/Downloads/${esc(dmg.name)}</code> should print:</p>
+              <p>${platform.check(local.name)}</p>
               <p class="sum">${sha}</p>
             </details>`;
   }
   missing++;
-  summary.push(`${p.name}: NO DOWNLOAD (build it with ./build-macos-all.sh --dmg, or set a URL in site.json)`);
-  return `<span class="btn off">Mac download coming soon</span>
+  summary.push(`${p.name} (${platform.label}): NO DOWNLOAD (build it with ${platform.build}, or set a URL in site.json)`);
+  return `<span class="btn off" data-os="${platform.key}">${platform.label} download coming soon</span>
           <p class="meta">This build has not been published yet.</p>`;
 }
+const downloadBlock = p => platforms.map(platform => platformBlock(p, platform)).join('\n            ');
 
 // ------------------------------------------------------------------ the guides
 // The same small subset of Markdown the plugins draw (Source/Guide.h):

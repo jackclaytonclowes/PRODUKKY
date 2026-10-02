@@ -1,7 +1,7 @@
 # The plugins' download site
 
 A static site for FRACTURE and CRATE: what each one does, a screenshot of each panel, the
-Mac downloads, how to install, and the two built-in guides as web pages. FRACTURE's browser
+Mac and Windows downloads, how to install, and the two built-in guides as web pages. FRACTURE's browser
 version is included too, so people can try it before they download anything.
 
 ```
@@ -30,12 +30,15 @@ is the browser version.
 
 For each plugin, the build uses the first of these that exists:
 
-1. **A URL in `site.json`**, for a disk image hosted somewhere else:
-   `"downloads": { "crate": { "macOS": "https://…/CRATE-0.1.0-macOS.dmg" } }`
+1. **A URL in `site.json`**, for a file hosted somewhere else, one per system:
+   `"downloads": { "crate": { "macOS": "https://…/CRATE-0.1.0-macOS.dmg", "Windows": "https://…/Fracture-and-Crate-0.1.0-Windows-Setup.exe" } }`
 2. **A disk image on this machine**: the newest `FRACTURE-<version>-macOS.dmg` or
    `CRATE-<version>-macOS.dmg` in `plugins-site/downloads/`, or wherever
    `./build-macos-all.sh --dmg` leaves them (`plugin/dist/`, `crate/dist/`). The build copies it
    into the site and prints its size and SHA-256 on the page, so people can check the file.
+   For Windows, the newest `Fracture-and-Crate-<version>-Windows-Setup.exe` (or
+   `<NAME>-<version>-Windows-Setup.exe`) there or in `dist/`, where
+   `.\build-windows.ps1 -Package` leaves it.
 3. Otherwise the button says **coming soon**, and the build warns you.
 
 `--require-downloads` (`npm run site:plugins -- --require-downloads`) turns that warning into

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{title}}</title>
-<meta name="description" content="FRACTURE, a multi-band distortion, and CRATE, a twelve-bit drum processor after the SP-1200 and Akai S900. Audio Unit, VST3 and standalone for macOS.">
+<meta name="description" content="FRACTURE, a multi-band distortion, and CRATE, a twelve-bit drum processor after the SP-1200 and Akai S900. Audio Unit, VST3 and standalone for macOS, and VST3 and standalone for Windows.">
 <link rel="icon" href="{{favicon}}">
 <link rel="stylesheet" href="site.css">
 </head>
@@ -16,7 +16,8 @@
     <nav aria-label="Sections">
       <a href="#fracture">Fracture</a>
       <a href="#crate">Crate</a>
-      <a href="#install">Install</a>
+      <a href="#install">Mac</a>
+      <a href="#windows">Windows</a>
       <a href="#status">Beta</a>
     </nav>
   </header>
@@ -31,9 +32,9 @@
         Both are audio effects for your DAW, and both are in beta.</p>
       </div>
       <dl class="facts">
-        <div><dt>Formats</dt><dd>Audio Unit, VST3, standalone app</dd></div>
-        <div><dt>System</dt><dd>macOS 10.13 or later, Apple Silicon and Intel</dd></div>
-        <div><dt>Hosts</dt><dd>Logic, GarageBand, Live, Reaper, Bitwig, Cubase</dd></div>
+        <div><dt>Formats</dt><dd>Audio Unit (Mac), VST3, standalone app</dd></div>
+        <div><dt>System</dt><dd>macOS 10.13 or later, Apple Silicon and Intel. Windows 10 and 11, 64-bit</dd></div>
+        <div><dt>Hosts</dt><dd>Logic, GarageBand, Ableton Live 12, Reaper, Bitwig, Cubase, FL Studio</dd></div>
         <div><dt>Network</dt><dd>None. The plugins never connect to anything</dd></div>
       </dl>
     </section>
@@ -173,9 +174,51 @@ killall -9 AudioComponentRegistrar</pre>
       </div>
     </section>
 
+    <!-- ================================================================ windows -->
+    <section class="panel yellow" id="windows">
+      <h2>04 &nbsp;Installing on Windows</h2>
+      <div class="body two">
+        <div class="prose">
+          <ol>
+            <li>Run the downloaded <code>Fracture-and-Crate-…-Windows-Setup.exe</code>.</li>
+            <li>Windows will probably say <strong>Windows protected your PC</strong>. That is
+              expected: these builds are not signed, so Microsoft has no publisher to check them
+              against. Click <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+            <li>The installer puts both VST3s in the system VST3 folder, where every Windows
+              host looks, and the standalone apps in the Start menu.</li>
+          </ol>
+          <h3>In Ableton Live 12</h3>
+          <ol>
+            <li>Options, then Settings (Ctrl+,), then Plug-Ins.</li>
+            <li>Turn on <strong>Use VST3 Plug-In System Folders</strong>, then press
+              <strong>Rescan</strong>.</li>
+            <li>In the browser, under Plug-Ins, then VST3, they are Fracture and Crate. Drag one
+              onto an audio track.</li>
+          </ol>
+          <p>To send a kick to FRACTURE's envelope follower, unfold the plug-in device (the
+          triangle in its title bar) to reach its Sidechain section, turn it on, pick the kick's
+          track under Audio From, and set Follows to Sidechain in the Modulation panel.</p>
+        </div>
+        <div class="prose">
+          <h3>If Live does not list them</h3>
+          <p>Check that Use VST3 Plug-In System Folders is on, then hold Alt and press Rescan, so
+          Live scans everything again rather than only what changed.</p>
+          <h3>What it installs, and where</h3>
+          <pre>C:\Program Files\Common Files\VST3\FRACTURE.vst3
+C:\Program Files\Common Files\VST3\CRATE.vst3
+C:\Program Files\Fracture and Crate\</pre>
+          <p>Nothing else: no background processes, nothing at startup, no network access. Your
+          own presets live in Documents and stay when you uninstall from Settings, then Apps.</p>
+          <p class="note"><strong>The Windows builds are newer than the Mac ones.</strong> They
+          pass the same measurements and pluginval, but nobody has opened them in Live on Windows
+          yet.</p>
+        </div>
+      </div>
+    </section>
+
     <!-- ================================================================ status -->
     <section class="panel red" id="status">
-      <h2>04 &nbsp;Where it is: beta</h2>
+      <h2>05 &nbsp;Where it is: beta</h2>
       <div class="body two">
         <div class="prose">
           <p class="note"><strong>Tested by machine, not yet by ear.</strong> Save your project
@@ -197,7 +240,7 @@ killall -9 AudioComponentRegistrar</pre>
             <li>Does a bounce sound the same as playback?</li>
             <li>Does the panel make sense without anyone explaining it?</li>
             <li>Which presets do you keep, and which would you cut?</li>
-            <li>Which DAW and Mac you tried it on, and whether it loaded</li>
+            <li>Which DAW and computer you tried it on, and whether it loaded</li>
           </ul>
           {{contact}}
         </div>

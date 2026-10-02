@@ -20,6 +20,10 @@ cmake -S plugin -B build-frac -DCMAKE_BUILD_TYPE=Release && cmake --build build-
 xvfb-run -a build-frac/host_smoke_artefacts/Release/host_smoke shot.png      # same for crate/
 ```
 
+On Windows, `.\build-windows.ps1` builds both with MSVC and runs both `test_core`s;
+`windows.yml` does it in CI with pluginval. MSVC needs `/utf-8` (the labels are UTF-8) and
+`_USE_MATH_DEFINES` (core uses `M_PI`); both CMakeLists set them.
+
 On Linux, JUCE needs the X11, freetype and ALSA dev packages. Validate a VST3 build with
 pluginval at `--strictness-level 10` across several `--random-seed`s before calling a
 wrapper change done.

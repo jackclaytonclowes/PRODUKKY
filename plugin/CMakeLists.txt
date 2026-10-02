@@ -12,6 +12,9 @@ project(FRACTURE VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Windows: link the C++ runtime into the plugin, so it loads on a machine that
+# has no Visual C++ redistributable installed (most Live users never install one)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
@@ -30,6 +33,23 @@ else()
     FetchContent_MakeAvailable(JUCE)
 endif()
 
+if(MSVC)
+    # The sources are UTF-8 (the em dashes in labels, tooltips and preset names).
+    # Without /utf-8, MSVC reads them in the system code page and the panel
+    # shows mojibake. _USE_MATH_DEFINES gives core/ its M_PI.
+    add_compile_options(/utf-8 /bigobj)
+    add_compile_definitions(_USE_MATH_DEFINES)
+endif()
+
+# Copying into the system plug-in folder after each build is handy on a Mac and
+# Linux. On Windows that folder (C:/Program Files/Common Files/VST3) needs an
+# administrator, so the build would fail; there the installer does it.
+if(WIN32)
+    set(FRACTURE_COPY_AFTER_BUILD FALSE)
+else()
+    set(FRACTURE_COPY_AFTER_BUILD TRUE)
+endif()
+
 set(FRACTURE_FORMATS VST3 Standalone)
 if(APPLE)
     list(APPEND FRACTURE_FORMATS AU)
@@ -46,7 +66,7 @@ juce_add_plugin(Fracture
     NEEDS_MIDI_OUTPUT         FALSE
     IS_MIDI_EFFECT            FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD   TRUE
+    COPY_PLUGIN_AFTER_BUILD   ${FRACTURE_COPY_AFTER_BUILD}
     VST3_CATEGORIES           "Fx" "Distortion"
     AU_MAIN_TYPE              kAudioUnitType_Effect)
 
