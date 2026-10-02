@@ -77,8 +77,9 @@ npm run test:core                                  # DSP tests, compiler only, n
 cmake --build build --target host_smoke && ./build/host_smoke_artefacts/Release/host_smoke
 ```
 
-`COPY_PLUGIN_AFTER_BUILD` is on, so a successful build installs into your user plugin
-folder. On macOS that is `~/Library/Audio/Plug-Ins/VST3` and `.../Components`; Logic will
+`COPY_PLUGIN_AFTER_BUILD` is on (except on Windows, where the VST3 folder needs an
+administrator: use `build-windows.ps1 -Install` or the installer), so a successful build
+installs into your user plugin folder. On macOS that is `~/Library/Audio/Plug-Ins/VST3` and `.../Components`; Logic will
 find the AU after a restart (`killall -9 AudioComponentRegistrar` if it doesn't).
 
 Verified against JUCE 8.0.15 (what the build pins) and JUCE 9 on Linux.

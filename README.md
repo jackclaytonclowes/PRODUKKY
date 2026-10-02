@@ -1,6 +1,7 @@
 # FRACTURE and CRATE
 
-Two audio effect plugins, built with JUCE as Audio Unit, VST3 and a standalone app.
+Two audio effect plugins, built with JUCE as Audio Unit, VST3 and a standalone app, for macOS
+and 64-bit Windows.
 
 - **FRACTURE** (`plugin/`) is a multi-band, multi-FX distortion after Output's Thermal and
   Minimal Audio's Rift. It splits the sound into up to three bands, each with two drive
@@ -25,6 +26,20 @@ On a Mac, with Xcode's command line tools and CMake:
 ./build-macos-all.sh              # build, install into your plug-in folders, validate
 ./build-macos-all.sh --dmg        # ... and pack a disk image of each
 ```
+
+On Windows, with Visual Studio 2022 (Community is fine, with "Desktop development with C++"),
+CMake and Git, from PowerShell:
+
+```
+.\build-windows.ps1              # build both VST3s and apps, run the DSP tests
+.\build-windows.ps1 -Install     # ... and copy the VST3s into Common Files\VST3 (as administrator)
+.\build-windows.ps1 -Package     # ... and pack a zip, and an installer if Inno Setup 6 is there
+```
+
+Ableton Live 12 finds them with Settings > Plug-Ins > "Use VST3 Plug-In System Folders" on,
+then Rescan. `packaging/windows/READ ME FIRST.txt` has the steps, sidechain included.
+`.github/workflows/windows.yml` does the same build on GitHub, adds the host smoke test and
+pluginval, and attaches the zip and installer to the run (and to a release on a `v*` tag).
 
 Elsewhere, the VST3s:
 
