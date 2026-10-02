@@ -299,13 +299,13 @@ int main(int argc, char** argv){
             // 1024 x 768) it opens fitted to the screen, never below its own
             // resize floor of two fifths
             const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
-            const auto area = display != nullptr ? display->userBounds : juce::Rectangle<int>();
+            const auto area = display != nullptr ? display->userBounds.toNearestInt() : juce::Rectangle<int>();
             const auto sizes = juce::String(w) + "x" + juce::String(h) + " on a "
                              + juce::String(area.getWidth()) + "x" + juce::String(area.getHeight()) + " screen";
             check("editor comes up big enough to work in", w >= 704 && h >= 396, sizes);
             const bool room = area.getWidth() >= 1760 + 80 && area.getHeight() >= 990 + 120;
-            check(room ? "  ... at its full design size, since the screen has room"
-                       : "  ... and fitted to a screen too small for its full size",
+            check(juce::String(room ? "  ... at its full design size, since the screen has room"
+                                    : "  ... and fitted to a screen too small for its full size"),
                   room ? (w == 1760 && h == 990)
                        : (w <= std::max(704, area.getWidth()) && h <= std::max(396, area.getHeight())),
                   sizes);
