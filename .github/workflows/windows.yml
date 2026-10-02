@@ -1,0 +1,125 @@
+# Builds BOTH plugins on a Windows runner with MSVC, runs the DSP tests and the
+# host smoke test, validates each VST3 with pluginval at strictness 10, and packs
+# a zip and an installer.
+#
+# Runs on every push that touches the plugins, from the Actions tab ("Run
+# workflow"), and on a v* tag. To release from the Actions tab, fill in
+# "release" with the tag to create (the macOS workflow's tag works: both attach
+# to the same release). Download "Fracture-and-Crate-Windows" from the run.
+#
+# On a private repository Windows minutes bill at 2x.
+name: Build both plugins for Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Attach to a release with this tag (for example v0.1.0). Leave empty to only build."
+        required: false
+        default: ""
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - '**'
+    paths:
+      - 'plugin/**'
+      - 'crate/**'
+      - 'tools/audition/common.h'
+      - 'packaging/windows/**'
+      - 'build-windows.ps1'
+      - '.github/workflows/windows.yml'
+
+jobs:
+  build:
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: .juce
+          key: juce-8.0.15-windows
+
+      # the same script a person runs on their own PC, so a green run here means
+      # that script works. It builds with MSVC and runs both test_core suites.
+      - name: Build both and run the DSP tests
+        run: ./build-windows.ps1
+
+      # renders both editors to PNG through the real wrapper code, and walks
+      # every preset through the processor
+      - name: Host smoke test
+        run: |
+          foreach ($d in "plugin", "crate") {
+            cmake --build "$d/build-windows" --config Release --parallel --target host_smoke
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          New-Item -ItemType Directory -Force -Path dist/shots | Out-Null
+          & plugin/build-windows/host_smoke_artefacts/Release/host_smoke.exe dist/shots/fracture-windows.png
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & crate/build-windows/host_smoke_artefacts/Release/host_smoke.exe dist/shots/crate-windows.png
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: pluginval
+        run: |
+          Invoke-WebRequest https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
+          Expand-Archive pluginval.zip -DestinationPath pluginval
+          $pv = (Get-ChildItem pluginval -Recurse -Filter pluginval.exe | Select-Object -First 1).FullName
+          $plugins = @(
+            "plugin/build-windows/Fracture_artefacts/Release/VST3/FRACTURE.vst3",
+            "crate/build-windows/Crate_artefacts/Release/VST3/CRATE.vst3")
+          foreach ($p in $plugins) {
+            foreach ($seed in 1, 2) {
+              Write-Host "==> $p, seed $seed"
+              # Start-Process -Wait: pluginval is a GUI-subsystem exe, so a bare
+              # call would return before it finished
+              $proc = Start-Process -FilePath $pv -NoNewWindow -Wait -PassThru -ArgumentList @(
+                "--strictness-level", "10", "--random-seed", "$seed",
+                "--timeout-ms", "600000", "--validate", (Resolve-Path $p).Path)
+              if ($proc.ExitCode -ne 0) { Write-Host "pluginval failed on $p"; exit 1 }
+            }
+          }
+
+      - name: Install Inno Setup
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: Zip and installer
+        run: ./packaging/windows/make-package.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fracture-and-Crate-Windows
+          path: |
+            dist/*.zip
+            dist/*.exe
+            dist/shots/*.png
+          retention-days: 30
+
+      - name: Attach to a release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          $tag = if ($env:RELEASE) { $env:RELEASE } else { $env:GITHUB_REF_NAME }
+          $files = Get-ChildItem dist -File | Where-Object { $_.Extension -in ".zip", ".exe" } | ForEach-Object { $_.FullName }
+          # the macOS workflow may have made the release already; add to it
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag @files --target $env:GITHUB_SHA --title "FRACTURE and CRATE $tag" `
+              --notes "Unsigned beta build of both plugins. Windows: VST3 and standalone apps, 64-bit. Tested by machine, not yet by ear: save your project first."
+            # lost a race with the macOS run creating it: add to theirs
+            if ($LASTEXITCODE -ne 0) { gh release upload $tag @files --clobber }
+          } else {
+            gh release upload $tag @files --clobber
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

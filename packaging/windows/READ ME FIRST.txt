@@ -1,0 +1,93 @@
+FRACTURE and CRATE for Windows
+==============================
+
+Two audio plugins, as VST3 for 64-bit Windows 10 and 11.
+
+FRACTURE — multi-band multi-fx distortion. Three bands, two serial drive stages
+each with fifteen shaper modes (one of them a table of harmonics you draw), a bit
+crusher, a feedback loop, a resonant filter, two LFOs and an envelope follower
+into a six-slot modulation matrix.
+
+CRATE — twelve-bit drum processor. A 26.04 kHz sample clock, companded twelve-bit
+conversion, a four-pole filter, the noise floor of the record the break came off,
+and a swing section that pulls the off-beats late against the host's grid.
+
+They load in any 64-bit VST3 host: Ableton Live 12 (and 10.1 or later), Reaper,
+Cubase, Bitwig, FL Studio, Studio One. Standalone apps are included if you want
+to play without opening a DAW.
+
+
+INSTALLING
+----------
+
+With the installer (Fracture-and-Crate-...-Windows-Setup.exe):
+
+1. Run it. Windows SmartScreen will probably say "Windows protected your PC".
+   That is expected: these are unsigned personal builds, so Microsoft has no
+   publisher to check them against. Click "More info", then "Run anyway".
+
+2. It installs both VST3s into C:\Program Files\Common Files\VST3, the folder
+   every Windows host scans, and the standalone apps into Program Files with a
+   Start menu entry each.
+
+From the zip instead: copy FRACTURE.vst3 and CRATE.vst3 (each is a folder; copy
+the whole folder) from "VST3" into C:\Program Files\Common Files\VST3. Windows
+asks for administrator permission to write there.
+
+
+ABLETON LIVE 12
+---------------
+
+1. Open Live, then Options > Settings (Ctrl+,) > Plug-Ins.
+2. Turn on "Use VST3 Plug-In System Folders".
+3. Press "Rescan". Hold Alt while pressing it if Live had already scanned an
+   older build and does not pick up the new one.
+4. In the browser, under Plug-Ins > VST3, they appear as Fracture > FRACTURE
+   and Crate > CRATE. Drag one onto an audio track.
+
+Sidechain (FRACTURE's envelope follower can listen to another track): click the
+small triangle in the plug-in device's title bar to show the Sidechain section,
+turn it on, and pick the kick's track under "Audio From". Then set Follows to
+Sidechain in FRACTURE's Modulation panel.
+
+Live compensates for both plugins' latency automatically. Keep
+Options > Delay Compensation on.
+
+
+TWO THINGS ABOUT CRATE THAT LOOK LIKE BUGS AND ARE NOT
+-------------------------------------------------------
+
+SWING NEEDS THE TRANSPORT RUNNING. The grid comes from the host, so with
+playback stopped the swing knob does nothing at all.
+
+IT REPORTS LATENCY ON PURPOSE. The whole plugin sits behind a fixed delay (about
+120 ms) so Push can pull hits EARLIER as well as later. Your DAW compensates for
+it automatically, unless you have delay compensation switched off, in which case
+everything through it will sit late.
+
+
+WHAT GETS INSTALLED, AND WHERE
+------------------------------
+
+    C:\Program Files\Common Files\VST3\FRACTURE.vst3
+    C:\Program Files\Common Files\VST3\CRATE.vst3
+    C:\Program Files\Fracture and Crate\           (the standalone apps)
+
+Your own presets are saved in Documents\FRACTURE\Presets and
+Documents\CRATE\Presets, and the uninstaller leaves them alone. No background
+processes, nothing at login, and neither plugin opens a network connection of
+any kind. Uninstall from Settings > Apps > FRACTURE and CRATE.
+
+
+BEFORE YOU PUT THEM ON SOMETHING THAT MATTERS
+----------------------------------------------
+
+Both are early builds that have been measured rather than listened to. The
+converter, the filter and the swing offsets are all verified against the numbers
+printed on the panels, and neither plugin can produce silence, NaNs or runaway
+levels, but nobody has sat and made a record with either yet. The Windows builds
+are checked by machine (the DSP tests and pluginval) and have not yet been
+opened in Live by a person.
+
+Save your project first. Leave Safety clip on to start with; it hard-limits the
+output on both.
