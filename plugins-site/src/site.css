@@ -91,6 +91,7 @@ a:focus-visible,.btn:focus-visible{outline:3px solid var(--blue);outline-offset:
 .btn.ghost:hover{background:var(--ink)}
 .btn.off{background:var(--panel);color:var(--dim);border-style:dashed;pointer-events:none}
 .get .meta{font-size:13px;color:var(--dim);margin:6px 0 0}
+.get .meta+.btn,.get details+.btn{margin-top:16px}
 .get details{margin-top:10px;font-size:13px}
 .get summary{cursor:pointer;font-weight:600}
 .get code,.sum{font:12px/1.5 var(--mono);word-break:break-all}

@@ -45,9 +45,9 @@ ABLETON LIVE 12
 4. In the browser, under Plug-Ins > VST3, they appear as Fracture > FRACTURE
    and Crate > CRATE. Drag one onto an audio track.
 
-Sidechain (FRACTURE's envelope follower can listen to another track): click the
-small triangle in the plug-in device's title bar to show the Sidechain section,
-turn it on, and pick the kick's track under "Audio From". Then set Follows to
+Sidechain (FRACTURE's envelope follower can listen to another track): unfold
+the plug-in device (the small triangle in its title bar) to reach its Sidechain
+section, turn it on, and pick the kick's track under "Audio From". Then set Follows to
 Sidechain in FRACTURE's Modulation panel.
 
 Live compensates for both plugins' latency automatically. Keep
