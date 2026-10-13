@@ -10,6 +10,7 @@
 #include "History.h"
 #include "HarmonicTable.h"
 #include "Harmonics.h"
+#include "Randomise.h"
 #include "../../tools/audition/common.h"
 #include <cstdio>
 #include <cstdlib>
@@ -1869,6 +1870,117 @@ int main(int argc, char** argv){
         for (const auto& pr : all) if (std::string(presetCategory(pr.name)).empty()) noHeading += std::string(" [") + pr.name + "]";
         check("every factory preset has a heading in the menu", noHeading.empty(), noHeading);
         check("each plugin-only preset uses something only the plugin has", noFeature.empty(), noFeature);
+    }
+
+    std::printf("\nRandomise the distortion\n");
+    {
+        // the dice change the drive and crush only: every other parameter of
+        // every factory preset comes back bit for bit, over several rolls
+        const auto& all = factoryPresets();
+        auto presetValues = [&](size_t k){
+            std::vector<float> v(static_cast<size_t>(P.count()));
+            for (int i = 0; i < P.count(); ++i) v[static_cast<size_t>(i)] = P[i].def;
+            for (const auto& kv : audition::parseFlatJson(all[k].json)){
+                const int idx = P.index(kv.first);
+                float x = 0.0f; const auto& j = kv.second;
+                if (idx >= 0 && patchValueToParam(P[idx], j.text, j.isNumber, j.number, j.isBool, j.boolean, x))
+                    v[static_cast<size_t>(idx)] = x;
+            }
+            return v;
+        };
+        std::string moved, outOfRange;
+        int changed = 0, rolls = 0;
+        for (size_t k = 0; k < all.size(); ++k){
+            const auto before = presetValues(k);
+            for (std::uint64_t seed = 1; seed <= 8; ++seed){
+                const auto after = randomiseDrive(before, seed * 7919 + k);
+                ++rolls;
+                bool any = false;
+                for (int i = 0; i < P.count(); ++i){
+                    const float a = before[static_cast<size_t>(i)], b = after[static_cast<size_t>(i)];
+                    if (!randomisedByDice(P[i].id) && std::memcmp(&a, &b, sizeof a) != 0 && moved.size() < 400)
+                        moved += std::string(" [") + all[k].name + ": " + P[i].id + "]";
+                    const bool whole = P[i].kind == Kind::Float || b == std::round(b);
+                    if ((b < P[i].min || b > P[i].max || !whole) && outOfRange.size() < 400)
+                        outOfRange += " [" + P[i].id + " " + f2s(b, 3) + "]";
+                    any = any || a != b;
+                }
+                changed += any;
+            }
+        }
+        check("a roll leaves everything but the drive and crush exactly as it was (filter, LFOs, matrix, loop, output)",
+              moved.empty(), moved);
+        check("a roll gives every value a place on its control", outOfRange.empty(), outOfRange);
+        check("every roll changes something", changed == rolls, std::to_string(changed) + " of " + std::to_string(rolls));
+
+        // a roll reaches every mode, both ways round for the second stage and
+        // the crush, and the same seed always gives the same roll
+        const auto init = presetValues(0);
+        const int iM = P.index("m0a"), iSb = P.index("sb0"), iCr = P.index("crMix");
+        std::vector<int> modeSeen(static_cast<size_t>(numModes), 0);
+        int stageOn = 0, crushOn = 0;
+        for (std::uint64_t seed = 1; seed <= 200; ++seed){
+            const auto r = randomiseDrive(init, seed);
+            ++modeSeen[static_cast<size_t>(r[static_cast<size_t>(iM)])];
+            stageOn += r[static_cast<size_t>(iSb)] > 0.5f;
+            crushOn += r[static_cast<size_t>(iCr)] > 0.0f;
+        }
+        int modesReached = 0;
+        for (int c : modeSeen) modesReached += c > 0;
+        check("200 rolls reach every drive mode", modesReached == numModes, std::to_string(modesReached) + " of " + std::to_string(numModes));
+        check("the second stage and the crush come up some of the time, not always",
+              stageOn > 50 && stageOn < 150 && crushOn > 30 && crushOn < 120,
+              "stage " + std::to_string(stageOn) + ", crush " + std::to_string(crushOn) + " of 200");
+        check("the same seed rolls the same, and another seed rolls another",
+              randomiseDrive(init, 42) == randomiseDrive(init, 42) && randomiseDrive(init, 42) != randomiseDrive(init, 43));
+
+        // and what it rolls is usable: over the audition loop, every roll on
+        // Init stays finite, off the ceiling, and as loud as Init was. Without
+        // the levelling the same rolls spread over 13 dB
+        const auto loop = audition::makeLoop(48000.0, true);
+        auto play = [&](const std::vector<float>& vals){
+            Engine e; e.prepare(48000.0, 128);
+            for (int i = 0; i < P.count(); ++i) e.setParam(i, vals[static_cast<size_t>(i)]);
+            e.seedFrom(0);
+            audition::Stereo o = loop; double ppq = 0.0;
+            for (size_t i = 0; i < o.l.size(); i += 128){
+                const int m = static_cast<int>(std::min<size_t>(128, o.l.size() - i));
+                Transport t; t.bpm = 90; t.ppq = ppq; t.playing = true; t.valid = true;
+                e.setTransport(t);
+                float* io[2] = { o.l.data() + i, o.r.data() + i };
+                e.process(io, 2, m);
+                ppq += m / 48000.0 * 1.5;
+            }
+            return o;
+        };
+        const double initLoud = audition::loudness(play(init));
+        std::string bad;
+        double lo = 1e9, hi = -1e9, rawLo = 1e9, rawHi = -1e9;
+        std::vector<std::vector<float>> outs;
+        for (std::uint64_t seed = 1; seed <= 24; ++seed){
+            const auto o = play(randomiseDrive(init, seed));
+            const double rel = db(audition::loudness(o) / initLoud), pk = audition::peak(o);
+            lo = std::min(lo, rel); hi = std::max(hi, rel);
+            if (!std::isfinite(rel) || std::fabs(rel) > 3.0 || pk > 1.0)
+                bad += " [seed " + std::to_string(seed) + " " + f2s(rel, 1) + " dB, peak " + f2s(pk, 2) + "]";
+            outs.push_back(o.l);
+            const double raw = db(audition::loudness(play(randomiseDrive(init, seed, false))) / initLoud);
+            rawLo = std::min(rawLo, raw); rawHi = std::max(rawHi, raw);
+        }
+        check("24 rolls on Init are finite, never past full scale, and within 3 dB of Init's loudness (the presets' window)",
+              bad.empty(), bad.empty() ? f2s(lo, 1) + " to " + f2s(hi, 1) + " dB" : bad);
+        check("unlevelled, the same rolls are not (so the levelling is what holds them)",
+              rawHi - rawLo > 6.0, f2s(rawLo, 1) + " to " + f2s(rawHi, 1) + " dB");
+        // a filter preset keeps its filter and its rhythm, and its level
+        size_t fk = 0;
+        for (size_t k = 0; k < all.size(); ++k) if (std::string(all[k].name).rfind("Acid line", 0) == 0) fk = k;
+        const auto acid = presetValues(fk);
+        const double acidRel = db(audition::loudness(play(randomiseDrive(acid, 5))) / audition::loudness(play(acid)));
+        check("a roll on a filter-rhythm preset keeps its loudness too", fk > 0 && std::fabs(acidRel) < 3.0,
+              std::string(all[fk].name) + " " + f2s(acidRel, 1) + " dB");
+        int same = 0;
+        for (size_t a = 1; a < outs.size(); ++a) same += outs[a] == outs[0];
+        check("rolls sound different from each other", same == 0, std::to_string(same) + " identical to the first");
     }
 
     std::printf("\nTempo sync\n");

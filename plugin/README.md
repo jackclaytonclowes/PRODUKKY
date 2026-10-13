@@ -389,6 +389,24 @@ and the tremolo and output that end the chain. It used to be one tall column at
 1320 x 1376, which on a 1440 x 900 laptop opened at 57% and set its 9-point captions at
 about 5 points. At 1760 x 990 the same screen opens it at 77%.
 
+The knobs were then found too small to grab once the panel is scaled down to a laptop:
+46 px at design size is about 35 on that screen. They are 58 px now (46 for the
+modulation panel's, which were 34), and the panels were re-packed to find the room
+rather than the canvas growing, which would only have opened it smaller: the split's two
+choices stacked, the crush in a square beside the loop's knobs, the filter's knobs in two
+rows beside its curve, the envelope follower beside the live source bars, the output's
+switches stacked beside its knobs, and the displays given what is left. The sizes are
+`KnobBox::dial` and `dialSmall`.
+
+**Randomise**, in the Drive panel, rolls a new distortion and leaves the rest of the
+patch alone (`core/Randomise.h`). Each band gets a new Mode A and drive (up to 26 dB, not
+the full 32), a second stage half the time with a gentler drive, a tone tilt and a band
+mix, and the crusher comes in about a third of the time. Unlevelled, 24 rolls on Init
+spread from 6.6 dB quieter to 6.1 dB louder than they started, so the roll is levelled:
+the patch before and after is played a half-second probe (kick, snare, bass, chord),
+measured K-weighted like the presets, and every band's Level moves by the difference. A
+roll takes about 60 ms. It is applied inside one gesture, so it is one undo step.
+
 **Controls that do nothing right now are dimmed**, and their tooltip says why: FB pitch
 while the loop is timed in milliseconds, the filter's Drive and Drift on the clean
 circuit, an LFO that no matrix slot uses, the whole rhythm while its Mod is off. They still
@@ -417,7 +435,7 @@ The menu rereads the folder every time it opens.
 
 ## What is verified, and where
 
-`npm run test:core` — 174 assertions, no JUCE needed (`VERBOSE=1` prints what each one
+`npm run test:core` — 185 assertions, no JUCE needed (`VERBOSE=1` prints what each one
 measured):
 
 - **every shaper matches the JavaScript to 1e-12** across 9,114 points, including the
@@ -473,15 +491,20 @@ from the coefficients, because a nonlinear feedback loop has no coefficients to 
   repeats on the division to the sample; through the drive the third repeat carries
   40 dB more third harmonic than without; and the worst case (wrap at full drive, 85%,
   through the drive) stays inside the rails
+- **Randomise changes the drive and nothing else**: over every factory preset and eight
+  rolls each, every parameter outside the drive and crush comes back bit for bit; 200 rolls
+  reach all 15 modes; 24 rolls on Init land within 3 dB of Init's loudness (measured -0.4
+  to +1.9) and off full scale, where the same rolls unlevelled spread over 12.7 dB
 - undo and redo walk the stack in order, a fresh edit drops the redo, the stack is capped,
   and a value that did not round-trip exactly is not taken for an edit; A and B keep
   separate histories, B opens as a copy of A, and a switch is never an undo step
 
-`host_smoke` — 133 assertions at the host level: parameters exposed, latency reported,
+`host_smoke` — 137 assertions at the host level: parameters exposed, latency reported,
 blocks run without NaN, every preset renders, state round-trips, a browser patch imports
 and comes back out unchanged; a knob drag is one undo step (a version that committed on
-every value fails five checks), and so are a pad drag, a stroke across the steps, a preset
-and a paste; a session saved on B reopens on B with A held; your presets save, list in
+every value fails five checks), and so are a pad drag, a stroke across the steps, a preset,
+a paste and a press of Randomise, which moves only the drive (without its gestures it is
+no undo step at all, and the test fails); a session saved on B reopens on B with A held; your presets save, list in
 natural order and load back; the header's buttons and Ctrl + Z work; a value typed under a knob (2.5k, -6 dB, 12 dB of drive, C#4) lands in its units as one undo step, text that is not a number is refused and Escape changes nothing; a half-size editor still draws its bottom-right corner, and
 **the editor renders to a PNG** at both sizes so the interface can be looked at without
 opening a DAW.

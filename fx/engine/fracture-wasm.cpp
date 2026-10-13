@@ -13,6 +13,7 @@
 #include "../../plugin/core/FractureCore.h"
 #include "../../plugin/core/Relevance.h"
 #include "../../plugin/core/FilterResponse.h"
+#include "../../plugin/core/Randomise.h"
 
 using namespace fracture;
 
@@ -111,3 +112,6 @@ EXPORT(fx_rhythm_shape) double fx_rhythm_shape(int shape, double groove, double 
     return r.shapeAt(cycles);
 }
 EXPORT(fx_shape) double fx_shape(int mode, double x){ return shape(mode, x); }
+// the Drive panel's dice (Randomise.h), on the state in values[], in place:
+// the plugin's own roll and its levelling. The seed is a whole number below 2^53
+EXPORT(fx_randomise) void fx_randomise(double seed){ values = randomiseDrive(values, static_cast<uint64_t>(seed)); }

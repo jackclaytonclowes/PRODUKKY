@@ -5,6 +5,15 @@ before you try a new version on something that matters.
 
 ## Since 0.2.0
 
+**FRACTURE: bigger knobs, and a Randomise button.** The knobs were too small once the window
+is scaled to a laptop screen. They are about a quarter bigger (the modulation panel's by a
+third), and the panels are packed tighter to make the room, so the window is the same size
+and there is less empty space in it. **Randomise**, in the Drive panel, rolls a new
+distortion: new modes, drives, second stages, tone and crush, with the filter, the LFOs,
+the matrix, the loop and everything else left as they were. Each roll is levelled to the
+loudness it replaces and is one undo step. The browser version has it too. As with
+everything else here, it is measured, not yet judged by ear.
+
 **Windows.** Both plugins now build for 64-bit Windows as VST3 and standalone apps, with an
 installer that puts the VST3s in `C:\Program Files\Common Files\VST3`, where Ableton Live 12
 and every other Windows host look. The read-me in the download walks through Live's plug-in

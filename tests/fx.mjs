@@ -808,6 +808,22 @@ async function main() {
     check('B has its own undo', bUndo === -5, String(bUndo));
     await page.click('#btnA');
 
+    // Randomise: the plugin's roll, through the engine: the drive and crush
+    // change (and each band's level, to hold the loudness), nothing else
+    // does, and one Undo takes it all back
+    {
+      const before = await page.evaluate(() => ({ ...window.FX.state }));
+      await page.click('#btnDice');
+      const after = await page.evaluate(() => ({ ...window.FX.state }));
+      const drive = /^(m\d[ab]|d\d[ab]|sb\d|t\d|mx\d|lv\d|bits|redux|crMix)$/;
+      const moved = Object.keys(before).filter(k => before[k] !== after[k]);
+      check('Randomise changes the drive and nothing else', moved.length > 0 && moved.every(k => drive.test(k)), moved.join(' '));
+      await page.click('#btnUndo');
+      const back = await page.evaluate(() => ({ ...window.FX.state }));
+      const wrong = Object.keys(before).filter(k => back[k] !== before[k]);
+      check('  ... and one Undo takes the whole roll back', wrong.length === 0, wrong.join(' '));
+    }
+
     // the filter display: drag across moves the cutoff, up the resonance
     const fv = await (await page.$('#cvFilter')).boundingBox();
     const before = await page.evaluate(() => [window.FX.state.fltFreq, window.FX.state.fltQ]);

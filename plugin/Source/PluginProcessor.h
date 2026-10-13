@@ -52,6 +52,10 @@ public:
     bool loadUserPreset(const juce::File& file);
     bool pastePatch(const juce::String& json);           // a paste is one undo step
     juce::String userPresetName() const { return userPreset; }
+    // the Drive panel's dice (core/Randomise.h): a new distortion, levelled to
+    // the loudness it replaces, everything else in the patch left alone. One
+    // undo step, and one gesture the host sees
+    void randomiseDrive(uint64_t seed);
 
     // metering and scope data for the editor, written on the audio thread
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };

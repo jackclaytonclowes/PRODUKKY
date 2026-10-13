@@ -7,6 +7,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "FactoryPresets.h"
+#include "Randomise.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <typeinfo>
 #include <functional>
@@ -678,6 +679,34 @@ int main(int argc, char** argv){
                 check("the Redo button puts it back", std::abs(prm->getValue() - 0.9f) < 1.0e-3f);
                 check("Ctrl or Cmd + Z is undo", fe->keyPressed(juce::KeyPress('z', juce::ModifierKeys::commandModifier, 0))
                       && std::abs(prm->getValue() - was0) < 1.0e-4f);
+                {   // the Drive panel's dice: a new distortion, nothing else, one undo
+                    const fracture::Params& P = fracture::Params::get();
+                    proc.loadBrowserPatch(R"({"fltType":"lp","fltFreq":700,"l1Rate":3.3,"mS0":"lfo1","mD0":"fltFreq","mA0":40})");
+                    proc.session->commit();
+                    std::vector<float> before;
+                    for (int i = 0; i < P.count(); ++i) before.push_back(proc.apvts.getRawParameterValue(P[i].id)->load());
+                    const size_t depth = proc.session->undoDepth();
+                    fe->diceButton.triggerClick();
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                    juce::String movedElse; int movedDrive = 0;
+                    for (int i = 0; i < P.count(); ++i){
+                        const float now = proc.apvts.getRawParameterValue(P[i].id)->load();
+                        if (now == before[static_cast<size_t>(i)]) continue;
+                        if (fracture::randomisedByDice(P[i].id)) ++movedDrive; else movedElse << " " << P[i].id;
+                    }
+                    check("Randomise changes the drive and nothing else", movedDrive > 0 && movedElse.isEmpty(),
+                          juce::String(movedDrive) + " drive values moved;" + movedElse);
+                    check("  ... as one undo step", proc.session->undoDepth() == depth + 1,
+                          juce::String(static_cast<int>(proc.session->undoDepth() - depth)) + " steps");
+                    bar->undo.triggerClick();
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                    bool back = true;
+                    for (int i = 0; i < P.count(); ++i)
+                        back = back && std::abs(proc.apvts.getRawParameterValue(P[i].id)->load() - before[static_cast<size_t>(i)])
+                                       <= 1.0e-4f * std::max(1.0f, std::abs(before[static_cast<size_t>(i)]));
+                    check("  ... which Undo takes back whole", back);
+                    proc.setCurrentProgram(0);
+                }
                 bar->slotB.triggerClick();
                 juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
                 bar->refresh();

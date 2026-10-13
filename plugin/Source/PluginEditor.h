@@ -21,8 +21,13 @@ public:
     bool typeValue(const juce::String& text);          // what Enter does, for the tests too
     juce::String id() const { return info.id; }
     juce::Rectangle<int> valueArea() const;
-    static constexpr int w = 62, h = 76, wSmall = 56, hSmall = 62;
+    // the knob's diameter, and the box around it with its caption and value.
+    // 46 and 34 were found too small to grab once the window is scaled to a
+    // laptop screen; the panels were packed tighter to make room
+    static constexpr int dial = 58, dialSmall = 46, dialBeside = 38;
+    static constexpr int w = 68, h = 88, wSmall = 60, hSmall = 74;
 private:
+    int diameter() const { return beside ? dialBeside : (isSmall ? dialSmall : dial); }
     FractureProcessor& proc;
     const fracture::ParamInfo& info;
     juce::Slider slider;
@@ -278,6 +283,9 @@ private:
     std::unique_ptr<bauhaus::GuideOverlay> guide;
     std::unique_ptr<TableEditor> table;
     juce::TextButton tableButton { "Harmonic table" };
+public:
+    juce::TextButton diceButton { "Randomise" };     // a new distortion; public for the tests
+private:
     juce::Rectangle<int> guideArea;
     std::unique_ptr<juce::PropertiesFile> prefs;
 public:

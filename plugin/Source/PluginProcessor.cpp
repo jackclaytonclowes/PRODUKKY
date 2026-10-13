@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "FactoryPresets.h"
+#include "Randomise.h"
 
 using namespace fracture;
 
@@ -205,6 +206,21 @@ bool FractureProcessor::pastePatch(const juce::String& json){
     if (!loadBrowserPatch(json)) return false;
     session->commit();
     return true;
+}
+void FractureProcessor::randomiseDrive(uint64_t seed){
+    const Params& P = Params::get();
+    std::vector<float> now(static_cast<size_t>(P.count()));
+    for (int i = 0; i < P.count(); ++i) now[static_cast<size_t>(i)] = raw[static_cast<size_t>(i)]->load();
+    const auto next = fracture::randomiseDrive(now, seed);
+    std::vector<std::pair<juce::RangedAudioParameter*, float>> moved;
+    for (int i = 0; i < P.count(); ++i)
+        if (next[static_cast<size_t>(i)] != now[static_cast<size_t>(i)])
+            if (auto* p = apvts.getParameter(P[i].id)) moved.push_back({ p, next[static_cast<size_t>(i)] });
+    // every gesture open before the first value moves: the session takes its
+    // step when the last one closes, so the whole roll is one undo
+    for (auto& m : moved) m.first->beginChangeGesture();
+    for (auto& m : moved) m.first->setValueNotifyingHost(m.first->convertTo0to1(m.second));
+    for (auto& m : moved) m.first->endChangeGesture();
 }
 bool FractureProcessor::saveUserPreset(const juce::File& file){
     if (!userPresets.save(file, saveBrowserPatch())) return false;

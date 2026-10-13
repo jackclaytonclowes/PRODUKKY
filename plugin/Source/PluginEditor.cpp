@@ -122,16 +122,16 @@ KnobBox::KnobBox(FractureProcessor& p, const juce::String& paramId, juce::Colour
         proc.apvts, info.id, slider);
     valueText = fmtValue(info, slider.getValue());
     addChildComponent(entry);
-    if (beside) setSize(34 + 52, 44);             // knob, then its value to the right
+    if (beside) setSize(dialBeside + 52, 44);     // knob, then its value to the right
     else setSize(small ? wSmall : w, small ? hSmall : h);
 }
 void KnobBox::resized(){
-    const int d = isSmall ? 34 : 46;
+    const int d = diameter();
     if (beside) slider.setBounds(0, 14 + (30 - d) / 2 + 2, d, d);   // centred on a ChoiceBox's box
     else slider.setBounds((getWidth() - d) / 2, 0, d, d);
 }
 void KnobBox::paint(juce::Graphics& g){
-    const int d = isSmall ? 34 : 46;
+    const int d = diameter();
     if (beside){
         g.setColour(dim);
         g.setFont(mono(11.0f));
@@ -139,10 +139,10 @@ void KnobBox::paint(juce::Graphics& g){
         return;
     }
     if (showCaption)
-        drawTracked(g, caption, { 0, d + 3, getWidth(), 11 }, isSmall ? 8.5f : 9.0f, 1.1f,
+        drawTracked(g, caption, { 0, d + 3, getWidth(), 11 }, isSmall ? 9.0f : 9.5f, 1.1f,
                     juce::Justification::horizontallyCentred, ink);
     g.setColour(dim);
-    g.setFont(mono(isSmall ? 10.0f : 11.0f));
+    g.setFont(mono(isSmall ? 10.5f : 11.5f));
     g.drawText(valueText, 0, d + (showCaption ? 15 : 2), getWidth(), 12,
                juce::Justification::centred);
 }
@@ -150,14 +150,14 @@ void KnobBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35
 
 // the readout under (or beside) the knob, which is also where a value is typed
 juce::Rectangle<int> KnobBox::valueArea() const {
-    const int d = isSmall ? 34 : 46;
+    const int d = diameter();
     if (beside) return { d + 2, 14, getWidth() - d - 2, 30 };
     return juce::Rectangle<int>(0, d + (showCaption ? 15 : 2), getWidth(), 12).expanded(0, 2)
                .getIntersection(getLocalBounds());
 }
 void KnobBox::mouseDown(const juce::MouseEvent& e){
     if (!valueArea().contains(e.getPosition())) return;
-    entry.begin(valueText, valueArea(), mono(isSmall ? 10.0f : 11.0f), ink, face,
+    entry.begin(valueText, valueArea(), mono(isSmall ? 10.5f : 11.5f), ink, face,
                 [this](const juce::String& t){ return typeValue(t); });
 }
 // Read in the panel's own units (session::parseTyped), clamped to the range,
@@ -205,6 +205,7 @@ ToggleBox::ToggleBox(FractureProcessor& p, const juce::String& paramId,
     const auto& info = Params::get()[Params::get().index(paramId.toStdString())];
     juce::String label = juce::String(info.name);
     if (label.startsWith("B")) label = label.substring(3);
+    if (paramId == "fbThru") label = "Through drive";   // it sits under the loop's knobs, beside FB mode
     button.setButtonText(label);
     button.setClickingTogglesState(true);
     button.setColour(juce::TextButton::buttonOnColourId, onColour);
@@ -1171,8 +1172,8 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     };
 
     inRow    = { knob(pIn, "inGain", ink), knob(pIn, "preHP", ink), knob(pIn, "preLP", ink) };
-    splitRow = { choice(pSplit, "bands", "Bands", 108), knob(pSplit, "x1", ink), knob(pSplit, "x2", ink),
-                 divider(pSplit), choice(pSplit, "osFactor", "Oversampling", 108) };
+    splitRow = { choice(pSplit, "bands", "Bands", 116), choice(pSplit, "osFactor", "Oversampling", 116),
+                 knob(pSplit, "x1", ink), knob(pSplit, "x2", ink) };
     crushRow = { knob(pCrush, "bits", red), knob(pCrush, "redux", red), knob(pCrush, "crMix", red),
                  divider(pCrush),
                  knob(pCrush, "fbAmt", red), knob(pCrush, "fbTime", red), knob(pCrush, "fbNote", red),
@@ -1197,8 +1198,8 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     pRhythm->addAndMakeVisible(steps);
     reg("rhStep1", steps);                            // the eight steps dim together
     outRow   = { knob(pOut, "mix", ink), knob(pOut, "width", ink), knob(pOut, "outGain", ink) };
-    outRow.push_back(toggle(pOut, "autoGain", yellow, 92));
-    outRow.push_back(toggle(pOut, "safety", red, 92));
+    outRow.push_back(toggle(pOut, "autoGain", yellow, 180));
+    outRow.push_back(toggle(pOut, "safety", red, 180));
 
     tremHeadRow = { toggle(pTrem, "trOn", blue, 96), choice(pTrem, "trDiv", "Sync", 116) };
     tremKnobRow = { knob(pTrem, "trRate", blue), knob(pTrem, "trDepth", blue),
@@ -1249,8 +1250,8 @@ FractureEditor::FractureEditor(FractureProcessor& p)
         pMod->addAndMakeVisible(amt);
         knobs.push_back(amt);
         reg("mA" + s, amt);
-        matrixRow[k] = { choice(pMod, ("mS" + s).toRawUTF8(), k == 0 ? "Source" : "", 186),
-                         choice(pMod, ("mD" + s).toRawUTF8(), k == 0 ? "Target" : "", 206),
+        matrixRow[k] = { choice(pMod, ("mS" + s).toRawUTF8(), k == 0 ? "Source" : "", 240),
+                         choice(pMod, ("mD" + s).toRawUTF8(), k == 0 ? "Target" : "", 344),
                          amt };
     }
 
@@ -1294,6 +1295,11 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     tableButton.setTooltip("Draw the harmonics of the Table drive mode, and morph between four frames");
     tableButton.onClick = [this]{ setTableOpen(tableButton.getToggleState()); };
     pDrive->addAndMakeVisible(tableButton);
+    diceButton.setTooltip("A new distortion: fresh modes, drives, second stages, tone and crush in every band, "
+                          "levelled to the loudness it replaces. The split, filter, rhythm, LFOs, matrix, loop and "
+                          "output stay as they are. Undo takes it back");
+    diceButton.onClick = [this]{ proc.randomiseDrive(static_cast<uint64_t>(juce::Random::getSystemRandom().nextInt64())); };
+    pDrive->addAndMakeVisible(diceButton);
     setTips(prefs->getBoolValue("tooltips", true));
 
     built = true;
@@ -1543,118 +1549,150 @@ void FractureEditor::layoutDesign(){
     if (table) table->setBounds(guideArea);
     // Three rows across a wide canvas. It was one tall column at 1320 x 1376,
     // which on a 1440 x 900 screen opened at 57% and set 9-point captions at
-    // about 5; at 1760 x 990 the same screen shows it at 77%.
+    // about 5; at 1760 x 990 the same screen shows it at 77%. The knobs were
+    // then found too small to grab, so they grew (KnobBox::dial) and the
+    // panels were packed to make the room: choices stacked where a column had
+    // height to spare, the filter's and the crush's knobs in two rows, and
+    // the displays given what is left rather than a fixed size.
     const int gap = 14;
+    // a component at a place, at its own size
+    auto put = [](juce::Component* c, int x, int y){ c->setBounds(x, y, c->getWidth(), c->getHeight()); };
+    const int kw = KnobBox::w, kh = KnobBox::h;
 
     // ---- row 1: what goes in, how it is split, and the drive
     auto rowA = area.removeFromTop(160);
-    pIn->setBounds(rowA.removeFromLeft(238));
+    pIn->setBounds(rowA.removeFromLeft(3 * kw + 2 * 10 + 28));
     rowA.removeFromLeft(gap);
-    pSplit->setBounds(rowA.removeFromLeft(418));
+    pSplit->setBounds(rowA.removeFromLeft(116 + 16 + 2 * kw + 10 + 28));
     rowA.removeFromLeft(gap);
     pDrive->setBounds(rowA);
-    layoutRow(pIn->content().withSizeKeepingCentre(pIn->content().getWidth(), KnobBox::h), inRow);
-    layoutRow(pSplit->content().withSizeKeepingCentre(pSplit->content().getWidth(), KnobBox::h), splitRow);
+    layoutRow(pIn->content().withSizeKeepingCentre(pIn->content().getWidth(), kh), inRow, 10);
+    {   // the band count over the oversampling, then the two crossovers
+        auto inner = pSplit->content();
+        const int top = inner.getY() + (inner.getHeight() - 2 * 44 - 8) / 2;
+        put(splitRow[0], inner.getX(), top);
+        put(splitRow[1], inner.getX(), top + 44 + 8);
+        layoutRow({ inner.getX() + 116 + 16, inner.getCentreY() - kh / 2, inner.getWidth() - 132, kh },
+                  { splitRow[2], splitRow[3] }, 10);
+    }
     {
         auto inner = pDrive->content();
-        auto tabs = inner.removeFromTop(34);
+        auto tabs = inner.removeFromTop(30);
         for (int b = 0; b < 3; ++b){
-            bandTab[b].setBounds(tabs.removeFromLeft(210).withTrimmedBottom(4));
+            bandTab[b].setBounds(tabs.removeFromLeft(210));
             tabs.removeFromLeft(10);
         }
-        tableButton.setBounds(tabs.removeFromRight(170).withTrimmedBottom(4));
-        inner.removeFromTop(10);
+        tableButton.setBounds(tabs.removeFromRight(170));
+        tabs.removeFromRight(10);
+        diceButton.setBounds(tabs.removeFromRight(140));
+        inner.removeFromTop(4);
         for (int b = 0; b < 3; ++b){
             bandPane[b]->setBounds(inner);
-            layoutRow(bandPane[b]->getLocalBounds().withHeight(KnobBox::h), bandRow[b], 10);
+            layoutRow(bandPane[b]->getLocalBounds().withHeight(kh), bandRow[b], 14);
         }
     }
 
     // ---- row 2: crush and the loop, the filter, and the filter's rhythm
     area.removeFromTop(gap);
-    auto rowB = area.removeFromTop(190);
-    pCrush->setBounds(rowB.removeFromLeft(502));
+    auto rowB = area.removeFromTop(214);
+    pCrush->setBounds(rowB.removeFromLeft(2 * kw + 8 + 14 + 2 + 14 + 4 * kw + 3 * 8 + 28));
     rowB.removeFromLeft(gap);
-    pFilter->setBounds(rowB.removeFromLeft(rowB.getWidth() - gap - 612));
-    rowB.removeFromLeft(gap);
-    pRhythm->setBounds(rowB);
-    {   // the loop's length is a time, a pitch or a division, and the row
-        // under the knobs says which, and whether it goes back through the drive
+    pRhythm->setBounds(rowB.removeFromRight(5 * kw + 104 + 110 + 6 * 6 + 28));
+    rowB.removeFromRight(gap);
+    pFilter->setBounds(rowB);
+    {   // the crush in a square on the left; the loop's four knobs on the
+        // right, and under them what its length is and where it goes
         auto inner = pCrush->content();
-        layoutRow(inner.removeFromTop(KnobBox::h), crushRow, 5);
-        inner.removeFromTop(12);
-        layoutRow(inner.withHeight(44), fbRow, 10);
+        const int x = inner.getX(), y = inner.getY();
+        put(crushRow[0], x, y);
+        put(crushRow[1], x + kw + 8, y);
+        put(crushRow[2], x + (kw + 8) / 2, y + kh);
+        crushRow[3]->setBounds(x + 2 * kw + 8 + 14, y, 2, inner.getHeight());
+        const int fx = x + 2 * kw + 8 + 14 + 2 + 14;
+        layoutRow({ fx, y, inner.getRight() - fx, kh }, { crushRow[4], crushRow[5], crushRow[6], crushRow[7] }, 8);
+        const int widths[] = { 84, 84 };
+        int cx = fx;
+        for (int i = 0; i < 3; ++i){
+            const int wdt = i < 2 ? widths[i] : inner.getRight() - cx;
+            fbRow[static_cast<size_t>(i)]->setBounds(cx, y + kh + 18, wdt, 44);
+            cx += wdt + 8;
+        }
     }
-    {   // three columns, like the hardware-shaped filters it is after: what it
-        // is, the curve it makes, and the knobs that move it
-        auto inner = pFilter->content().withTrimmedTop(4);
+    {   // what it is in a column, the curve it makes, and the knobs in two rows
+        auto inner = pFilter->content();
         auto choices = inner.removeFromLeft(116);
-        for (auto* c : filterTypeRow){ c->setBounds(choices.removeFromTop(44).withWidth(116)); choices.removeFromTop(4); }
+        const int step = (choices.getHeight() - 3 * 44) / 2;
+        for (auto* c : filterTypeRow){ c->setBounds(choices.removeFromTop(44).withWidth(116)); choices.removeFromTop(step); }
         inner.removeFromLeft(12);
-        auto knobs = inner.removeFromRight(3 * KnobBox::w + 2 * 8);
+        auto knobs = inner.removeFromRight(3 * kw + 2 * 6);
         inner.removeFromRight(12);
-        filterView->setBounds(inner.withTrimmedBottom(2));
-        layoutRow(knobs.removeFromTop(KnobBox::h), { filterKnobRow[0], filterKnobRow[1], filterKnobRow[2] }, 8);
-        layoutRow(knobs.removeFromTop(KnobBox::h), { filterKnobRow[3], filterKnobRow[4] }, 8);
+        filterView->setBounds(inner);
+        layoutRow(knobs.removeFromTop(kh), { filterKnobRow[0], filterKnobRow[1], filterKnobRow[2] }, 6);
+        layoutRow(knobs.removeFromTop(kh), { filterKnobRow[3], filterKnobRow[4] }, 6);
     }
     {   // the rhythm's controls, and under them the steps it plays
         auto inner = pRhythm->content();
-        layoutRow(inner.removeFromTop(KnobBox::h), rhythmRow, 10);
-        inner.removeFromTop(8);
+        layoutRow(inner.removeFromTop(kh), rhythmRow, 6);
+        inner.removeFromTop(6);
         steps->setBounds(inner);
     }
 
     // ---- row 3: modulation, the scope, and the end of the chain
     area.removeFromTop(gap);
     auto rowC = area;
-    pMod->setBounds(rowC.removeFromLeft(720));
+    pMod->setBounds(rowC.removeFromLeft(2 * (2 * KnobBox::wSmall + 2 * 100 + 3 * 8) + 16 + 28));
     rowC.removeFromLeft(gap);
-    auto rightCol = rowC.removeFromRight(440);
+    auto rightCol = rowC.removeFromRight(6 * kw + 5 * 6 + 28 + 4);
     rowC.removeFromRight(gap);
-    pPerform->setBounds(rowC.removeFromBottom(236));
+    pPerform->setBounds(rowC.removeFromBottom(2 * kh + 8 + Panel::barHeight + 12));
     rowC.removeFromBottom(gap);
     pScope->setBounds(rowC);
-    {   // the pad is square; the macros stand beside it, and what they move under them
+    {   // the pad is square; the macros stand beside it, and what they move beside them
         auto inner = pPerform->content();
         pad->setBounds(inner.removeFromLeft(inner.getHeight()));
         inner.removeFromLeft(12);
-        auto knobsCol = inner.removeFromLeft(KnobBox::w);
-        layoutRow(knobsCol.removeFromTop(KnobBox::h), { performRow[0] });
-        knobsCol.removeFromTop(8);
-        layoutRow(knobsCol.removeFromTop(KnobBox::h), { performRow[1] });
+        auto knobsCol = inner.removeFromLeft(kw);
+        put(performRow[0], knobsCol.getX(), knobsCol.getY());
+        put(performRow[1], knobsCol.getX(), knobsCol.getY() + kh + 8);
         inner.removeFromLeft(12);
         routes->setBounds(inner);
     }
-    pOut->setBounds(rightCol.removeFromBottom(172));
+    pOut->setBounds(rightCol.removeFromBottom(kh + Panel::barHeight + 12));
     rightCol.removeFromBottom(gap);
     pTrem->setBounds(rightCol);
-    {
+    {   // the three knobs, and the two switches stacked beside them
         auto inner = pOut->content();
-        layoutRow(inner.removeFromTop(KnobBox::h), { outRow[0], outRow[1], outRow[2] });
-        inner.removeFromTop(8);
-        layoutRow(inner.withHeight(44), { outRow[3], outRow[4] }, 8);
+        layoutRow(inner.removeFromLeft(3 * kw + 2 * 10).withHeight(kh), { outRow[0], outRow[1], outRow[2] }, 10);
+        inner.removeFromLeft(16);
+        outRow[3]->setBounds(inner.getX(), inner.getY() - 6, inner.getWidth(), 44);
+        outRow[4]->setBounds(inner.getX(), inner.getY() + 38, inner.getWidth(), 44);
     }
     {
         auto inner = pTrem->content();
         layoutRow(inner.removeFromTop(44), tremHeadRow, 10);
-        inner.removeFromTop(10);
-        layoutRow(inner.removeFromTop(KnobBox::h), tremKnobRow, 8);
+        inner.removeFromTop(8);
+        layoutRow(inner.removeFromTop(kh), tremKnobRow, 6);
         inner.removeFromTop(8);
         tremStrip->setBounds(inner);
     }
     {
         auto inner = pMod->content();
-        auto lfos = inner.removeFromTop(14 + KnobBox::hSmall + 6);
+        const int sh = KnobBox::hSmall;
+        auto lfos = inner.removeFromTop(14 + sh);
         auto left = lfos.removeFromLeft(lfos.getWidth() / 2 - 8);
         auto right = lfos.withTrimmedLeft(16);
         lfoCaption[0]->setBounds(left.removeFromTop(14));
         lfoCaption[1]->setBounds(right.removeFromTop(14));
-        layoutRow(left.withHeight(KnobBox::hSmall), lfoRow[0], 8);
-        layoutRow(right.withHeight(KnobBox::hSmall), lfoRow[1], 8);
-        envCaption->setBounds(inner.removeFromTop(14));
-        layoutRow(inner.removeFromTop(KnobBox::hSmall), envRow, 10);
-        inner.removeFromTop(8);
-        modSources->setBounds(inner.removeFromTop(40));
+        layoutRow(left.withHeight(sh), lfoRow[0], 8);
+        layoutRow(right.withHeight(sh), lfoRow[1], 8);
+        inner.removeFromTop(6);
+        // the envelope's controls, and beside them where every source is now
+        auto env = inner.removeFromTop(14 + sh);
+        auto envLeft = env.removeFromLeft(3 * KnobBox::wSmall + 100 + 3 * 10);
+        envCaption->setBounds(envLeft.removeFromTop(14));
+        layoutRow(envLeft.withHeight(sh), envRow, 10);
+        env.removeFromLeft(16);
+        modSources->setBounds(env.withTrimmedTop(6));
         inner.removeFromTop(8);
         matrixCaption->setBounds(inner.removeFromTop(14));
         inner.removeFromTop(2);

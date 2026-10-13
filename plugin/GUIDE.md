@@ -47,6 +47,7 @@ The panel reads in the order the sound flows: top row first, left to right, then
 - **Stage B** adds a second distortion after the first, with its own **Mode B** and **Drive B**.
 - **Tone** tilts the band brighter or darker between the two stages.
 - **Mix** blends this band's distortion with its clean sound, and **Level** sets its volume. **Mute** and **Solo** help you hear one band at a time.
+- **Randomise**, beside the band tabs, rolls a new distortion: a fresh Mode A and Drive A in every band, a second stage about half the time, a new Tone and Mix, and the bit crusher some of the time. Everything else stays as it was: the split, the filter and its rhythm, the LFOs, the matrix, the feedback loop, the tremolo and the output. It also keeps the loudness where it was, by moving each band's **Level** the same amount, so you hear a new character rather than a jump in volume. Press it as often as you like; **Undo** takes back one roll at a time.
 - **Stereo** picks which part of the band the drive works on. **L/R** is both channels, as normal. **Mid** drives only what the two sides share (the kick, the bass, the vocal) and leaves the stereo spread clean, so a mix bus stays wide. **Side** drives only the width and leaves the centre clean, for a wider, more excited top.
 
 ## The harmonic table
