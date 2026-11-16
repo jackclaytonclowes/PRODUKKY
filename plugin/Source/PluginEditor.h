@@ -21,7 +21,7 @@ public:
     bool typeValue(const juce::String& text);          // what Enter does, for the tests too
     juce::String id() const { return info.id; }
     juce::Rectangle<int> valueArea() const;
-    static constexpr int w = 62, h = 76, wSmall = 56, hSmall = 62;
+    static constexpr int w = 66, h = 82, wSmall = 60, hSmall = 70;
 private:
     FractureProcessor& proc;
     const fracture::ParamInfo& info;
@@ -61,7 +61,7 @@ public:
     Panel(int number, juce::String title, juce::Colour hue);
     void paint(juce::Graphics&) override;
     juce::Rectangle<int> content() const;
-    static constexpr int barHeight = 26;
+    static constexpr int barHeight = 30;
 private:
     int no;
     juce::String title;
@@ -251,7 +251,7 @@ private:
     FractureProcessor& proc;
     bauhaus::Look look;
 
-    static constexpr int designW = 1760, designH = 990;
+    static constexpr int designW = 1760, designH = 1000;
     bauhaus::Canvas canvas { designW, designH };       // everything is drawn on this
 
     void paintDesign(juce::Graphics&);                 // both work in design coordinates

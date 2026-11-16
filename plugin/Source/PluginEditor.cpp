@@ -122,42 +122,57 @@ KnobBox::KnobBox(FractureProcessor& p, const juce::String& paramId, juce::Colour
         proc.apvts, info.id, slider);
     valueText = fmtValue(info, slider.getValue());
     addChildComponent(entry);
-    if (beside) setSize(34 + 52, 44);             // knob, then its value to the right
+    if (beside) setSize(36 + 62, 48);             // knob, then its value to the right
     else setSize(small ? wSmall : w, small ? hSmall : h);
 }
+static int dialFor(bool small){ return small ? 36 : 48; }
 void KnobBox::resized(){
-    const int d = isSmall ? 34 : 46;
-    if (beside) slider.setBounds(0, 14 + (30 - d) / 2 + 2, d, d);   // centred on a ChoiceBox's box
+    const int d = dialFor(isSmall);
+    if (beside) slider.setBounds(0, 16 + (32 - d) / 2, d, d);       // centred on a ChoiceBox's box
     else slider.setBounds((getWidth() - d) / 2, 0, d, d);
 }
+// how wide drawTracked will set a caption, so a long one ("FB pitch") closes
+// its spacing up to fit under the knob instead of running into the next
+static float trackedWidth(const juce::String& text, float height, float tracking){
+    const auto font = grot(height, true);
+    const auto up = text.toUpperCase();
+    float total = 0.0f;
+    for (int i = 0; i < up.length(); ++i)
+        total += juce::GlyphArrangement::getStringWidth(font, juce::String::charToString(up[i])) + tracking;
+    return total;
+}
 void KnobBox::paint(juce::Graphics& g){
-    const int d = isSmall ? 34 : 46;
+    const int d = dialFor(isSmall);
     if (beside){
         g.setColour(dim);
-        g.setFont(mono(11.0f));
-        g.drawText(valueText, d + 6, 14, getWidth() - d - 6, 30, juce::Justification::centredLeft);
+        g.setFont(mono(12.5f));
+        g.drawText(valueText, d + 6, 16, getWidth() - d - 6, 32, juce::Justification::centredLeft);
         return;
     }
-    if (showCaption)
-        drawTracked(g, caption, { 0, d + 3, getWidth(), 11 }, isSmall ? 8.5f : 9.0f, 1.1f,
+    if (showCaption){
+        const float size = isSmall ? 10.0f : 10.5f;
+        float tracking = 1.1f;
+        while (tracking > -0.4f && trackedWidth(caption, size, tracking) > getWidth() - 2) tracking -= 0.25f;
+        drawTracked(g, caption, { 0, d + 3, getWidth(), 13 }, size, tracking,
                     juce::Justification::horizontallyCentred, ink);
+    }
     g.setColour(dim);
-    g.setFont(mono(isSmall ? 10.0f : 11.0f));
-    g.drawText(valueText, 0, d + (showCaption ? 15 : 2), getWidth(), 12,
+    g.setFont(mono(isSmall ? 11.5f : 12.5f));
+    g.drawText(valueText, 0, d + (showCaption ? 17 : 2), getWidth(), 14,
                juce::Justification::centred);
 }
 void KnobBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); slider.setTooltip(tip); }
 
 // the readout under (or beside) the knob, which is also where a value is typed
 juce::Rectangle<int> KnobBox::valueArea() const {
-    const int d = isSmall ? 34 : 46;
-    if (beside) return { d + 2, 14, getWidth() - d - 2, 30 };
-    return juce::Rectangle<int>(0, d + (showCaption ? 15 : 2), getWidth(), 12).expanded(0, 2)
+    const int d = dialFor(isSmall);
+    if (beside) return { d + 2, 16, getWidth() - d - 2, 32 };
+    return juce::Rectangle<int>(0, d + (showCaption ? 17 : 2), getWidth(), 14).expanded(0, 2)
                .getIntersection(getLocalBounds());
 }
 void KnobBox::mouseDown(const juce::MouseEvent& e){
     if (!valueArea().contains(e.getPosition())) return;
-    entry.begin(valueText, valueArea(), mono(isSmall ? 10.0f : 11.0f), ink, face,
+    entry.begin(valueText, valueArea(), mono(isSmall ? 11.5f : 12.5f), ink, face,
                 [this](const juce::String& t){ return typeValue(t); });
 }
 // Read in the panel's own units (session::parseTyped), clamped to the range,
@@ -193,11 +208,11 @@ ChoiceBox::ChoiceBox(FractureProcessor& p, const juce::String& paramId,
     addAndMakeVisible(box);
     attach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         p.apvts, paramId, box);
-    setSize(width, 44);
+    setSize(width, 48);
 }
-void ChoiceBox::resized(){ box.setBounds(0, 14, getWidth(), 30); }
+void ChoiceBox::resized(){ box.setBounds(0, 16, getWidth(), 32); }
 void ChoiceBox::paint(juce::Graphics& g){
-    drawTracked(g, caption, { 0, 0, getWidth(), 11 }, 9.0f, 1.6f, juce::Justification::left, dim);
+    drawTracked(g, caption, { 0, 0, getWidth(), 13 }, 10.5f, 1.4f, juce::Justification::left, dim);
 }
 
 ToggleBox::ToggleBox(FractureProcessor& p, const juce::String& paramId,
@@ -211,13 +226,13 @@ ToggleBox::ToggleBox(FractureProcessor& p, const juce::String& paramId,
     addAndMakeVisible(button);
     attach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         p.apvts, paramId, button);
-    setSize(width, 44);
+    setSize(width, 48);
 }
-void ToggleBox::resized(){ button.setBounds(0, 14, getWidth(), 30); }
+void ToggleBox::resized(){ button.setBounds(0, 16, getWidth(), 32); }
 
 Panel::Panel(int number, juce::String t, juce::Colour h) : no(number), title(std::move(t)), hue(h) {}
 juce::Rectangle<int> Panel::content() const {
-    return getLocalBounds().withTrimmedTop(barHeight).reduced(14, 0).withTrimmedBottom(12);
+    return getLocalBounds().withTrimmedTop(barHeight + 4).reduced(14, 0).withTrimmedBottom(12);
 }
 void Panel::paint(juce::Graphics& g){
     g.setColour(panelBg);
@@ -226,9 +241,9 @@ void Panel::paint(juce::Graphics& g){
     g.fillRect(getLocalBounds().removeFromTop(barHeight));
     const bool light = hue.getPerceivedBrightness() < 0.6f;
     auto bar = getLocalBounds().removeFromTop(barHeight).reduced(10, 0);
-    drawTracked(g, juce::String(no).paddedLeft('0', 2), bar.removeFromLeft(20), 9.0f, 1.0f,
+    drawTracked(g, juce::String(no).paddedLeft('0', 2), bar.removeFromLeft(24), 10.5f, 1.0f,
                 juce::Justification::left, (light ? face : ink).withAlpha(0.65f));
-    drawTracked(g, title, bar, 10.0f, 2.2f, juce::Justification::left, light ? face : ink);
+    drawTracked(g, title, bar, 12.5f, 2.0f, juce::Justification::left, light ? face : ink);
     g.setColour(ink);
     g.drawRect(getLocalBounds(), 2);
 }
@@ -300,13 +315,13 @@ static void drawFilterCurve(juce::Graphics& g, juce::Rectangle<float> fr, const 
         g.fillPath(dashed);
     }
     if (labels){
-        g.setFont(mono(9.0f));
+        g.setFont(mono(10.5f));
         for (const auto& [f, label] : { std::pair<double, const char*>{ 100.0, "100" }, { 1000.0, "1k" }, { 10000.0, "10k" } })
-            g.drawText(label, juce::Rectangle<float>(xOf(f) + 3.0f, fr.getBottom() - 12.0f, 30.0f, 11.0f), juce::Justification::left);
+            g.drawText(label, juce::Rectangle<float>(xOf(f) + 3.0f, fr.getBottom() - 14.0f, 34.0f, 13.0f), juce::Justification::left);
     }
     if (st.type <= 0){
         if (!labels){
-            g.setColour(dim); g.setFont(mono(10.0f));
+            g.setColour(dim); g.setFont(mono(11.5f));
             g.drawText("Filter off", fr, juce::Justification::centred);
         }
         return;
@@ -330,9 +345,9 @@ static void drawFilterCurve(juce::Graphics& g, juce::Rectangle<float> fr, const 
     const juce::String hz = st.freq >= 1000.0 ? juce::String(st.freq / 1000.0, st.freq < 10000.0 ? 2 : 1) + " kHz"
                                               : juce::String(juce::roundToInt(st.freq)) + " Hz";
     const juce::String text = labels ? juce::String(filterTypeLabel(st.type)) + " · " + hz : hz;
-    g.setFont(mono(labels ? 11.0f : 10.0f));
+    g.setFont(mono(labels ? 12.5f : 11.5f));
     const float tw = juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), text) + 12.0f;
-    auto tag = juce::Rectangle<float>(juce::jlimit(fr.getX(), fr.getRight() - tw, cx - tw * 0.5f), fr.getY() + 4.0f, tw, 17.0f);
+    auto tag = juce::Rectangle<float>(juce::jlimit(fr.getX(), fr.getRight() - tw, cx - tw * 0.5f), fr.getY() + 4.0f, tw, 19.0f);
     g.setColour(face); g.fillRect(tag);
     g.setColour(blue); g.drawRect(tag, 1.5f);
     g.drawText(text, tag, juce::Justification::centred);
@@ -341,7 +356,7 @@ static void drawFilterCurve(juce::Graphics& g, juce::Rectangle<float> fr, const 
 void Scope::paint(juce::Graphics& g){
     auto area = getLocalBounds();
     auto specArea = area.removeFromTop(area.getHeight() * 55 / 100);
-    auto readoutRow = area.removeFromTop(14);
+    auto readoutRow = area.removeFromTop(17);
     auto curveArea = area;
 
     // ---- spectrum: flat bars, three regions following the live crossovers
@@ -382,13 +397,13 @@ void Scope::paint(juce::Graphics& g){
     }
     // and the harmonics of a tone, marked where they fall
     if (readingAge <= 15){
-        g.setFont(mono(9.0f));
+        g.setFont(mono(10.5f));
         for (int h = 1; h <= 5; ++h){              // past the 5th they crowd on a log axis
             const double f = h * reading.f0;
             if (!reading.inRange[h] || f < 20.0 || f > 20000.0) continue;
             const float x = inner.getX() + inner.getWidth() * static_cast<float>(std::log(f / 20.0) / std::log(1000.0));
             // numbered tags along the top, clear of the bars
-            const auto tag = juce::Rectangle<float>(x - 6.0f, inner.getY() + 24.0f, 12.0f, 12.0f);
+            const auto tag = juce::Rectangle<float>(x - 7.0f, inner.getY() + 26.0f, 14.0f, 14.0f);
             g.setColour(face); g.fillRect(tag);
             g.setColour(ink); g.drawRect(tag, 1.0f);
             g.drawText(juce::String(h), tag, juce::Justification::centred);
@@ -400,7 +415,7 @@ void Scope::paint(juce::Graphics& g){
     drawFilterCurve(g, specArea.reduced(3).toFloat(), proc.filterState(),
                     proc.getSampleRate() > 0 ? proc.getSampleRate() : 48000.0, true);
     g.setColour(readingAge <= 15 ? ink : dim);
-    g.setFont(mono(10.0f));
+    g.setFont(mono(11.5f));
     g.drawText(readoutText(), readoutRow.reduced(2, 0), juce::Justification::centredLeft);
 
     // ---- transfer curve of the selected band, computed from the parameters
@@ -447,7 +462,7 @@ void Scope::paint(juce::Graphics& g){
     g.setColour(yellow);
     g.strokePath(curve, juce::PathStrokeType(4.0f, juce::PathStrokeType::curved));
     g.setColour(dim);
-    g.setFont(mono(10.0f));
+    g.setFont(mono(11.5f));
     static const char* names[] = { "low", "mid", "high" };
     g.drawText(juce::String(names[band]) + " band · transfer curve",
                curveArea.reduced(9, 6), juce::Justification::topLeft);
@@ -466,9 +481,9 @@ void Meters::paint(juce::Graphics& g){
     auto area = getLocalBounds();
     const int each = area.getWidth() / 2;
     for (int i = 0; i < 2; ++i){
-        auto col = area.removeFromLeft(each).reduced(6, 0);
-        auto num = col.removeFromBottom(14);
-        auto cap = col.removeFromBottom(14);
+        auto col = area.removeFromLeft(each).reduced(3, 0);
+        auto num = col.removeFromBottom(16);
+        auto cap = col.removeFromBottom(16);
         auto bar = col.withSizeKeepingCentre(20, col.getHeight());
         g.setColour(face); g.fillRect(bar);
         const float norm = juce::jlimit(0.0f, 1.0f, (vals[i] + 60.0f) / 60.0f);
@@ -479,8 +494,8 @@ void Meters::paint(juce::Graphics& g){
             g.setColour(red); g.fillRect(over);
         }
         g.setColour(ink); g.drawRect(bar, 2);
-        drawTracked(g, caps[i], cap, 9.0f, 1.8f, juce::Justification::horizontallyCentred, ink);
-        g.setColour(dim); g.setFont(mono(10.0f));
+        drawTracked(g, caps[i], cap, 10.5f, 1.6f, juce::Justification::horizontallyCentred, ink);
+        g.setColour(dim); g.setFont(mono(11.5f));
         g.drawText(vals[i] <= -59.5f ? juce::String("-inf") : juce::String(vals[i], 1),
                    num, juce::Justification::centred);
     }
@@ -542,7 +557,7 @@ void TremStrip::paint(juce::Graphics& g){
     juce::String label = div > 0 ? juce::String(divNames[div]) + "  at  " + juce::String(bpm, 1) + " BPM"
                                  : juce::String(get("trRate"), 2) + " Hz  free";
     if (!on) label = "off  -  " + label;
-    drawTracked(g, label, plot.removeFromBottom(11), 8.0f, 1.4f, juce::Justification::left, dim);
+    drawTracked(g, label, plot.removeFromBottom(13), 10.0f, 1.2f, juce::Justification::left, dim);
 }
 
 ModSources::ModSources(FractureProcessor& p) : proc(p){ startTimerHz(30); }
@@ -555,8 +570,8 @@ void ModSources::paint(juce::Graphics& g){
     const int rowH = area.getHeight() / 4;
     for (int i = 0; i < 4; ++i){
         auto row = area.removeFromTop(rowH);
-        drawTracked(g, names[i], row.removeFromLeft(46), 9.0f, 1.8f, juce::Justification::left, ink);
-        auto bar = row.reduced(0, rowH / 2 - 5);
+        drawTracked(g, names[i], row.removeFromLeft(58), 10.5f, 1.4f, juce::Justification::left, ink);
+        auto bar = row.reduced(0, juce::jmax(2, rowH / 2 - 7));
         g.setColour(face); g.fillRect(bar);
         g.setColour(ink); g.drawRect(bar, 2);
         const float v = juce::jlimit(-1.0f, 1.0f, vals[i]);
@@ -642,7 +657,7 @@ void XYPad::paint(juce::Graphics& g){
     g.fillRect(px - 0.75f, f.getY(), 1.5f, f.getHeight());
     g.setColour(yellow); g.fillEllipse(px - 9.0f, py - 9.0f, 18.0f, 18.0f);
     g.setColour(ink);    g.drawEllipse(px - 9.0f, py - 9.0f, 18.0f, 18.0f, 2.5f);
-    g.setColour(dim); g.setFont(mono(10.0f));
+    g.setColour(dim); g.setFont(mono(11.5f));
     g.drawText("X " + juce::String(juce::roundToInt(x * 100)) + "  Y " + juce::String(juce::roundToInt(y * 100)),
                area.reduced(8, 6), juce::Justification::topRight);
     g.setColour(ink); g.drawRect(area, 2);
@@ -674,10 +689,10 @@ void PerformRoutes::paint(juce::Graphics& g){
     const int rowH = area.getHeight() / 4;
     for (int i = 0; i < 4; ++i){
         auto row = area.removeFromTop(rowH);
-        drawTracked(g, names[i], row.removeFromTop(12), 8.5f, 1.4f, juce::Justification::left, ink);
+        drawTracked(g, names[i], row.removeFromTop(15), 10.5f, 1.2f, juce::Justification::left, ink);
         const auto r = routesFor(proc, 6 + i);
         g.setColour(r.isEmpty() ? dim2 : dim);
-        g.setFont(mono(10.0f));
+        g.setFont(mono(11.5f));
         g.drawFittedText(r.isEmpty() ? juce::String("not routed: pick it as a matrix source")
                                      : r.joinIntoString(", "),
                          row, juce::Justification::topLeft, 2, 0.9f);
@@ -771,7 +786,7 @@ static void layoutRow(juce::Rectangle<int> area, const std::vector<juce::Compone
 
 class Caption : public juce::Component {
 public:
-    Caption(juce::String t, juce::Colour accent) : text(std::move(t)), hue(accent){ setSize(200, 14); }
+    Caption(juce::String t, juce::Colour accent) : text(std::move(t)), hue(accent){ setSize(240, 16); }
     void paint(juce::Graphics& g) override {
         auto area = getLocalBounds();
         if (!hue.isTransparent()){
@@ -779,7 +794,7 @@ public:
             g.fillRect(area.removeFromLeft(4));
             area.removeFromLeft(6);
         }
-        drawTracked(g, text, area, 9.0f, 1.8f, juce::Justification::left, dim);
+        drawTracked(g, text, area, 10.5f, 1.6f, juce::Justification::left, dim);
     }
 private:
     juce::String text;
@@ -832,12 +847,12 @@ void HarmonicStrip::paint(juce::Graphics& g){
     g.setColour(ink); g.drawRect(getLocalBounds(), weight > 0.0 ? 3 : 2);
     const juce::String dot = juce::String::fromUTF8("\xc2\xb7");       // a middle dot, spelt out as UTF-8
     drawTracked(g, "FRAME " + juce::String(frame + 1) + (weight > 0.0 ? "  " + dot + "  " + juce::String(juce::roundToInt(weight * 100)) + "% HEARD" : ""),
-                getLocalBounds().removeFromTop(22).reduced(8, 0), 9.0f, 2.0f, juce::Justification::centredLeft, ink);
+                getLocalBounds().removeFromTop(22).reduced(8, 0), 10.5f, 1.6f, juce::Justification::centredLeft, ink);
     const auto L = lane();
     const float w = L.getWidth() / static_cast<float>(tableHarmonics);
     const float mid = L.getCentreY();
     g.setColour(track); g.drawHorizontalLine(juce::roundToInt(mid), static_cast<float>(L.getX()), static_cast<float>(L.getRight()));
-    g.setFont(mono(9.0f));
+    g.setFont(mono(10.5f));
     for (int k = 0; k < tableHarmonics; ++k){
         const float v = bar(k)->convertFrom0to1(bar(k)->getValue()) / 100.0f;
         const float h = std::fabs(v) * L.getHeight() * 0.5f;
@@ -1006,17 +1021,17 @@ void TableEditor::paint(juce::Graphics& g){
     g.fillAll(face);
     g.setColour(ink); g.drawRect(getLocalBounds(), 3);
     auto title = getLocalBounds().reduced(22).removeFromTop(40);
-    g.setFont(grot(22.0f, true)); g.setColour(ink);
+    g.setFont(grot(25.0f, true)); g.setColour(ink);
     g.drawText("Harmonic table", title.removeFromLeft(260), juce::Justification::centredLeft);
     drawTracked(g, "Draw the harmonics a full sine should come out with. Position morphs frame 1 to 4",
-                title, 9.0f, 1.6f, juce::Justification::centredLeft, dim);
+                title, 10.5f, 1.3f, juce::Justification::centredLeft, dim);
 
     TableCurve curve; double pos = 0.0;
     tableCurveNow(proc, curve, &pos);
     auto box = [&](juce::Rectangle<int> a, const juce::String& caption){
         g.setColour(panelBg); g.fillRect(a);
         g.setColour(ink); g.drawRect(a, 2);
-        drawTracked(g, caption, a.removeFromTop(20).reduced(8, 0), 8.5f, 1.8f, juce::Justification::centredLeft, dim);
+        drawTracked(g, caption, a.removeFromTop(22).reduced(8, 0), 10.0f, 1.4f, juce::Justification::centredLeft, dim);
     };
     // the curve itself, input across, output up
     box(curveArea, "THE CURVE AT " + juce::String(juce::roundToInt(pos * 100)) + "%");
@@ -1060,13 +1075,13 @@ void TableEditor::paint(juce::Graphics& g){
         double top = 1e-9;
         for (int k = 1; k <= tableHarmonics; ++k) top = std::max(top, std::fabs(curve.harmonic(k)));
         const float w = a.getWidth() / tableHarmonics;
-        g.setFont(mono(9.0f));
+        g.setFont(mono(10.5f));
         for (int k = 1; k <= tableHarmonics; ++k){
             const float h = static_cast<float>(std::fabs(curve.harmonic(k)) / top) * a.getHeight();
             g.setColour(harmonicHue(k));
             g.fillRect(a.getX() + (k - 1) * w + 2.0f, a.getBottom() - h, w - 4.0f, h);
             g.setColour(dim);
-            g.drawText(juce::String(k), juce::Rectangle<float>(a.getX() + (k - 1) * w, a.getBottom() + 1.0f, w, 12.0f), juce::Justification::centred);
+            g.drawText(juce::String(k), juce::Rectangle<float>(a.getX() + (k - 1) * w, a.getBottom() + 1.0f, w, 13.0f), juce::Justification::centred);
         }
     }
     // is anything using it?
@@ -1080,7 +1095,7 @@ void TableEditor::paint(juce::Graphics& g){
                     && static_cast<int>(proc.apvts.getRawParameterValue("m" + s + "b")->load()) == t)) ++users;
         }
         g.setColour(users ? dim : red);
-        g.setFont(grot(12.0f));
+        g.setFont(grot(14.0f));
         g.drawFittedText(users ? "Drive sets how fully the recipe comes through: it is exact where the input fills the curve."
                                : "Not heard yet: choose Table as Mode A or B in a band.",
                          noteArea, juce::Justification::topLeft, 6);
@@ -1178,7 +1193,7 @@ FractureEditor::FractureEditor(FractureProcessor& p)
                  knob(pCrush, "fbAmt", red), knob(pCrush, "fbTime", red), knob(pCrush, "fbNote", red),
                  knob(pCrush, "fbTone", red) };
     fbRow = { choice(pCrush, "fbMode", "FB mode", 100), choice(pCrush, "fbDiv", "FB division", 110),
-              toggle(pCrush, "fbThru", red, 150) };
+              toggle(pCrush, "fbThru", red, 172) };
     filterTypeRow = { choice(pFilter, "fltType", "Type", 116),
                       choice(pFilter, "fltCirc", "Circuit", 116),
                       choice(pFilter, "fltPoles", "Slope", 96) };
@@ -1197,8 +1212,8 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     pRhythm->addAndMakeVisible(steps);
     reg("rhStep1", steps);                            // the eight steps dim together
     outRow   = { knob(pOut, "mix", ink), knob(pOut, "width", ink), knob(pOut, "outGain", ink) };
-    outRow.push_back(toggle(pOut, "autoGain", yellow, 92));
-    outRow.push_back(toggle(pOut, "safety", red, 92));
+    outRow.push_back(toggle(pOut, "autoGain", yellow, 104));
+    outRow.push_back(toggle(pOut, "safety", red, 120));
 
     tremHeadRow = { toggle(pTrem, "trOn", blue, 96), choice(pTrem, "trDiv", "Sync", 116) };
     tremKnobRow = { knob(pTrem, "trRate", blue), knob(pTrem, "trDepth", blue),
@@ -1226,8 +1241,8 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     for (int i = 0; i < 2; ++i){
         const juce::String n = juce::String(i + 1);
         lfoRow[i] = { knob(pMod, ("l" + n + "Rate").toRawUTF8(), blue, true),
-                      choice(pMod, ("l" + n + "Div").toRawUTF8(), "Sync", 100),
-                      choice(pMod, ("l" + n + "Shape").toRawUTF8(), "Shape", 100),
+                      choice(pMod, ("l" + n + "Div").toRawUTF8(), "Sync", 96),
+                      choice(pMod, ("l" + n + "Shape").toRawUTF8(), "Shape", 96),
                       knob(pMod, ("l" + n + "Depth").toRawUTF8(), blue, true) };
     }
     envRow = { knob(pMod, "envAtk", red, true), knob(pMod, "envRel", red, true),
@@ -1249,8 +1264,8 @@ FractureEditor::FractureEditor(FractureProcessor& p)
         pMod->addAndMakeVisible(amt);
         knobs.push_back(amt);
         reg("mA" + s, amt);
-        matrixRow[k] = { choice(pMod, ("mS" + s).toRawUTF8(), k == 0 ? "Source" : "", 186),
-                         choice(pMod, ("mD" + s).toRawUTF8(), k == 0 ? "Target" : "", 206),
+        matrixRow[k] = { choice(pMod, ("mS" + s).toRawUTF8(), k == 0 ? "Source" : "", 262),
+                         choice(pMod, ("mD" + s).toRawUTF8(), k == 0 ? "Target" : "", 290),
                          amt };
     }
 
@@ -1266,7 +1281,7 @@ FractureEditor::FractureEditor(FractureProcessor& p)
     scope = make<Scope>(proc);
     pScope->addAndMakeVisible(scope);
     meters = make<Meters>(proc);
-    pScope->addAndMakeVisible(meters);
+    pOut->addAndMakeVisible(meters);              // in and out, where the output controls are
 
     setResizable(true, true);
     setResizeLimits(designW * 2 / 5, designH * 2 / 5, designW * 2, designH * 2);
@@ -1481,19 +1496,19 @@ void FractureEditor::paintDesign(juce::Graphics& g){
     }
     header.removeFromLeft(14);
     g.setColour(ink);
-    g.setFont(grot(32.0f, true));
+    g.setFont(grot(36.0f, true));
     {
         // the version beside the name, so "which one have I got?" is answered
         // by looking, not by digging in the plug-in folder
-        const auto titleRow = header.removeFromTop(32);
+        const auto titleRow = header.removeFromTop(34);
         g.drawText("FRACTURE", titleRow, juce::Justification::topLeft);
-        const int nameW = juce::roundToInt(juce::GlyphArrangement::getStringWidth(grot(32.0f, true), "FRACTURE"));
+        const int nameW = juce::roundToInt(juce::GlyphArrangement::getStringWidth(grot(36.0f, true), "FRACTURE"));
         g.setColour(dim);
-        g.setFont(grot(11.0f, true));
+        g.setFont(grot(12.5f, true));
         g.drawText("v" JucePlugin_VersionString, titleRow.withTrimmedLeft(nameW + 8).withTrimmedBottom(5),
                    juce::Justification::bottomLeft);
     }
-    drawTracked(g, "Multi-band multi-fx distortion", header, 9.0f, 2.6f,
+    drawTracked(g, "Multi-band multi-fx distortion", header, 10.5f, 2.0f,
                 juce::Justification::left, dim);
 
     // ---- the colour ribbon under the header
@@ -1516,24 +1531,24 @@ void FractureEditor::layoutDesign(){
     auto header = area.removeFromTop(46);
     auto right = header.removeFromRight(1100);
     sessionBar->setBounds(right.removeFromLeft(session::SessionBar::preferredWidth).withSizeKeepingCentre(
-        session::SessionBar::preferredWidth, 30));
+        session::SessionBar::preferredWidth, 32));
     right.removeFromLeft(20);
-    tipsButton.setBounds(right.removeFromLeft(70).withSizeKeepingCentre(70, 30));
+    tipsButton.setBounds(right.removeFromLeft(70).withSizeKeepingCentre(70, 32));
     right.removeFromLeft(8);
-    guideButton.setBounds(right.removeFromLeft(84).withSizeKeepingCentre(84, 30));
+    guideButton.setBounds(right.removeFromLeft(84).withSizeKeepingCentre(84, 32));
     right.removeFromLeft(14);
     // previous, the menu, next: presets one click apart without opening the list
-    presetMenu->prev.setBounds(right.removeFromLeft(30).withSizeKeepingCentre(30, 30));
+    presetMenu->prev.setBounds(right.removeFromLeft(30).withSizeKeepingCentre(30, 32));
     right.removeFromLeft(2);
-    presetMenu->box.setBounds(right.removeFromLeft(250).withSizeKeepingCentre(250, 30));
+    presetMenu->box.setBounds(right.removeFromLeft(250).withSizeKeepingCentre(250, 32));
     right.removeFromLeft(2);
-    presetMenu->next.setBounds(right.removeFromLeft(30).withSizeKeepingCentre(30, 30));
+    presetMenu->next.setBounds(right.removeFromLeft(30).withSizeKeepingCentre(30, 32));
     right.removeFromLeft(4);
-    presetMenu->saveButton.setBounds(right.removeFromLeft(60).withSizeKeepingCentre(60, 30));
+    presetMenu->saveButton.setBounds(right.removeFromLeft(60).withSizeKeepingCentre(60, 32));
     right.removeFromLeft(8);
-    copyButton.setBounds(right.removeFromLeft(120).withSizeKeepingCentre(120, 30));
+    copyButton.setBounds(right.removeFromLeft(120).withSizeKeepingCentre(120, 32));
     right.removeFromLeft(8);
-    pasteButton.setBounds(right.removeFromLeft(120).withSizeKeepingCentre(120, 30));
+    pasteButton.setBounds(right.removeFromLeft(120).withSizeKeepingCentre(120, 32));
 
     area.removeFromTop(10);
     area.removeFromTop(8);                                   // the ribbon, painted below
@@ -1543,18 +1558,21 @@ void FractureEditor::layoutDesign(){
     if (table) table->setBounds(guideArea);
     // Three rows across a wide canvas. It was one tall column at 1320 x 1376,
     // which on a 1440 x 900 screen opened at 57% and set 9-point captions at
-    // about 5; at 1760 x 990 the same screen shows it at 77%.
+    // about 5; at 1760 x 1000 the same screen shows it at 77%, and the
+    // captions are 10.5 points, so about 8 there. The width is what decides
+    // the scale on a laptop, so the text grew into the rows' slack rather
+    // than widening the canvas: the band row, the widest, is full.
     const int gap = 14;
 
     // ---- row 1: what goes in, how it is split, and the drive
-    auto rowA = area.removeFromTop(160);
-    pIn->setBounds(rowA.removeFromLeft(238));
+    auto rowA = area.removeFromTop(Panel::barHeight + 4 + 34 + 10 + KnobBox::h + 12);
+    pIn->setBounds(rowA.removeFromLeft(244));
     rowA.removeFromLeft(gap);
     pSplit->setBounds(rowA.removeFromLeft(418));
     rowA.removeFromLeft(gap);
     pDrive->setBounds(rowA);
-    layoutRow(pIn->content().withSizeKeepingCentre(pIn->content().getWidth(), KnobBox::h), inRow);
-    layoutRow(pSplit->content().withSizeKeepingCentre(pSplit->content().getWidth(), KnobBox::h), splitRow);
+    layoutRow(pIn->content().withSizeKeepingCentre(pIn->content().getWidth(), KnobBox::h), inRow, 6);
+    layoutRow(pSplit->content().withSizeKeepingCentre(pSplit->content().getWidth(), KnobBox::h), splitRow, 10);
     {
         auto inner = pDrive->content();
         auto tabs = inner.removeFromTop(34);
@@ -1562,18 +1580,18 @@ void FractureEditor::layoutDesign(){
             bandTab[b].setBounds(tabs.removeFromLeft(210).withTrimmedBottom(4));
             tabs.removeFromLeft(10);
         }
-        tableButton.setBounds(tabs.removeFromRight(170).withTrimmedBottom(4));
+        tableButton.setBounds(tabs.removeFromRight(190).withTrimmedBottom(4));
         inner.removeFromTop(10);
         for (int b = 0; b < 3; ++b){
             bandPane[b]->setBounds(inner);
-            layoutRow(bandPane[b]->getLocalBounds().withHeight(KnobBox::h), bandRow[b], 10);
+            layoutRow(bandPane[b]->getLocalBounds().withHeight(KnobBox::h), bandRow[b], 8);
         }
     }
 
     // ---- row 2: crush and the loop, the filter, and the filter's rhythm
     area.removeFromTop(gap);
-    auto rowB = area.removeFromTop(190);
-    pCrush->setBounds(rowB.removeFromLeft(502));
+    auto rowB = area.removeFromTop(Panel::barHeight + 4 + 2 * KnobBox::h + 4 + 12);
+    pCrush->setBounds(rowB.removeFromLeft(522));
     rowB.removeFromLeft(gap);
     pFilter->setBounds(rowB.removeFromLeft(rowB.getWidth() - gap - 612));
     rowB.removeFromLeft(gap);
@@ -1581,15 +1599,15 @@ void FractureEditor::layoutDesign(){
     {   // the loop's length is a time, a pitch or a division, and the row
         // under the knobs says which, and whether it goes back through the drive
         auto inner = pCrush->content();
-        layoutRow(inner.removeFromTop(KnobBox::h), crushRow, 5);
-        inner.removeFromTop(12);
-        layoutRow(inner.withHeight(44), fbRow, 10);
+        layoutRow(inner.removeFromTop(KnobBox::h), crushRow, 4);
+        inner.removeFromTop(14);
+        layoutRow(inner.withHeight(48), fbRow, 10);
     }
     {   // three columns, like the hardware-shaped filters it is after: what it
         // is, the curve it makes, and the knobs that move it
         auto inner = pFilter->content().withTrimmedTop(4);
         auto choices = inner.removeFromLeft(116);
-        for (auto* c : filterTypeRow){ c->setBounds(choices.removeFromTop(44).withWidth(116)); choices.removeFromTop(4); }
+        for (auto* c : filterTypeRow){ c->setBounds(choices.removeFromTop(48).withWidth(116)); choices.removeFromTop(4); }
         inner.removeFromLeft(12);
         auto knobs = inner.removeFromRight(3 * KnobBox::w + 2 * 8);
         inner.removeFromRight(12);
@@ -1599,8 +1617,8 @@ void FractureEditor::layoutDesign(){
     }
     {   // the rhythm's controls, and under them the steps it plays
         auto inner = pRhythm->content();
-        layoutRow(inner.removeFromTop(KnobBox::h), rhythmRow, 10);
-        inner.removeFromTop(8);
+        layoutRow(inner.removeFromTop(KnobBox::h), rhythmRow, 6);
+        inner.removeFromTop(10);
         steps->setBounds(inner);
     }
 
@@ -1609,9 +1627,9 @@ void FractureEditor::layoutDesign(){
     auto rowC = area;
     pMod->setBounds(rowC.removeFromLeft(720));
     rowC.removeFromLeft(gap);
-    auto rightCol = rowC.removeFromRight(440);
+    auto rightCol = rowC.removeFromRight(6 * KnobBox::w + 5 * 8 + 28);
     rowC.removeFromRight(gap);
-    pPerform->setBounds(rowC.removeFromBottom(236));
+    pPerform->setBounds(rowC.removeFromBottom(220));
     rowC.removeFromBottom(gap);
     pScope->setBounds(rowC);
     {   // the pad is square; the macros stand beside it, and what they move under them
@@ -1620,60 +1638,67 @@ void FractureEditor::layoutDesign(){
         inner.removeFromLeft(12);
         auto knobsCol = inner.removeFromLeft(KnobBox::w);
         layoutRow(knobsCol.removeFromTop(KnobBox::h), { performRow[0] });
-        knobsCol.removeFromTop(8);
+        knobsCol.removeFromTop(4);
         layoutRow(knobsCol.removeFromTop(KnobBox::h), { performRow[1] });
         inner.removeFromLeft(12);
         routes->setBounds(inner);
     }
-    pOut->setBounds(rightCol.removeFromBottom(172));
+    // the output: its three knobs over its two switches, and the meters
+    // beside them, which used to take a column of the Scope
+    pOut->setBounds(rightCol.removeFromBottom(Panel::barHeight + 4 + KnobBox::h + 8 + 48 + 12));
     rightCol.removeFromBottom(gap);
     pTrem->setBounds(rightCol);
     {
         auto inner = pOut->content();
-        layoutRow(inner.removeFromTop(KnobBox::h), { outRow[0], outRow[1], outRow[2] });
+        meters->setBounds(inner.removeFromRight(84));
+        inner.removeFromRight(16);
+        auto top = inner.removeFromTop(KnobBox::h);
+        const int spread = juce::jlimit(8, 36, (top.getWidth() - 3 * KnobBox::w) / 2);
+        layoutRow(top, { outRow[0], outRow[1], outRow[2] }, spread);
         inner.removeFromTop(8);
-        layoutRow(inner.withHeight(44), { outRow[3], outRow[4] }, 8);
+        layoutRow(inner.withHeight(48), { outRow[3], outRow[4] }, 12);
     }
     {
         auto inner = pTrem->content();
-        layoutRow(inner.removeFromTop(44), tremHeadRow, 10);
+        layoutRow(inner.removeFromTop(48), tremHeadRow, 10);
         inner.removeFromTop(10);
         layoutRow(inner.removeFromTop(KnobBox::h), tremKnobRow, 8);
         inner.removeFromTop(8);
         tremStrip->setBounds(inner);
     }
     {
+        // the two LFOs side by side; under them the envelope follower, with
+        // the four sources' live values beside it rather than on a row of
+        // their own; then the matrix
         auto inner = pMod->content();
-        auto lfos = inner.removeFromTop(14 + KnobBox::hSmall + 6);
+        auto lfos = inner.removeFromTop(16 + KnobBox::hSmall + 4);
         auto left = lfos.removeFromLeft(lfos.getWidth() / 2 - 8);
         auto right = lfos.withTrimmedLeft(16);
-        lfoCaption[0]->setBounds(left.removeFromTop(14));
-        lfoCaption[1]->setBounds(right.removeFromTop(14));
+        lfoCaption[0]->setBounds(left.removeFromTop(16));
+        lfoCaption[1]->setBounds(right.removeFromTop(16));
         layoutRow(left.withHeight(KnobBox::hSmall), lfoRow[0], 8);
         layoutRow(right.withHeight(KnobBox::hSmall), lfoRow[1], 8);
-        envCaption->setBounds(inner.removeFromTop(14));
-        layoutRow(inner.removeFromTop(KnobBox::hSmall), envRow, 10);
-        inner.removeFromTop(8);
-        modSources->setBounds(inner.removeFromTop(40));
-        inner.removeFromTop(8);
-        matrixCaption->setBounds(inner.removeFromTop(14));
+        auto envBlock = inner.removeFromTop(16 + KnobBox::hSmall);
+        auto envLeft = envBlock.removeFromLeft(envBlock.getWidth() / 2 - 8);
+        envBlock.removeFromLeft(16);
+        envCaption->setBounds(envLeft.removeFromTop(16));
+        layoutRow(envLeft.withHeight(KnobBox::hSmall), envRow, 10);
+        modSources->setBounds(envBlock.reduced(0, 4));
+        inner.removeFromTop(6);
+        matrixCaption->setBounds(inner.removeFromTop(16));
         inner.removeFromTop(2);
         // each slot on one line: source, target, and its amount with the
         // value beside the knob rather than under it, which used to run into
         // the next row. Only the first slot has captions over its boxes; the
-        // others start their (empty) caption strip 8 px up, so the boxes sit
+        // others start their (empty) caption strip 12 px up, so the boxes sit
         // on a 36 px pitch
         for (int k = 0; k < 6; ++k){
-            auto r = inner.removeFromTop(k == 0 ? 46 : 36);
-            if (k > 0) r = r.withTop(r.getY() - 8).withHeight(44);
+            auto r = inner.removeFromTop(k == 0 ? 48 : 36);
+            if (k > 0) r = r.withTop(r.getY() - 12).withHeight(48);
             layoutRow(r, matrixRow[k], 10);
         }
     }
     {
-        auto inner = pScope->content();
-        auto metersArea = inner.removeFromRight(96);
-        meters->setBounds(metersArea);
-        inner.removeFromRight(10);
-        scope->setBounds(inner);
+        scope->setBounds(pScope->content());
     }
 }

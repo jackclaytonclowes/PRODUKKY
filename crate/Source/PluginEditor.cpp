@@ -87,19 +87,31 @@ KnobBox::KnobBox(CrateProcessor& p, const juce::String& paramId, juce::Colour hu
     addChildComponent(entry);
     setSize(w, h);
 }
-void KnobBox::resized(){ slider.setBounds((getWidth() - 46) / 2, 0, 46, 46); }
+void KnobBox::resized(){ slider.setBounds((getWidth() - dial) / 2, 0, dial, dial); }
+// how wide drawTracked will set a caption, so a long one ("Pitch trick")
+// closes its spacing up to fit under the knob instead of being cut off
+static float trackedWidth(const juce::String& text, float height, float tracking){
+    const auto font = grot(height, true);
+    const auto up = text.toUpperCase();
+    float total = 0.0f;
+    for (int i = 0; i < up.length(); ++i)
+        total += juce::GlyphArrangement::getStringWidth(font, juce::String::charToString(up[i])) + tracking;
+    return total;
+}
 void KnobBox::paint(juce::Graphics& g){
-    drawTracked(g, caption, { 0, 50, getWidth(), 11 }, 9.0f, 1.1f,
+    float tracking = 1.1f;
+    while (tracking > -0.4f && trackedWidth(caption, 10.5f, tracking) > getWidth() - 2) tracking -= 0.25f;
+    drawTracked(g, caption, { 0, dial + 4, getWidth(), 13 }, 10.5f, tracking,
                 juce::Justification::horizontallyCentred, ink);
     g.setColour(dim);
-    g.setFont(mono(11.0f));
-    g.drawText(valueText, 0, 63, getWidth(), 12, juce::Justification::centred);
+    g.setFont(mono(12.5f));
+    g.drawText(valueText, valueArea().withSizeKeepingCentre(getWidth(), 15), juce::Justification::centred);
 }
 void KnobBox::setState(bool idle, const juce::String& tip){ setAlpha(idle ? 0.35f : 1.0f); slider.setTooltip(tip); }
 
 void KnobBox::mouseDown(const juce::MouseEvent& e){
     if (!valueArea().contains(e.getPosition())) return;
-    entry.begin(valueText, valueArea(), mono(11.0f), ink, face,
+    entry.begin(valueText, valueArea(), mono(12.5f), ink, face,
                 [this](const juce::String& t){ return typeValue(t); });
 }
 // Read in the panel's own units (session::parseTyped), clamped to the range,
@@ -131,11 +143,11 @@ ChoiceBox::ChoiceBox(CrateProcessor& p, const juce::String& paramId,
     addAndMakeVisible(box);
     attach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         p.apvts, paramId, box);
-    setSize(width, 44);
+    setSize(width, 48);
 }
-void ChoiceBox::resized(){ box.setBounds(0, 14, getWidth(), 30); }
+void ChoiceBox::resized(){ box.setBounds(0, 16, getWidth(), 32); }
 void ChoiceBox::paint(juce::Graphics& g){
-    drawTracked(g, caption, { 0, 0, getWidth(), 11 }, 9.0f, 1.6f, juce::Justification::left, dim);
+    drawTracked(g, caption, { 0, 0, getWidth(), 13 }, 10.5f, 1.4f, juce::Justification::left, dim);
 }
 
 ToggleBox::ToggleBox(CrateProcessor& p, const juce::String& paramId,
@@ -147,22 +159,22 @@ ToggleBox::ToggleBox(CrateProcessor& p, const juce::String& paramId,
     addAndMakeVisible(button);
     attach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         p.apvts, paramId, button);
-    setSize(width, 44);
+    setSize(width, 48);
 }
-void ToggleBox::resized(){ button.setBounds(0, 14, getWidth(), 30); }
+void ToggleBox::resized(){ button.setBounds(0, 16, getWidth(), 32); }
 
 Panel::Panel(int number, juce::String t, juce::Colour h) : no(number), title(std::move(t)), hue(h) {}
 juce::Rectangle<int> Panel::content() const {
-    return getLocalBounds().withTrimmedTop(barHeight).reduced(14, 0).withTrimmedBottom(12);
+    return getLocalBounds().withTrimmedTop(barHeight + 8).reduced(14, 0).withTrimmedBottom(10);
 }
 void Panel::paint(juce::Graphics& g){
     g.setColour(panelBg); g.fillRect(getLocalBounds());
     g.setColour(hue);     g.fillRect(getLocalBounds().removeFromTop(barHeight));
     const bool light = hue.getPerceivedBrightness() < 0.6f;
     auto bar = getLocalBounds().removeFromTop(barHeight).reduced(10, 0);
-    drawTracked(g, juce::String(no).paddedLeft('0', 2), bar.removeFromLeft(20), 9.0f, 1.0f,
+    drawTracked(g, juce::String(no).paddedLeft('0', 2), bar.removeFromLeft(24), 10.5f, 1.0f,
                 juce::Justification::left, (light ? face : ink).withAlpha(0.65f));
-    drawTracked(g, title, bar, 10.0f, 2.2f, juce::Justification::left, light ? face : ink);
+    drawTracked(g, title, bar, 12.5f, 2.0f, juce::Justification::left, light ? face : ink);
     g.setColour(ink); g.drawRect(getLocalBounds(), 2);
 }
 
@@ -173,9 +185,9 @@ void FeelStrip::paint(juce::Graphics& g){
     g.setColour(face); g.fillRect(area);
     g.setColour(ink);  g.drawRect(area, 2);
 
-    auto body = area.reduced(14, 10);
-    auto label = body.removeFromBottom(14);
-    auto numbers = body.removeFromTop(12);
+    auto body = area.reduced(14, 8);
+    auto label = body.removeFromBottom(16);
+    auto numbers = body.removeFromTop(14);
     auto lane = body;
 
     const float swing = proc.apvts.getRawParameterValue("swing")->load();
@@ -204,15 +216,15 @@ void FeelStrip::paint(juce::Graphics& g){
         g.fillRect(x - 1.5f, lane.getBottom() - hgt, beat ? 4.0f : 3.0f, hgt);
         if (beat){
             g.setColour(dim);
-            g.setFont(mono(9.0f));
+            g.setFont(mono(11.0f));
             g.drawText(juce::String(i / steps + 1),
-                       juce::Rectangle<int>(juce::roundToInt(x) - 10, numbers.getY(), 20, 12),
+                       juce::Rectangle<int>(juce::roundToInt(x) - 10, numbers.getY(), 20, 14),
                        juce::Justification::centred);
         }
     }
 
     g.setColour(dim);
-    g.setFont(mono(10.0f));
+    g.setFont(mono(12.0f));
     const juce::String text = proc.transportRunning.load()
         ? juce::String(offsetMs, 1) + " ms late off the beat  ·  "
           + juce::String(push, 1) + " ms push  ·  " + juce::String(bpm, 1) + " BPM"
@@ -230,7 +242,7 @@ void Meters::timerCallback(){
 BitsMeter::BitsMeter(CrateProcessor& p) : proc(p){
     setTooltip("How many of the converter's bits the drums are using. Each 6 dB under full scale "
                "costs one: push Input until it reads near the top for the grain the machines had");
-    setSize(84, KnobBox::h);
+    setSize(92, KnobBox::h);
     startTimerHz(30);
 }
 void BitsMeter::refresh(){
@@ -247,9 +259,9 @@ void BitsMeter::paint(juce::Graphics& g){
     const double bits = proc.apvts.getRawParameterValue("bits")->load();
     const int cells = juce::jlimit(1, 16, juce::roundToInt(std::ceil(bits)));
     auto a = getLocalBounds();
-    drawTracked(g, "Bits in use", a.removeFromTop(11), 8.5f, 1.4f, juce::Justification::left, dim);
+    drawTracked(g, "Bits in use", a.removeFromTop(13), 10.0f, 1.0f, juce::Justification::left, dim);
     a.removeFromTop(6);
-    auto row = a.removeFromTop(30);
+    auto row = a.removeFromTop(36);
     const float cw = row.getWidth() / static_cast<float>(cells);
     for (int k = 0; k < cells; ++k){
         const auto c = juce::Rectangle<float>(row.getX() + k * cw, (float) row.getY(), cw, (float) row.getHeight()).reduced(1.0f, 0.0f);
@@ -263,9 +275,9 @@ void BitsMeter::paint(juce::Graphics& g){
         g.setColour(ink); g.drawRect(c, 1.0f);
     }
     a.removeFromTop(6);
-    g.setColour(dim); g.setFont(mono(11.0f));
+    g.setColour(dim); g.setFont(mono(12.5f));
     g.drawText(juce::String(used, 1) + " / " + juce::String(bits, bits == std::floor(bits) ? 0 : 1)
-                   + (clipping ? "  over" : ""), a.removeFromTop(14), juce::Justification::left);
+                   + (clipping ? "  over" : ""), a.removeFromTop(16), juce::Justification::left);
 }
 
 void Meters::paint(juce::Graphics& g){
@@ -274,9 +286,9 @@ void Meters::paint(juce::Graphics& g){
     auto area = getLocalBounds();
     const int each = area.getWidth() / 2;
     for (int i = 0; i < 2; ++i){
-        auto col = area.removeFromLeft(each).reduced(5, 0);
-        auto num = col.removeFromBottom(13);
-        auto cap = col.removeFromBottom(13);
+        auto col = area.removeFromLeft(each).reduced(2, 0);
+        auto num = col.removeFromBottom(15);
+        auto cap = col.removeFromBottom(15);
         auto bar = col.withSizeKeepingCentre(18, col.getHeight());
         g.setColour(face); g.fillRect(bar);
         const float norm = juce::jlimit(0.0f, 1.0f, (vals[i] + 60.0f) / 60.0f);
@@ -287,8 +299,8 @@ void Meters::paint(juce::Graphics& g){
             g.setColour(red); g.fillRect(over);
         }
         g.setColour(ink); g.drawRect(bar, 2);
-        drawTracked(g, caps[i], cap, 9.0f, 1.8f, juce::Justification::horizontallyCentred, ink);
-        g.setColour(dim); g.setFont(mono(10.0f));
+        drawTracked(g, caps[i], cap, 10.5f, 1.6f, juce::Justification::horizontallyCentred, ink);
+        g.setColour(dim); g.setFont(mono(11.5f));
         g.drawText(vals[i] <= -59.5f ? juce::String("-inf") : juce::String(vals[i], 1),
                    num, juce::Justification::centred);
     }
@@ -373,6 +385,21 @@ static void layoutRow(juce::Rectangle<int> area, const std::vector<juce::Compone
         x += c->getWidth() + gap;
     }
 }
+// the same row with the panel's spare width shared out between the controls,
+// so a panel is filled across rather than bunched up at its left. The gaps
+// stop growing at 36, so two knobs in a wide panel do not fly apart
+static void spreadRow(juce::Rectangle<int> area, const std::vector<juce::Component*>& items){
+    int used = 0, n = 0;
+    for (auto* c : items) if (c != nullptr){ used += c->getWidth(); ++n; }
+    const int gap = n > 1 ? juce::jlimit(8, 36, (area.getWidth() - used) / (n - 1)) : 0;
+    layoutRow(area, items, gap);
+}
+// how wide a row of controls is at the narrowest gap spreadRow uses
+static int rowWidth(const std::vector<juce::Component*>& items, int gap = 8){
+    int w = 0, n = 0;
+    for (auto* c : items) if (c != nullptr){ w += c->getWidth(); ++n; }
+    return w + gap * juce::jmax(0, n - 1);
+}
 
 CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), proc(p){
     setLookAndFeel(&look);
@@ -427,27 +454,27 @@ CrateEditor::CrateEditor(CrateProcessor& p) : juce::AudioProcessorEditor(&p), pr
         return static_cast<juce::Component*>(t);
     };
 
-    inRow     = { knob(pIn, "inGain", ink), toggle(pIn, "mono", ink, 88) };
-    convRow   = { choice(pConv, "machine", "Machine", 96), knob(pConv, "tune", yellow),
+    inRow     = { knob(pIn, "inGain", ink), toggle(pIn, "mono", ink, 84) };
+    convRow   = { choice(pConv, "machine", "Machine", 100), knob(pConv, "tune", yellow),
                   knob(pConv, "trick", yellow), knob(pConv, "clock", yellow),
                   knob(pConv, "bits", yellow), knob(pConv, "compand", yellow),
                   knob(pConv, "aa", yellow), knob(pConv, "subHz", yellow) };
     bitsMeter = new BitsMeter(proc);
     owned.emplace_back(bitsMeter); pConv->addAndMakeVisible(bitsMeter);
     convRow.push_back(bitsMeter);
-    filterRow = { choice(pFilter, "fltShape", "Shape", 76), choice(pFilter, "fltPoles", "Poles", 60),
+    filterRow = { choice(pFilter, "fltShape", "Shape", 84), choice(pFilter, "fltPoles", "Poles", 64),
                   knob(pFilter, "fltFreq", blue), knob(pFilter, "fltReso", blue),
                   knob(pFilter, "fltDrive", blue), knob(pFilter, "fltEnv", blue),
                   knob(pFilter, "fltDecay", blue), knob(pFilter, "fltMix", blue),
-                  toggle(pFilter, "look", blue, 96) };
-    rhythmRow = { knob(pRhythm, "rhDepth", blue), choice(pRhythm, "rhDiv", "Rhythm", 96),
-                  knob(pRhythm, "rhRate", blue), choice(pRhythm, "rhShape", "Shape", 100),
+                  toggle(pFilter, "look", blue, 116) };
+    rhythmRow = { knob(pRhythm, "rhDepth", blue), choice(pRhythm, "rhDiv", "Rhythm", 108),
+                  knob(pRhythm, "rhRate", blue), choice(pRhythm, "rhShape", "Shape", 112),
                   knob(pRhythm, "rhGroove", blue), knob(pRhythm, "rhPhase", blue),
                   knob(pRhythm, "rhGlide", blue) };
     dustRow   = { knob(pDust, "dust", red), knob(pDust, "dustTone", red) };
     outRow    = { knob(pOut, "mix", ink), knob(pOut, "outGain", ink),
-                  toggle(pOut, "safety", red, 88) };
-    feelRow   = { knob(pFeel, "swing", ink), choice(pFeel, "grid", "Grid", 96),
+                  toggle(pOut, "safety", red, 116) };
+    feelRow   = { knob(pFeel, "swing", ink), choice(pFeel, "grid", "Grid", 100),
                   knob(pFeel, "push", ink) };
 
     strip = new FeelStrip(proc);
@@ -541,7 +568,7 @@ void CrateEditor::paint(juce::Graphics& g){
 void CrateEditor::paintDesign(juce::Graphics& g){
     g.fillAll(ground);
     auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
-    auto header = area.removeFromTop(44);
+    auto header = area.removeFromTop(46);
     auto marks = header.removeFromLeft(96);
     g.setColour(ink); g.fillRect(marks.removeFromLeft(26).withSizeKeepingCentre(26, 26));
     marks.removeFromLeft(8);
@@ -560,18 +587,18 @@ void CrateEditor::paintDesign(juce::Graphics& g){
     }
     header.removeFromLeft(14);
     g.setColour(ink);
-    g.setFont(grot(30.0f, true));
+    g.setFont(grot(34.0f, true));
     {
         // the version beside the name, as in FRACTURE
-        const auto titleRow = header.removeFromTop(30);
+        const auto titleRow = header.removeFromTop(33);
         g.drawText("CRATE", titleRow, juce::Justification::topLeft);
-        const int nameW = juce::roundToInt(juce::GlyphArrangement::getStringWidth(grot(30.0f, true), "CRATE"));
+        const int nameW = juce::roundToInt(juce::GlyphArrangement::getStringWidth(grot(34.0f, true), "CRATE"));
         g.setColour(dim);
-        g.setFont(grot(11.0f, true));
+        g.setFont(grot(12.5f, true));
         g.drawText("v" JucePlugin_VersionString, titleRow.withTrimmedLeft(nameW + 8).withTrimmedBottom(5),
                    juce::Justification::bottomLeft);
     }
-    drawTracked(g, "Twelve-bit drum processor", header, 9.0f, 2.6f, juce::Justification::left, dim);
+    drawTracked(g, "Twelve-bit drum processor", header, 10.5f, 1.4f, juce::Justification::left, dim);
 
     area.removeFromTop(10);
     auto ribbon = area.removeFromTop(8);
@@ -587,73 +614,80 @@ void CrateEditor::resized(){
 
 void CrateEditor::layoutDesign(){
     auto area = juce::Rectangle<int>(0, 0, designW, designH).reduced(20, 18);
-    auto header = area.removeFromTop(44);
-    presetMenu->saveButton.setBounds(header.removeFromRight(56).withSizeKeepingCentre(56, 30));
+    auto header = area.removeFromTop(46);
+    presetMenu->saveButton.setBounds(header.removeFromRight(60).withSizeKeepingCentre(60, 32));
     header.removeFromRight(4);
     // previous, the menu, next: presets one click apart without opening the list
-    presetMenu->next.setBounds(header.removeFromRight(28).withSizeKeepingCentre(28, 30));
+    presetMenu->next.setBounds(header.removeFromRight(30).withSizeKeepingCentre(30, 32));
     header.removeFromRight(2);
-    presetMenu->box.setBounds(header.removeFromRight(200).withSizeKeepingCentre(200, 30));
+    presetMenu->box.setBounds(header.removeFromRight(200).withSizeKeepingCentre(200, 32));
     header.removeFromRight(2);
-    presetMenu->prev.setBounds(header.removeFromRight(28).withSizeKeepingCentre(28, 30));
+    presetMenu->prev.setBounds(header.removeFromRight(30).withSizeKeepingCentre(30, 32));
     header.removeFromRight(10);
-    // narrower than FRACTURE's: the header is 1080 wide, and the undo strip
-    // has to clear the subtitle
-    guideButton.setBounds(header.removeFromRight(64).withSizeKeepingCentre(64, 30));
+    guideButton.setBounds(header.removeFromRight(68).withSizeKeepingCentre(68, 32));
     header.removeFromRight(6);
-    tipsButton.setBounds(header.removeFromRight(56).withSizeKeepingCentre(56, 30));
+    tipsButton.setBounds(header.removeFromRight(58).withSizeKeepingCentre(58, 32));
     header.removeFromRight(14);
     sessionBar->setBounds(header.removeFromRight(session::SessionBar::preferredWidth)
-                              .withSizeKeepingCentre(session::SessionBar::preferredWidth, 30));
+                              .withSizeKeepingCentre(session::SessionBar::preferredWidth, 32));
     area.removeFromTop(10);
     area.removeFromTop(8);
     area.removeFromTop(12);
     guideArea = area;               // the guide covers everything under the header
     if (guide) guide->setBounds(guideArea);
 
-    const int gap = 14;
-    const int col = (area.getWidth() - 11 * gap) / 12;
-    const auto cols = [&](int n){ return n * col + (n - 1) * gap; };
+    // Four rows, each panel as wide as its controls need and the spare width
+    // given to the panel beside it, with the controls spread across it, so no
+    // panel is left half empty. A row of knobs is a bar, the knobs and a
+    // margin: 140 px
+    const int gap = 14, pad = 28;
+    const int knobRow = Panel::barHeight + 8 + KnobBox::h + 10;
 
-    auto rowA = area.removeFromTop(132);
-    pIn->setBounds(rowA.removeFromLeft(cols(3)));
+    auto rowA = area.removeFromTop(knobRow);
+    pIn->setBounds(rowA.removeFromLeft(rowWidth(inRow, 10) + pad));
     rowA.removeFromLeft(gap);
-    pConv->setBounds(rowA.removeFromLeft(cols(9)));
-    layoutRow(pIn->content().withHeight(KnobBox::h), inRow);
-    layoutRow(pConv->content().withHeight(KnobBox::h), convRow);
+    pConv->setBounds(rowA);
+    layoutRow(pIn->content().withHeight(KnobBox::h), inRow, 10);
+    spreadRow(pConv->content().withHeight(KnobBox::h), convRow);
 
     area.removeFromTop(gap);
-    auto rowB = area.removeFromTop(132);
-    pFilter->setBounds(rowB.removeFromLeft(cols(9)));
-    rowB.removeFromLeft(gap);
-    pDust->setBounds(rowB.removeFromLeft(cols(3)));
-    layoutRow(pFilter->content().withHeight(KnobBox::h), filterRow);
-    layoutRow(pDust->content().withHeight(KnobBox::h), dustRow);
+    auto rowB = area.removeFromTop(knobRow);
+    pDust->setBounds(rowB.removeFromRight(rowWidth(dustRow, 10) + pad));
+    rowB.removeFromRight(gap);
+    pFilter->setBounds(rowB);
+    spreadRow(pFilter->content().withHeight(KnobBox::h), filterRow);
+    layoutRow(pDust->content().withHeight(KnobBox::h), dustRow, 10);
 
+    // the rhythm's knobs over its steps; Out's two knobs over Safety, with
+    // the meters beside them
     area.removeFromTop(gap);
-    auto rowC = area.removeFromTop(190);
-    pRhythm->setBounds(rowC.removeFromLeft(cols(8)));
-    rowC.removeFromLeft(gap);
-    pOut->setBounds(rowC.removeFromLeft(cols(4)));
+    auto rowC = area.removeFromTop(knobRow + 10 + 70);
+    pOut->setBounds(rowC.removeFromRight(2 * KnobBox::w + 10 + 12 + 80 + pad));
+    rowC.removeFromRight(gap);
+    pRhythm->setBounds(rowC);
     {
         auto inner = pRhythm->content();
-        layoutRow(inner.removeFromTop(KnobBox::h), rhythmRow);
-        inner.removeFromTop(8);
+        spreadRow(inner.removeFromTop(KnobBox::h), rhythmRow);
+        inner.removeFromTop(10);
         steps->setBounds(inner);
     }
     {
         auto inner = pOut->content();
-        meters->setBounds(inner.removeFromRight(64));
-        inner.removeFromRight(6);
-        layoutRow(inner.withHeight(KnobBox::h), outRow, 8);
+        meters->setBounds(inner.removeFromRight(80));
+        inner.removeFromRight(12);
+        layoutRow(inner.removeFromTop(KnobBox::h), { outRow[0], outRow[1] }, 10);
+        inner.removeFromTop(10);
+        layoutRow(inner, { outRow[2] });
     }
 
+    // the feel's three controls, and beside them where the sixteenths land
     area.removeFromTop(gap);
     pFeel->setBounds(area);
     {
         auto inner = pFeel->content();
-        layoutRow(inner.removeFromTop(KnobBox::h), feelRow);
-        inner.removeFromTop(8);
-        strip->setBounds(inner);
+        auto knobs = inner.removeFromLeft(rowWidth(feelRow, 12));
+        layoutRow(knobs.withHeight(KnobBox::h), feelRow, 12);
+        inner.removeFromLeft(16);
+        strip->setBounds(inner.withHeight(KnobBox::h));
     }
 }

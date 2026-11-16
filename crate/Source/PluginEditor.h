@@ -16,8 +16,8 @@ public:
     void mouseDown(const juce::MouseEvent&) override;    // on the value: type one in
     bool typeValue(const juce::String& text);            // what Enter does, for the tests too
     juce::String id() const { return info.id; }
-    juce::Rectangle<int> valueArea() const { return { 0, 61, getWidth(), 16 }; }
-    static constexpr int w = 66, h = 78;
+    juce::Rectangle<int> valueArea() const { return { 0, dial + 19, getWidth(), 19 }; }
+    static constexpr int w = 80, h = 92, dial = 52;
 private:
     CrateProcessor& proc;
     const crate::ParamInfo& info;
@@ -54,7 +54,7 @@ public:
     Panel(int number, juce::String title, juce::Colour hue);
     void paint(juce::Graphics&) override;
     juce::Rectangle<int> content() const;
-    static constexpr int barHeight = 26;
+    static constexpr int barHeight = 30;
 private:
     int no; juce::String title; juce::Colour hue;
 };
@@ -126,7 +126,7 @@ private:
     void timerCallback() override;
     CrateProcessor& proc;
     bauhaus::Look look;
-    static constexpr int designW = 1080, designH = 810;
+    static constexpr int designW = 1120, designH = 794;
     bauhaus::Canvas canvas { designW, designH };       // everything is drawn on this
 
     void paintDesign(juce::Graphics&);                 // both work in design coordinates

@@ -87,7 +87,9 @@ Mac only; nobody has judged the sound against references yet.
 - [ ] **L** Dynamic Tube and Tape: bias follows level, sag, emphasis, hysteresis, head bump
 - [ ] **L** 8x quality for bounces, latency held constant
 - [ ] **L** Cheaper (polyphase) oversampler and a low-latency mode
-- [ ] **L** A layout that reflows, and a larger-text option
+- [ ] **L** A layout that reflows, and a larger-text option (the text itself is now a sixth
+  larger in all three plugins, and the panels packed tighter)
+- [ ] **S** The browser version's panel at the plugin's new text sizes
 
 ## CRATE
 

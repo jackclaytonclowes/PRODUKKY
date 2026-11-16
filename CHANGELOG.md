@@ -5,6 +5,14 @@ before you try a new version on something that matters.
 
 ## Since 0.2.0
 
+**Bigger text, less empty space** in all three plugins. Knob captions, values, panel titles,
+menus, buttons and the built-in guide are a sixth to a fifth larger, and the panels are
+packed to their controls: CRATE's Feel strip sits beside its knobs, Safety clip under Out's,
+and each row's controls spread across their panel instead of bunching at its left;
+FRACTURE's meters moved to the Output panel and its modulation matrix fills its width.
+CRATE's window is 1120 x 794 (was 1080 x 810), FRACTURE's 1760 x 1000 (was 990), STOOP's
+1080 x 620. The browser version of FRACTURE keeps its own sizes for now.
+
 **STOOP, a third plugin** (`stoop/`, version 0.1.0): a chain of sampler effects after the
 original SP-404's. Its vinyl simulator has the knob the SX dropped, **Comp**, beside Noise and
 Wow flutter: the record's compression, then its surface (hiss, crackle, rumble and a scratch

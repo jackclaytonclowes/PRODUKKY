@@ -364,8 +364,8 @@ filter is, the curve it makes, the knobs that move it) the way the hardware-shap
 rhythmic filters are. The display is also a handle: dragging across moves the cutoff and up
 and down the resonance, relative to where they were, as one host gesture each; Shift makes
 it fine and a double-click resets both. Both drawings call one function, so the panel and
-the Scope cannot disagree about where the filter is. The canvas grew to 1760 x 990 for it;
-a 1440 x 900 screen shows it at 77%.
+the Scope cannot disagree about where the filter is. The canvas grew to 1760 x 990 for it
+(1000 since the text grew); a 1440 x 900 screen shows it at 77%.
 
 ## Playing it: the XY pad and the macros
 
@@ -388,6 +388,16 @@ drive; the crush and feedback loop, the filter and its rhythm; then modulation, 
 and the tremolo and output that end the chain. It used to be one tall column at
 1320 x 1376, which on a 1440 x 900 laptop opened at 57% and set its 9-point captions at
 about 5 points. At 1760 x 990 the same screen opens it at 77%.
+
+The text has since grown by about a sixth: knob captions from 9 to 10.5 points, values from
+11 to 12.5, panel titles from 10 to 12.5, menus from 13 to 15, buttons from 10 to 12, the
+guide from 14 to 16. On that laptop the captions now come out at about 8 points. The width
+decides the scale on a laptop, and the band row was already full, so the knobs grew taller
+(and their captions close up their spacing when a name is long) rather than wider, and the
+canvas only grew 10 px in height. The bottom row paid for the rest: the envelope follower
+sits beside the modulation sources' live bars instead of above them, the matrix fills its
+panel's width, and the In and Out meters moved from the Scope to the Output panel, where
+there was room.
 
 **Controls that do nothing right now are dimmed**, and their tooltip says why: FB pitch
 while the loop is timed in milliseconds, the filter's Drive and Drift on the clean
@@ -511,7 +521,7 @@ opening a DAW.
 - The tremolo's shape is drawn on the panel from the same arithmetic the DSP uses, but the
   drawing does not know about modulation of depth or duty, so a heavily modulated tremolo
   is shown at its unmodulated shape.
-- GUI resizing is uniform scaling only: the interface is laid out once at 1760 x 990 and
+- GUI resizing is uniform scaling only: the interface is laid out once at 1760 x 1000 and
   the whole canvas is scaled to the window, so nothing is ever cropped, but nothing
   reflows either. The aspect ratio is fixed and the window opens smaller than the design
   size on a screen that cannot fit it.

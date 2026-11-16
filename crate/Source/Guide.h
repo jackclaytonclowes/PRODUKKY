@@ -23,7 +23,7 @@ public:
         blocks.clear();
         // a readable measure: past about 90 characters a line is hard to
         // track back from, so the column stops at 780 px however wide the panel
-        const float inner = static_cast<float>(std::min(width - 2 * pad, 780));
+        const float inner = static_cast<float>(std::min(width - 2 * pad, 900));
         left = std::max(pad, static_cast<int>((width - inner) / 2.0f));   // centred when there is room
         float y = static_cast<float>(pad);
         juce::String para;
@@ -85,10 +85,10 @@ private:
         float indent = 0.0f, before = 0.0f, after = 8.0f;
         juce::AttributedString s;
         switch (kind){
-        case Kind::Title:   s = styled(text, grot(30.0f, true), grot(30.0f, true), ink); after = 14.0f; break;
-        case Kind::Heading: s = styled(text, grot(17.0f, true), grot(17.0f, true), ink); before = 18.0f; after = 6.0f; break;
-        case Kind::Bullet:  s = styled(text, grot(14.0f), grot(14.0f, true), ink); indent = 18.0f; after = 6.0f; break;
-        case Kind::Para:    s = styled(text, grot(14.0f), grot(14.0f, true), dim); after = 10.0f; break;
+        case Kind::Title:   s = styled(text, grot(32.0f, true), grot(32.0f, true), ink); after = 14.0f; break;
+        case Kind::Heading: s = styled(text, grot(20.0f, true), grot(20.0f, true), ink); before = 18.0f; after = 6.0f; break;
+        case Kind::Bullet:  s = styled(text, grot(16.0f), grot(16.0f, true), ink); indent = 20.0f; after = 6.0f; break;
+        case Kind::Para:    s = styled(text, grot(16.0f), grot(16.0f, true), dim); after = 10.0f; break;
         }
         y += before;
         b.layout.createLayout(s, width - indent);

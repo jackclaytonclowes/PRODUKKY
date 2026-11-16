@@ -142,11 +142,11 @@ public:
         g.setColour(ink);
         g.fillPath(caret);
     }
-    juce::Font getComboBoxFont(juce::ComboBox&) override { return grot(13.0f); }
-    juce::Font getPopupMenuFont() override { return grot(13.0f); }
+    juce::Font getComboBoxFont(juce::ComboBox&) override { return grot(15.0f); }
+    juce::Font getPopupMenuFont() override { return grot(15.0f); }
     void positionComboBoxText(juce::ComboBox& box, juce::Label& label) override {
         label.setBounds(7, 1, box.getWidth() - 24, box.getHeight() - 2);
-        label.setFont(grot(13.0f));
+        label.setFont(grot(15.0f));
     }
 
     void drawButtonBackground(juce::Graphics& g, juce::Button& b, const juce::Colour&,
@@ -162,7 +162,7 @@ public:
         const bool on = b.getToggleState();
         const juce::Colour hue = b.findColour(juce::TextButton::buttonOnColourId, true);
         const bool light = on && hue.getPerceivedBrightness() < 0.6f;
-        drawTracked(g, b.getButtonText(), b.getLocalBounds(), 10.0f, 1.4f,
+        drawTracked(g, b.getButtonText(), b.getLocalBounds(), 12.0f, 1.2f,
                     juce::Justification::centred, light ? face : ink);
     }
 };
