@@ -1,8 +1,9 @@
-# FRACTURE and CRATE
+# FRACTURE, CRATE and STOOP
 
-Two JUCE 8 audio plugins (FRACTURE in `plugin/`, CRATE in `crate/`), FRACTURE's browser
-version (`fx/fracture.html`) and a static download site (`plugins-site/`). `README.md` has
-the overview; each product's README says what is verified and what is not.
+Three JUCE 8 audio plugins (FRACTURE in `plugin/`, CRATE in `crate/`, STOOP in `stoop/`),
+FRACTURE's browser version (`fx/fracture.html`) and a static download site (`plugins-site/`,
+FRACTURE and CRATE only so far). `README.md` has the overview; each product's README says
+what is verified and what is not.
 
 ## Commands
 
@@ -10,19 +11,22 @@ the overview; each product's README says what is verified and what is not.
 npm test                   # all suites that need no JUCE
 npm run test:core          # FRACTURE DSP, bare compiler
 npm run test:crate         # CRATE DSP, bare compiler
-npm run test:sanitize      # both, under AddressSanitizer and UBSan (slow; run before a release)
+npm run test:stoop         # STOOP DSP, bare compiler
+npm run test:sanitize      # all three, under AddressSanitizer and UBSan (slow; run before a release)
 npm run test:fx            # browser version, headless Chromium
 npm run test:plugins-site  # the download site
 npm run reference          # after changing shapers or presets in fx/fracture.html
 npm run audition           # render every preset to WAV
 
 cmake -S plugin -B build-frac -DCMAKE_BUILD_TYPE=Release && cmake --build build-frac --target host_smoke -j
-xvfb-run -a build-frac/host_smoke_artefacts/Release/host_smoke shot.png      # same for crate/
+xvfb-run -a build-frac/host_smoke_artefacts/Release/host_smoke shot.png      # same for crate/ and stoop/
 ```
 
-On Windows, `.\build-windows.ps1` builds both with MSVC and runs both `test_core`s;
+On Windows, `.\build-windows.ps1` builds all three with MSVC and runs every `test_core`;
 `windows.yml` does it in CI with pluginval. MSVC needs `/utf-8` (the labels are UTF-8) and
-`_USE_MATH_DEFINES` (core uses `M_PI`); both CMakeLists set them.
+`_USE_MATH_DEFINES` (core uses `M_PI`); every CMakeLists sets them. The disk image, the
+Windows installer and the site still name FRACTURE and CRATE one by one; STOOP joins them
+when they are driven by a list of plugins (ROADMAP.md).
 
 On Linux, JUCE needs the X11, freetype and ALSA dev packages. Validate a VST3 build with
 pluginval at `--strictness-level 10` across several `--random-seed`s before calling a
@@ -34,8 +38,10 @@ wrapper change done.
   the undo stacks live there and are tested with a bare compiler. `Source/` is the wrapper
   and the editor, and stays thin.
 - **Shared files are copies, kept identical:** `Source/Guide.h`, `Source/Session.h` and
-  `core/History.h` are byte-for-byte the same in both products. Change one, copy it to the
-  other. `Bauhaus.h` differs only in its header comment. `RhythmMod.h` is the same class in
+  `core/History.h` are byte-for-byte the same in all three products. Change one, copy it to
+  the others. (Their header comments still say "between CRATE and FRACTURE": rewording them
+  touches `plugin/core`, which means `npm run wasm`.) `Bauhaus.h` differs only in its header
+  comment, and so do STOOP's `Oversampler.h` and `Biquad.h` from CRATE's. `RhythmMod.h` is the same class in
   each product's namespace, but CRATE's copy carries its own division list, so keep the two
   in step by hand.
 - **`fx/fracture.html` is the source of truth for FRACTURE's browser presets and shapers.**
@@ -99,14 +105,24 @@ wrapper change done.
 - **Tests measure; they do not restate the code.** Several early tests passed against
   broken code: a dry/wet check that compared a signal with itself, a pitch test that
   measured group delay. Prove each new test fails when the fix is removed.
+- **STOOP's vinyl sim runs in the order a record happens:** the compressor (the cutting), then
+  the noise (the surface), then the turntable. The noise must never go in front of the
+  compressor; `test_core` checks tone plus noise is exactly the tone plus the noise alone.
+- **STOOP's latency never changes:** the turntable's 8 ms rest plus the oversampler's 48
+  samples, whatever is switched on. A section that is off still runs and is multiplied by
+  exactly zero, so it fades in from where it is; new sections follow the same rule.
+- **STOOP draws the same random numbers every sample whatever the settings**, so a knob
+  never reshuffles the crackle or the drift, and the dim claims stay bit-exact.
 - **Look at the screenshots.** `host_smoke` renders both editors to PNG, and the site test
   renders the site. Layout regressions do not fail assertions.
 
 ## Not yet known
 
-Nobody has listened to either plugin in a real session. Every number on the panels is
-measured; whether it sounds good is not. Do not claim otherwise in docs, presets or the
-site. The Mac AU still needs `auval` on a real Mac (`build-macos.sh` runs it), and the
+Nobody has listened to any of the three plugins in a real session. Every number on the
+panels is measured; whether it sounds good is not. Do not claim otherwise in docs, presets or
+the site. STOOP has not been compared with an original SP-404, an SX or an SP-303: its comp is
+our own design for what the knob is named after, not a model of Roland's, and its docs must
+keep saying so. The Mac AU still needs `auval` on a real Mac (`build-macos.sh` runs it), and the
 builds are unsigned.
 
 ## JUCE 8 notes

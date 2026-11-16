@@ -1,9 +1,21 @@
 # What changed
 
-Both plugins are still beta: measured by machine, not yet judged by ear. Save your project
+The plugins are still beta: measured by machine, not yet judged by ear. Save your project
 before you try a new version on something that matters.
 
 ## Since 0.2.0
+
+**STOOP, a third plugin** (`stoop/`, version 0.1.0): a chain of sampler effects after the
+original SP-404's. Its vinyl simulator has the knob the SX dropped, **Comp**, beside Noise and
+Wow flutter: the record's compression, then its surface (hiss, crackle, rumble and a scratch
+that ticks once a revolution, laid on after the compression so it never pumps), then the
+turntable (a wobble once a revolution at 33, 45 or 78, a slow drift and a fast flutter).
+Before it come a pitch shifter over two octaves with Feedback and Balance, a resonant filter
+with drive, and a lo-fi crusher, each with its own switch. 22 presets, levelled. Built,
+tested and validated by machine (87 measurements, the host smoke test, pluginval at
+strictness 10) on Linux, and added to the Mac and Windows build scripts and CI. Not yet on
+the disk image, the installer or the site, nobody has heard it, and nobody has compared it
+with the hardware.
 
 **Windows.** Both plugins now build for 64-bit Windows as VST3 and standalone apps, with an
 installer that puts the VST3s in `C:\Program Files\Common Files\VST3`, where Ableton Live 12

@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# Builds and installs BOTH plugins for Logic: FRACTURE (multi-band distortion)
-# and CRATE (twelve-bit drum processor).
+# Builds and installs the plugins for Logic: FRACTURE (multi-band distortion),
+# CRATE (twelve-bit drum processor) and STOOP (sampler effects and vinyl).
 #
 #   ./build-macos-all.sh              build, install, validate
-#   ./build-macos-all.sh --dmg        ... and pack a disk image for each
+#   ./build-macos-all.sh --dmg        ... and pack a disk image for FRACTURE and CRATE
+#                                     (STOOP has none yet; see ROADMAP.md)
 #   COMPANY="Your Name" ./build-macos-all.sh     put both under one maker in Logic
 #
 # What you need first, and nothing else:
 #   xcode-select --install     Apple's command line tools
 #   brew install cmake         (or the CMake app, then "Install Command Line Tools")
 #
-# JUCE is fetched once here and shared between the two builds, rather than
-# downloaded twice.
+# JUCE is fetched once here and shared between the builds, rather than
+# downloaded once for each.
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,6 +22,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "Audio Units only exist on macOS. On Linux or Windows build the VST3s:"
     echo "    cmake -B plugin/build -S plugin && cmake --build plugin/build --target Fracture_VST3 -j"
     echo "    cmake -B crate/build  -S crate  && cmake --build crate/build  --target Crate_VST3 -j"
+    echo "    cmake -B stoop/build  -S stoop  && cmake --build stoop/build  --target Stoop_VST3 -j"
     exit 1
 fi
 if ! xcode-select -p >/dev/null 2>&1; then
@@ -32,7 +34,7 @@ if ! command -v cmake >/dev/null 2>&1; then
     exit 1
 fi
 
-# ---- one JUCE for both builds
+# ---- one JUCE for every build
 JUCE_TAG="${JUCE_TAG:-8.0.15}"
 if [[ -z "${JUCE_PATH:-}" ]]; then
     JUCE_PATH="$here/.juce"
@@ -65,15 +67,17 @@ flags=()
 [[ "${1:-}" == "--dmg" ]] && flags+=(--dmg)
 build_one plugin FRACTURE ${flags[@]+"${flags[@]}"}
 build_one crate  CRATE    ${flags[@]+"${flags[@]}"}
+build_one stoop  STOOP    ${flags[@]+"${flags[@]}"}
 
 echo
 echo "============================================================"
 if [[ $status -eq 0 ]]; then
-    echo "  both installed. Restart Logic, then look in"
+    echo "  all three installed. Restart Logic, then look in"
     echo "     Audio Units > Fracture > Distortion   (FRACTURE)"
     echo "     Audio Units > Crate > Distortion      (CRATE)"
+    echo "     Audio Units > Stoop > Distortion      (STOOP)"
 else
-    echo "  one of the two had a problem — scroll up for which"
+    echo "  one of them had a problem — scroll up for which"
 fi
 echo "============================================================"
 ls -d ~/Library/Audio/Plug-Ins/Components/*.component 2>/dev/null

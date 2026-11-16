@@ -7,12 +7,15 @@ tests/screenshots/
 # CMake build folders, per product and at the top
 plugin/build*/
 crate/build*/
+stoop/build*/
 /build-crate*/
 /build-frac*/
+/build-stoop*/
 
 # what host_smoke writes when run from a product folder
 plugin/fracture-plugin.png
 crate/crate-plugin.png
+stoop/stoop-plugin.png
 
 # design scratch
 fx/design/fracture-bauhaus-restyle.html

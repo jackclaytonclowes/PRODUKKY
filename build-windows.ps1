@@ -1,11 +1,12 @@
-# Builds BOTH plugins for Windows: FRACTURE and CRATE, as VST3 (for Ableton Live,
+# Builds the plugins for Windows: FRACTURE, CRATE and STOOP, as VST3 (for Ableton Live,
 # Reaper, Cubase, Bitwig, FL Studio) and as standalone apps.
 #
 #   .\build-windows.ps1              build, run the DSP tests
-#   .\build-windows.ps1 -Install     ... and copy both VST3s into the system folder
+#   .\build-windows.ps1 -Install     ... and copy the VST3s into the system folder
 #                                    (run PowerShell as administrator for this)
 #   .\build-windows.ps1 -Package     ... and pack dist\ (a zip, plus an installer
-#                                    when Inno Setup 6 is installed)
+#                                    when Inno Setup 6 is installed; FRACTURE and
+#                                    CRATE only for now, see ROADMAP.md)
 #
 # What you need first, and nothing else:
 #   Visual Studio 2022 (the free Community edition) with "Desktop development with C++"
@@ -31,7 +32,7 @@ foreach ($tool in "cmake", "git") {
     }
 }
 
-# ---- one JUCE for both builds
+# ---- one JUCE for every build
 $jucetag = if ($env:JUCE_TAG) { $env:JUCE_TAG } else { "8.0.15" }
 $juce = if ($env:JUCE_PATH) { $env:JUCE_PATH } else { Join-Path $root ".juce" }
 if (-not (Test-Path (Join-Path $juce "CMakeLists.txt"))) {
@@ -50,7 +51,8 @@ function Invoke-Checked([string]$what, [scriptblock]$block) {
 
 $products = @(
     @{ Dir = "plugin"; Name = "FRACTURE"; Target = "Fracture"; Var = "FRACTURE"; TestArgs = @("plugin\tests\shaper_reference.csv", "plugin\tests\presets.json") },
-    @{ Dir = "crate";  Name = "CRATE";    Target = "Crate";    Var = "CRATE";    TestArgs = @() }
+    @{ Dir = "crate";  Name = "CRATE";    Target = "Crate";    Var = "CRATE";    TestArgs = @() },
+    @{ Dir = "stoop";  Name = "STOOP";    Target = "Stoop";    Var = "STOOP";    TestArgs = @() }
 )
 
 foreach ($p in $products) {
@@ -91,11 +93,11 @@ if ($Package) {
 Write-Host ""
 Write-Host "============================================================"
 if ($Install) {
-    Write-Host "  both installed in $env:CommonProgramFiles\VST3"
+    Write-Host "  all three installed in $env:CommonProgramFiles\VST3"
     Write-Host "  In Ableton Live 12: Settings > Plug-Ins, turn on"
     Write-Host "  'Use VST3 Plug-In System Folders', then press Rescan."
 } else {
-    Write-Host "  both built. Install with -Install (as administrator), or run"
+    Write-Host "  all three built. Install with -Install (as administrator), or run"
     Write-Host "  the installer that -Package makes."
 }
 Write-Host "============================================================"

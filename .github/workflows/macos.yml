@@ -45,10 +45,11 @@ jobs:
         run: |
           node plugin/tests/run.mjs
           node crate/tests/run.mjs
+          node stoop/tests/run.mjs
 
       # the same script the user runs on their own laptop, so a green run here
       # means that script works
-      - name: Build, install and validate both
+      - name: Build, install and validate them all
         run: ./build-macos-all.sh
 
       - name: Disk image

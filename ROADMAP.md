@@ -1,6 +1,6 @@
 # Roadmap
 
-Where FRACTURE and CRATE stand, what to improve, and what could sit alongside them. Written
+Where FRACTURE, CRATE and STOOP stand, what to improve, and what could sit alongside them. Written
 after 0.1.1. Effort: **S** a session, **M** a few, **L** weeks. Tick items off as they land.
 
 ## Found while planning: FRACTURE depended on the buffer size
@@ -57,6 +57,9 @@ Mac only; nobody has judged the sound against references yet.
 - 8 to 10 instances for CPU; mono with Width at 200%.
 - Level-matched against Decapitator, Saturn 2 or Thermal (FRACTURE) and RC-20, Decimort or an
   SP-1200 emulation (CRATE).
+- STOOP against an original SP-404's Vinyl Sim, an SX's and an SP-303's, on the same loop:
+  Comp at 0, 50 and 100 (is ours as soft as theirs, does it pump the same way?), Wow flutter
+  at full (is 1% once a revolution about right?), and Pitch at +7 with Feedback.
 - Each preset: keep, fix or cut.
 
 ## FRACTURE
@@ -98,6 +101,21 @@ Mac only; nobody has judged the sound against references yet.
 - [ ] **M** Dust in time with the song
 - [ ] **L** Per-hit swing (probably belongs in CHOP)
 
+## STOOP
+
+- [x] **L** First version: the vinyl sim with the original's Comp (the cutting, the surface,
+  the turntable, at 33, 45 or 78), the pitch shifter with feedback, filter and drive, lo-fi,
+  22 presets; 87 measurements, the host smoke test, pluginval at strictness 10 on six seeds
+- [ ] **M** Disk image, Windows installer and a page on the site: after the `shared/` item
+  below, rather than a third hand-made copy of each
+- [ ] **S** The SX's Frequency knob (the playback system's tone), and a switch between the
+  original's vinyl sim and the SX's, so the two can be compared in one place
+- [ ] **S** Drift and flutter re-seeded from the song position as well as the revolution, so a
+  replay wobbles exactly the same
+- [ ] **M** More of the original's effects: delay, the isolator, the BPM looper
+- [ ] **M** A cleaner pitch shifter (splices placed where the waveform matches) as a second
+  mode beside the warbly one
+
 ## Shared and shipping
 
 - [x] **S** Installer re-signs ad hoc; the site says to use the installer, not drag
@@ -109,15 +127,17 @@ Mac only; nobody has judged the sound against references yet.
 - [ ] **M** Linux VST3 and CLAP builds
 - [ ] **S** Steinberg's VST3 validator and pluginval on the Mac in CI
 - [ ] **S** Before-and-after audio previews on the site
-- [ ] **M** Before a third plugin: shared code in one `shared/` folder, and build, disk image and
-  site driven by a list of plugins
+- [ ] **M** Shared code in one `shared/` folder, and build, disk image and site driven by a
+  list of plugins. Meant to come before a third plugin; STOOP came first, as copies (the
+  build scripts and CI list it by hand; the disk image, installer and site do not yet)
 
 ## New plugins (working names)
 
 1. **SLAB**: drum bus clipper and transient shaper. Reuses the ADAA shapers, oversampler, hit
    envelope and crossovers. S–M.
 2. **SPOOL**: tape and vinyl: hysteresis, head bump, wow and flutter, hiss, crackle, rumble.
-   Groundwork for FRACTURE's dynamic Tape. M–L.
+   Groundwork for FRACTURE's dynamic Tape. M–L. STOOP's turntable and surface noise are a
+   start on the vinyl half.
 3. **RELAY**: tape and dub echo from FRACTURE's feedback loop. M.
 4. **LUSTRE**: harmonic exciter for mixing and mastering, the Table idea made precise. M.
 5. **SHUTTER**: rhythmic gate and volume shaper. S–M, crowded market.

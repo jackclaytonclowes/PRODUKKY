@@ -1,6 +1,6 @@
-# FRACTURE and CRATE
+# FRACTURE, CRATE and STOOP
 
-Two audio effect plugins, built with JUCE as Audio Unit, VST3 and a standalone app, for macOS
+Three audio effect plugins, built with JUCE as Audio Unit, VST3 and a standalone app, for macOS
 and 64-bit Windows.
 
 - **FRACTURE** (`plugin/`) is a multi-band, multi-FX distortion after Output's Thermal and
@@ -12,28 +12,35 @@ and 64-bit Windows.
 - **CRATE** (`crate/`) is a twelve-bit drum processor after the SP-1200 and Akai S900: the
   two machines' converters, the pitch trick, a hit-opened four-pole filter, a rhythm, dust,
   and swing against the host's grid, with the low end kept clean if you want it. It has 27 presets.
+- **STOOP** (`stoop/`) is a chain of sampler effects after the original SP-404's: its
+  vinyl simulator with the Comp knob the SX dropped (the record's compression, its surface
+  noise and a scratch once a revolution, and the turntable's wow and flutter at 33, 45 or 78),
+  its pitch shifter with feedback, filter and drive, and a lo-fi crusher, in one chain. It has
+  22 presets. It is new: built, tested and validated alongside the other two, but not yet on
+  the disk image, the installer or the site.
 - **The browser version** of FRACTURE (`fx/fracture.html`) is one HTML file: the plugin's own
   engine, compiled to WebAssembly, behind the plugin's own panel. It is also where the plugin's
   first presets and shapers come from.
-- **The download site** (`plugins-site/`) is a static site with both plugins, their guides
-  and the downloads, ready for Vercel or Render.
+- **The download site** (`plugins-site/`) is a static site with FRACTURE and CRATE, their
+  guides and the downloads, ready for Vercel or Render.
 
 ## Building
 
 On a Mac, with Xcode's command line tools and CMake:
 
 ```
-./build-macos-all.sh              # build, install into your plug-in folders, validate
-./build-macos-all.sh --dmg        # ... and pack a disk image of each
+./build-macos-all.sh              # build all three, install into your plug-in folders, validate
+./build-macos-all.sh --dmg        # ... and pack a disk image of FRACTURE and CRATE
 ```
 
 On Windows, with Visual Studio 2022 (Community is fine, with "Desktop development with C++"),
 CMake and Git, from PowerShell:
 
 ```
-.\build-windows.ps1              # build both VST3s and apps, run the DSP tests
+.\build-windows.ps1              # build all three VST3s and apps, run the DSP tests
 .\build-windows.ps1 -Install     # ... and copy the VST3s into Common Files\VST3 (as administrator)
 .\build-windows.ps1 -Package     # ... and pack a zip, and an installer if Inno Setup 6 is there
+                                 #     (FRACTURE and CRATE: STOOP is not packaged yet)
 ```
 
 Ableton Live 12 finds them with Settings > Plug-Ins > "Use VST3 Plug-In System Folders" on,
@@ -46,6 +53,7 @@ Elsewhere, the VST3s:
 ```
 cmake -B plugin/build -S plugin && cmake --build plugin/build --target Fracture_VST3 -j
 cmake -B crate/build  -S crate  && cmake --build crate/build  --target Crate_VST3 -j
+cmake -B stoop/build  -S stoop  && cmake --build stoop/build  --target Stoop_VST3 -j
 ```
 
 `.github/workflows/macos.yml` does the Mac build on GitHub. Run it from the Actions tab (fill
@@ -58,6 +66,7 @@ npm install
 npm test                 # everything below that needs no JUCE
 npm run test:core        # FRACTURE's DSP, with a bare C++ compiler
 npm run test:crate       # CRATE's DSP, the same way
+npm run test:stoop       # STOOP's DSP, the same way
 npm run test:fx          # the browser version, in headless Chromium
 npm run test:plugins-site  # the download site, built and read in Chromium
 npm run audition         # render every preset over a loop, to listen without a DAW
@@ -65,16 +74,17 @@ npm run audition         # render every preset over a loop, to listen without a 
 
 Each product also has `host_smoke`, a host-level test that needs the JUCE build. It
 instantiates the plugin, walks the presets, round-trips state, drives the editor with mouse
-events and renders it to a PNG. `plugin/README.md` and `crate/README.md` explain what every
-test measures, what has not been verified, and why.
+events and renders it to a PNG. `plugin/README.md`, `crate/README.md` and `stoop/README.md`
+explain what every test measures, what has not been verified, and why.
 
 ## Layout
 
 ```
 CHANGELOG.md     what changed in each version
-ROADMAP.md       what is next, and what could sit alongside these two
+ROADMAP.md       what is next, and what could sit alongside these three
 plugin/          FRACTURE: core/ (JUCE-free DSP), Source/ (wrapper and editor), tests/, packaging/
 crate/           CRATE, laid out the same way
+stoop/           STOOP, laid out the same way
 fx/              the browser version and its design sources
 plugins-site/    the download site (render.yaml at the top deploys it on Render)
 tools/audition/  renders presets to WAV with the real DSP

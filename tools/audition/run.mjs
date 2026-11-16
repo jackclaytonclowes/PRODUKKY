@@ -1,10 +1,10 @@
 /**
- * Renders every CRATE and FRACTURE preset over a loop, with the real DSP cores
+ * Renders every CRATE, FRACTURE and STOOP preset over a loop, with the real DSP cores
  * and nothing but a C++ compiler, into dist/audition/<plugin>/ as WAV files and
  * a manifest of their levels.
  *
  *   npm run audition                      the built-in test loops
- *   npm run audition -- my-break.wav      your own loop, through both plugins
+ *   npm run audition -- my-break.wav      your own loop, through every plugin
  *
  * Nothing in this repository had been heard when these were written; the
  * renders are how it gets heard without a DAW. They found a preset that had
@@ -29,6 +29,7 @@ if (!compiler) { console.error('No C++ compiler found (tried c++, g++, clang++).
 const targets = [
   { name: 'crate', src: 'crate.cpp', inc: ['crate/core', 'crate/Source'] },
   { name: 'fracture', src: 'fracture.cpp', inc: ['plugin/core'] },
+  { name: 'stoop', src: 'stoop.cpp', inc: ['stoop/core', 'stoop/Source'] },
 ];
 for (const t of targets) {
   const bin = path.join(os.tmpdir(), `${t.name}-audition`);

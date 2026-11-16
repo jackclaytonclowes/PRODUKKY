@@ -25,6 +25,7 @@ on:
     paths:
       - 'plugin/**'
       - 'crate/**'
+      - 'stoop/**'
       - 'tools/audition/common.h'
       - 'packaging/windows/**'
       - 'build-windows.ps1'
@@ -48,15 +49,15 @@ jobs:
           key: juce-8.0.15-windows
 
       # the same script a person runs on their own PC, so a green run here means
-      # that script works. It builds with MSVC and runs both test_core suites.
+      # that script works. It builds with MSVC and runs every test_core suite.
       - name: Build both and run the DSP tests
         run: ./build-windows.ps1
 
-      # renders both editors to PNG through the real wrapper code, and walks
+      # renders every editor to PNG through the real wrapper code, and walks
       # every preset through the processor
       - name: Host smoke test
         run: |
-          foreach ($d in "plugin", "crate") {
+          foreach ($d in "plugin", "crate", "stoop") {
             cmake --build "$d/build-windows" --config Release --parallel --target host_smoke
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -64,6 +65,8 @@ jobs:
           & plugin/build-windows/host_smoke_artefacts/Release/host_smoke.exe dist/shots/fracture-windows.png
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & crate/build-windows/host_smoke_artefacts/Release/host_smoke.exe dist/shots/crate-windows.png
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & stoop/build-windows/host_smoke_artefacts/Release/host_smoke.exe dist/shots/stoop-windows.png
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: pluginval
@@ -73,7 +76,8 @@ jobs:
           $pv = (Get-ChildItem pluginval -Recurse -Filter pluginval.exe | Select-Object -First 1).FullName
           $plugins = @(
             "plugin/build-windows/Fracture_artefacts/Release/VST3/FRACTURE.vst3",
-            "crate/build-windows/Crate_artefacts/Release/VST3/CRATE.vst3")
+            "crate/build-windows/Crate_artefacts/Release/VST3/CRATE.vst3",
+            "stoop/build-windows/Stoop_artefacts/Release/VST3/STOOP.vst3")
           foreach ($p in $plugins) {
             foreach ($seed in 1, 2) {
               Write-Host "==> $p, seed $seed"
